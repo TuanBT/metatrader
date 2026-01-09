@@ -23,28 +23,25 @@
 #property indicator_width3  1
 
 #property indicator_label4  "OutBuy"
-#property indicator_type4   DRAW_NONE
-#property indicator_color4  clrDeepSkyBlue
-#property indicator_width4  1
+#property indicator_type4   DRAW_ARROW
+#property indicator_color4  clrLime
+#property indicator_width4  3
 
 #property indicator_label5  "OutSell"
-#property indicator_type5   DRAW_NONE
-#property indicator_color5  clrLightSalmon
-#property indicator_width5  1
+#property indicator_type5   DRAW_ARROW
+#property indicator_color5  clrRed
+#property indicator_width5  3
 
 input int    InpATRLen       = 14;   // ATR Length (M15)
 input double InpATRMult      = 1.2;  // ATR Multiplier
 input double InpBodyRatioMin = 0.55; // Min Body/Range
 input int    InpMaxM15Bars   = 500;  // Max M15 bars to scan
 input int    InpMaxM5Bars    = 1500; // Max M5 bars to scan
-input bool   InpShowImpulseText = true; // Show "M15" on impulse bars
-input int    InpTextOffsetPoints = 25;  // Text offset in points
-input bool   InpShowBoxes = true;       // Draw IN/OUT box
-input bool   InpEnableAlerts = true;    // Alert on impulse/OUT
-input bool   InpShowOutIcons = true;    // Show icon for OUT
-input int    InpOutIconCode = 159;      // OUT icon code
-input int    InpOutIconWidth = 3;       // OUT icon size
-input int    InpOutTextSize = 10;       // OUT text size
+input bool   InpShowBoxes    = true; // Draw FVG Box
+input bool   InpEnableAlerts = true; // Alert on OUT signal
+input color  InpImpulseColor = clrGold;        // Impulse zone color
+input color  InpBoxBuyColor  = clrDodgerBlue;  // Buy box color  
+input color  InpBoxSellColor = clrCrimson;     // Sell box color
 
 double g_impBuffer[];
 double g_zoneHBuffer[];
@@ -52,8 +49,7 @@ double g_zoneLBuffer[];
 double g_outBuyBuffer[];
 double g_outSellBuffer[];
 int g_atrHandle = INVALID_HANDLE;
-string g_objPrefix = "M15IMP_";
-datetime g_lastImpulseAlert = 0;
+string g_objPrefix = "FVG_";
 datetime g_lastOutAlert = 0;
 
 void DeleteObjectsByPrefix(const string prefix)
@@ -67,56 +63,13 @@ void DeleteObjectsByPrefix(const string prefix)
    }
 }
 
-void DrawTextLabel(const string name, datetime t, double price, const string text, color clr)
-{
-   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, price))
-      ObjectMove(0, name, 0, t, price);
-
-   ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
-   ObjectSetInteger(0, name, OBJPROP_BACK, false);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-}
-
-void DrawTextLabelSized(const string name,
-                        datetime t,
-                        double price,
-                        const string text,
-                        color clr,
-                        int fontSize)
-{
-   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, price))
-      ObjectMove(0, name, 0, t, price);
-
-   ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
-   ObjectSetInteger(0, name, OBJPROP_BACK, false);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-}
-
-void DrawArrowIcon(const string name, datetime t, double price, int code, color clr, int width)
-{
-   if(!ObjectCreate(0, name, OBJ_ARROW, 0, t, price))
-      ObjectMove(0, name, 0, t, price);
-
-   ObjectSetInteger(0, name, OBJPROP_ARROWCODE, code);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
-   ObjectSetInteger(0, name, OBJPROP_BACK, false);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-}
-
 void DrawBox(const string base,
-             datetime inTime,
-             datetime outTime,
+             datetime t1,
+             datetime t2,
              double top,
              double bottom,
-             color clr)
+             color clr,
+             bool filled = true)
 {
    if(top < bottom)
    {
@@ -126,28 +79,53 @@ void DrawBox(const string base,
    }
 
    string box = base + "_BOX";
-   if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, inTime, top, outTime, bottom))
+   if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, t1, top, t2, bottom))
    {
-      ObjectMove(0, box, 0, inTime, top);
-      ObjectMove(0, box, 1, outTime, bottom);
+      ObjectMove(0, box, 0, t1, top);
+      ObjectMove(0, box, 1, t2, bottom);
    }
    ObjectSetInteger(0, box, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, box, OBJPROP_BACK, true);
-   ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, box, OBJPROP_FILL, filled);
    ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
-   ObjectSetInteger(0, box, OBJPROP_FILL, false);
+   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
 
+   // Midline (Entry)
    double mid = (top + bottom) / 2.0;
    string midName = base + "_MID";
-   if(!ObjectCreate(0, midName, OBJ_TREND, 0, inTime, mid, outTime, mid))
+   if(!ObjectCreate(0, midName, OBJ_TREND, 0, t1, mid, t2, mid))
    {
-      ObjectMove(0, midName, 0, inTime, mid);
-      ObjectMove(0, midName, 1, outTime, mid);
+      ObjectMove(0, midName, 0, t1, mid);
+      ObjectMove(0, midName, 1, t2, mid);
    }
    ObjectSetInteger(0, midName, OBJPROP_RAY_RIGHT, false);
-   ObjectSetInteger(0, midName, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, midName, OBJPROP_COLOR, clrWhite);
    ObjectSetInteger(0, midName, OBJPROP_STYLE, STYLE_DOT);
    ObjectSetInteger(0, midName, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, midName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, midName, OBJPROP_HIDDEN, true);
+}
+
+void DrawImpulseZone(const string base,
+                     datetime t1,
+                     datetime t2,
+                     double top,
+                     double bottom,
+                     color clr)
+{
+   string box = base + "_ZONE";
+   if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, t1, top, t2, bottom))
+   {
+      ObjectMove(0, box, 0, t1, top);
+      ObjectMove(0, box, 1, t2, bottom);
+   }
+   ObjectSetInteger(0, box, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, box, OBJPROP_BACK, true);
+   ObjectSetInteger(0, box, OBJPROP_FILL, true);
+   ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
 }
 
 int MapM5ToChart(datetime t)
@@ -170,12 +148,14 @@ int OnInit()
    ArraySetAsSeries(g_outBuyBuffer, true);
    ArraySetAsSeries(g_outSellBuffer, true);
 
-   PlotIndexSetInteger(0, PLOT_ARROW, 242);
+   // Tất cả buffer hiển thị
+   PlotIndexSetInteger(0, PLOT_ARROW, 242);  // Impulse arrow
+   PlotIndexSetInteger(3, PLOT_ARROW, 233);  // OutBuy arrow up
+   PlotIndexSetInteger(4, PLOT_ARROW, 234);  // OutSell arrow down
+
    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE);
-   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_NONE);
    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
 
@@ -187,7 +167,7 @@ int OnInit()
    }
 
    string number = StringFormat("%I64d", GetTickCount64());
-   g_objPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_M15IMP_";
+   g_objPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_FVG_";
 
    IndicatorSetString(INDICATOR_SHORTNAME, "M15 Impulse FVG Entry");
    return(INIT_SUCCEEDED);
@@ -285,24 +265,14 @@ int OnCalculate(const int rates_total,
       impulseCount++;
    }
 
-   if(InpShowImpulseText)
+   // Vẽ Impulse Zone (rectangle mờ từ nến Impulse kéo dài sang phải)
+   for(int i = 0; i < impulseCount; i++)
    {
-      for(int i = 0; i < impulseCount; i++)
-      {
-         double text_price = impulseZoneH[i] + InpTextOffsetPoints * _Point;
-         string name = g_objPrefix + "IMP_" + IntegerToString((long)impulseMarkTimes[i]);
-         DrawTextLabel(name, impulseMarkTimes[i], text_price, "M15", clrYellow);
-      }
-   }
+      datetime zoneStart = impulseMarkTimes[i];
+      datetime zoneEnd = (i > 0) ? impulseEventTimes[i - 1] : TimeCurrent() + PeriodSeconds(PERIOD_M15) * 10;
 
-   if(InpEnableAlerts && impulseCount > 0)
-   {
-      datetime latestMarkTime = impulseMarkTimes[impulseCount - 1];
-      if(latestMarkTime > g_lastImpulseAlert && latestMarkTime <= time[0])
-      {
-         Alert("M15 Impulse: ", _Symbol, " at ", TimeToString(latestMarkTime));
-         g_lastImpulseAlert = latestMarkTime;
-      }
+      string zoneName = g_objPrefix + "IMP_" + IntegerToString((long)zoneStart);
+      DrawImpulseZone(zoneName, zoneStart, zoneEnd, impulseZoneH[i], impulseZoneL[i], InpImpulseColor);
    }
 
    int m5_bars = Bars(_Symbol, PERIOD_M5);
@@ -418,54 +388,32 @@ int OnCalculate(const int rates_total,
 
          if(outBuy || outSell)
          {
-            double rng = m5Rates[i].high - m5Rates[i].low;
-            double pad = MathMax(rng * 0.05, _Point * 5.0);
-            double iconOffset = _Point * (InpOutIconWidth * 2 + 4);
             if(outBuy)
             {
-               m5OutBuy[i] = m5Rates[i].low - pad;
-               string outName = g_objPrefix + "OUTB_" + IntegerToString((long)m5Rates[i].time);
-               // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].low - pad, "B",
-               //                    clrGreen, InpOutTextSize);
-               if(InpShowOutIcons)
-               {
-                  string iconName = g_objPrefix + "OUTB_ICON_" + IntegerToString((long)m5Rates[i].time);
-                  DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].low - pad - iconOffset,
-                                InpOutIconCode, clrGreen, InpOutIconWidth);
-               }
+               // Mũi tên xanh ngay dưới nến OUT
+               m5OutBuy[i] = m5Rates[i].low - 20 * _Point;
             }
             if(outSell)
             {
-               m5OutSell[i] = m5Rates[i].high + pad;
-               string outName = g_objPrefix + "OUTS_" + IntegerToString((long)m5Rates[i].time);
-               // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].high + pad, "S",
-               //                    clrRed, InpOutTextSize);
-               if(InpShowOutIcons)
-               {
-                  string iconName = g_objPrefix + "OUTS_ICON_" + IntegerToString((long)m5Rates[i].time);
-                  DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].high + pad + iconOffset,
-                                InpOutIconCode, clrRed, InpOutIconWidth);
-               }
+               // Mũi tên đỏ ngay trên nến OUT
+               m5OutSell[i] = m5Rates[i].high + 20 * _Point;
             }
 
-            if(inIndex >= 0)
-            {
-               double inPad = MathMax((inHigh - inLow) * 0.2, _Point * 10.0);
-               string inName = g_objPrefix + "IN_" + IntegerToString((long)m5Rates[inIndex].time);
-               // DrawTextLabel(inName, m5Rates[inIndex].time, inHigh + inPad, "IN", clrMagenta);
-            }
-
+            // Vẽ FVG Box (Entry zone)
             if(InpShowBoxes && inIndex >= 0)
             {
                double top = outBuy ? m5Rates[i].low : inLow;
                double bottom = outBuy ? inHigh : m5Rates[i].high;
-               string base = g_objPrefix + IntegerToString((long)m5Rates[i].time);
-               DrawBox(base, m5Rates[inIndex].time, m5Rates[i].time, top, bottom, clrMagenta);
+               color boxColor = outBuy ? InpBoxBuyColor : InpBoxSellColor;
+               string base = g_objPrefix + "FVG_" + IntegerToString((long)m5Rates[i].time);
+               DrawBox(base, m5Rates[inIndex].time, m5Rates[i].time, top, bottom, boxColor, true);
             }
 
+            // Alert cho OUT signal mới nhất
             if(InpEnableAlerts && i == 0 && m5Rates[i].time > g_lastOutAlert)
             {
-               Alert("M15 OUT: ", _Symbol, " at ", TimeToString(m5Rates[i].time));
+               string direction = outBuy ? "BUY" : "SELL";
+               Alert("FVG ", direction, ": ", _Symbol, " at ", TimeToString(m5Rates[i].time));
                g_lastOutAlert = m5Rates[i].time;
             }
 

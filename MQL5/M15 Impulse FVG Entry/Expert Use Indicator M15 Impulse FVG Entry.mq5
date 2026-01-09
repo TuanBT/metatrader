@@ -10,12 +10,8 @@
 //+------------------------------------------------------------------+
 //| INPUTS                                                           |
 //+------------------------------------------------------------------+
-// Indicator parameters (phải khớp với mql.mq5)
-input int    InpATRLen        = 14;    // ATR Length (M15)
-input double InpATRMult       = 1.2;   // ATR Multiplier
-input double InpBodyRatioMin  = 0.55;  // Min Body/Range
-input int    InpMaxM15Bars    = 500;   // Max M15 bars to scan
-input int    InpMaxM5Bars     = 1500;  // Max M5 bars to scan
+// Indicator selection
+input string InpIndicatorName = "Indicator M15 Impulse FVG Entry"; // Tên indicator (indicatorTest hoặc indicator)
 
 // Trade parameters
 input double InpLotSize       = 0.01;  // Lot size
@@ -32,7 +28,7 @@ int g_indicatorHandle = INVALID_HANDLE;
 datetime g_lastSignalTime = 0;
 datetime g_lastBarTime = 0;
 
-// Buffer indices từ indicator (phải khớp với mql.mq5)
+// Buffer indices từ indicator (phải khớp với indicator)
 #define BUFFER_IMPULSE   0
 #define BUFFER_ZONE_HIGH 1
 #define BUFFER_ZONE_LOW  2
@@ -44,27 +40,17 @@ datetime g_lastBarTime = 0;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // Tạo handle cho indicator mql.mq5
-   // Đường dẫn: nếu indicator nằm cùng thư mục với EA, chỉ cần tên file (không có .mq5)
-   g_indicatorHandle = iCustom(
-      _Symbol,
-      _Period,
-      "Indicator M15 Impulse FAG Entry",                // Tên indicator (không có extension)
-      InpATRLen,            // ATR Length
-      InpATRMult,           // ATR Multiplier
-      InpBodyRatioMin,      // Body Ratio Min
-      InpMaxM15Bars,        // Max M15 bars
-      InpMaxM5Bars          // Max M5 bars
-   );
+   // Tạo handle cho indicator - không truyền tham số, dùng default
+   g_indicatorHandle = iCustom(_Symbol, _Period, InpIndicatorName);
 
    if(g_indicatorHandle == INVALID_HANDLE)
    {
       Print("❌ Failed to create indicator handle. Error: ", GetLastError());
-      Print("   Đảm bảo file mql.ex5 nằm trong thư mục MQL5/Indicators/");
+      Print("   Đảm bảo file ", InpIndicatorName, ".ex5 nằm trong thư mục MQL5/Indicators/");
       return(INIT_FAILED);
    }
 
-   Print("✅ EA initialized. Indicator handle: ", g_indicatorHandle);
+   Print("✅ EA initialized. Indicator: ", InpIndicatorName, " Handle: ", g_indicatorHandle);
    return(INIT_SUCCEEDED);
 }
 
@@ -223,22 +209,64 @@ bool ReadIndicatorBuffers(double &outBuy,
                           double &zoneH, 
                           double &zoneL)
 {
-   double bufOutBuy[1], bufOutSell[1], bufZoneH[1], bufZoneL[1];
+   double bufOutBuy[3], bufOutSell[3], bufZoneH[3], bufZoneL[3];
 
-   // Copy từ bar [1] (bar vừa đóng)
-   if(CopyBuffer(g_indicatorHandle, BUFFER_OUT_BUY, 1, 1, bufOutBuy) != 1)
+   // Copy từ bar [0], [1], [2] - lấy nhiều bar để tìm signal
+   if(CopyBuffer(g_indicatorHandle, BUFFER_OUT_BUY, 0, 3, bufOutBuy) != 3)
+   {
+      Print("❌ CopyBuffer BUFFER_OUT_BUY failed");
       return false;
-   if(CopyBuffer(g_indicatorHandle, BUFFER_OUT_SELL, 1, 1, bufOutSell) != 1)
+   }
+   if(CopyBuffer(g_indicatorHandle, BUFFER_OUT_SELL, 0, 3, bufOutSell) != 3)
+   {
+      Print("❌ CopyBuffer BUFFER_OUT_SELL failed");
       return false;
-   if(CopyBuffer(g_indicatorHandle, BUFFER_ZONE_HIGH, 1, 1, bufZoneH) != 1)
+   }
+   if(CopyBuffer(g_indicatorHandle, BUFFER_ZONE_HIGH, 0, 3, bufZoneH) != 3)
+   {
+      Print("❌ CopyBuffer BUFFER_ZONE_HIGH failed");
       return false;
-   if(CopyBuffer(g_indicatorHandle, BUFFER_ZONE_LOW, 1, 1, bufZoneL) != 1)
+   }
+   if(CopyBuffer(g_indicatorHandle, BUFFER_ZONE_LOW, 0, 3, bufZoneL) != 3)
+   {
+      Print("❌ CopyBuffer BUFFER_ZONE_LOW failed");
       return false;
+   }
 
-   outBuy  = bufOutBuy[0];
-   outSell = bufOutSell[0];
-   zoneH   = bufZoneH[0];
-   zoneL   = bufZoneL[0];
+   // CopyBuffer với start=0 trả về: [0]=bar gần nhất, [1]=bar trước, [2]=bar trước nữa
+   // Tìm signal trong các bar gần đây
+   outBuy = EMPTY_VALUE;
+   outSell = EMPTY_VALUE;
+   zoneH = EMPTY_VALUE;
+   zoneL = EMPTY_VALUE;
+
+   for(int i = 0; i < 3; i++)
+   {
+      if(bufOutBuy[i] != EMPTY_VALUE && bufOutBuy[i] != 0.0)
+      {
+         outBuy = bufOutBuy[i];
+         zoneH = bufZoneH[i];
+         zoneL = bufZoneL[i];
+         break;
+      }
+      if(bufOutSell[i] != EMPTY_VALUE && bufOutSell[i] != 0.0)
+      {
+         outSell = bufOutSell[i];
+         zoneH = bufZoneH[i];
+         zoneL = bufZoneL[i];
+         break;
+      }
+   }
+
+   // Debug output
+   static datetime lastDebug = 0;
+   datetime now = TimeCurrent();
+   if(now - lastDebug >= 5)  // Log mỗi 5 giây
+   {
+      Print("🔍 Buffers: OutBuy=", outBuy, " OutSell=", outSell, 
+            " ZoneH=", zoneH, " ZoneL=", zoneL);
+      lastDebug = now;
+   }
 
    return true;
 }
@@ -252,6 +280,8 @@ bool FindINCandle(const double zoneH,
                   double &inHigh, 
                   double &inLow)
 {
+   Print("🔎 FindINCandle: ZoneH=", zoneH, " ZoneL=", zoneL);
+
    // Scan ngược từ bar [2] về quá khứ để tìm nến IN
    // Bar [1] là nến OUT, bar [2] trở đi có thể là IN
    for(int i = 2; i < 50; i++)
@@ -264,9 +294,21 @@ bool FindINCandle(const double zoneH,
       {
          inHigh = h;
          inLow  = l;
+         Print("✅ Found IN candle at bar[", i, "]: High=", h, " Low=", l);
          return true;
       }
    }
+
+   // Debug: in ra vài bar để xem tại sao không tìm được
+   Print("❌ No IN candle found. Checking first few bars:");
+   for(int i = 2; i < 7 && i < 50; i++)
+   {
+      double h = iHigh(_Symbol, _Period, i);
+      double l = iLow(_Symbol, _Period, i);
+      Print("   Bar[", i, "]: H=", h, " L=", l, 
+            " | h<zoneH? ", (h < zoneH), " l>zoneL? ", (l > zoneL));
+   }
+
    return false;
 }
 
