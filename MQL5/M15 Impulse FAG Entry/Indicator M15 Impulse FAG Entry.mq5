@@ -275,7 +275,7 @@ int OnCalculate(const int rates_total,
 
       datetime eventTime = m15Rates[i].time + PeriodSeconds(PERIOD_M15);
       impulseEventTimes[impulseCount] = eventTime;
-      impulseMarkTimes[impulseCount] = eventTime;
+      impulseMarkTimes[impulseCount] = eventTime - PeriodSeconds(PERIOD_M5);
       impulseZoneH[impulseCount] = m15Rates[i].high;
       impulseZoneL[impulseCount] = m15Rates[i].low;
 
@@ -349,6 +349,7 @@ int OnCalculate(const int rates_total,
    double minLow = 0.0;
    double maxHigh = 0.0;
    datetime currentEventTime = 0;
+   int directionLock = 0; // 1 = up, -1 = down, 0 = none
 
    for(int i = m5_limit - 1; i >= 0; --i)
    {
@@ -365,6 +366,7 @@ int OnCalculate(const int rates_total,
          minLow = 0.0;
          maxHigh = 0.0;
          currentEventTime = impulseEventTimes[impIdx];
+         directionLock = 0;
 
          impIdx++;
       }
@@ -385,12 +387,21 @@ int OnCalculate(const int rates_total,
          maxHigh = inHigh;
          waitingIn = false;
          waitingOut = true;
+         directionLock = 0;
       }
 
       if(waitingOut && inIndex >= 0)
       {
          minLow = MathMin(minLow, m5Rates[i].low);
          maxHigh = MathMax(maxHigh, m5Rates[i].high);
+
+         if(directionLock == 0)
+         {
+            if(m5Rates[i].close > zoneH)
+               directionLock = 1;
+            else if(m5Rates[i].close < zoneL)
+               directionLock = -1;
+         }
 
          bool prevUp = false;
          bool prevDown = false;
@@ -406,8 +417,8 @@ int OnCalculate(const int rates_total,
          bool noRevBuy = (minLow >= inLow);
          bool noRevSell = (maxHigh <= inHigh);
 
-         bool outBuy = outUp && (m5Rates[i].low > inHigh) && noRevBuy;
-         bool outSell = outDown && (m5Rates[i].high < inLow) && noRevSell;
+         bool outBuy = outUp && (m5Rates[i].low > inHigh) && noRevBuy && directionLock != -1;
+         bool outSell = outDown && (m5Rates[i].high < inLow) && noRevSell && directionLock != 1;
 
             if(outBuy || outSell)
             {
