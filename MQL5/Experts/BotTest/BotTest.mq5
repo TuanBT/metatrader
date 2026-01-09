@@ -5,7 +5,7 @@
 
 input double LotSize   = 0.01;
 input int    StopLoss  = 200;   // points
-input int    TakeProfit= 300;   // points
+input int    TakeProfit= 200;   // points
 input ulong  Magic     = 20260108;
 
 datetime lastBarTime = 0;
