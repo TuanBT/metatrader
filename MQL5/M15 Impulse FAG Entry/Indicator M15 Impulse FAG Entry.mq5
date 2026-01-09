@@ -1,90 +1,58 @@
-//+------------------------------------------------------------------+
-//|                               Indicator M15 Impulse FAG Entry.mq5|
-//|                         Converted from TradingView indicator      |
-//+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Tuan"
 #property link      "https://mql5.com"
-#property version   "1.10"
+#property version   "1.00"
 #property strict
 
 #property indicator_chart_window
-#property indicator_buffers 5
-#property indicator_plots   5
+#property indicator_buffers 6
+#property indicator_plots   6
 
-input int    InpATRLen        = 14;    // ATR Length (M15)
-input double InpATRMult       = 1.2;   // ATR Multiplier
-input double InpBodyRatioMin  = 0.55;  // Min Body/Range
+#property indicator_label1  "ImpulseUp"
+#property indicator_type1   DRAW_ARROW
+#property indicator_color1  clrLime
+#property indicator_width1  2
 
-input color  InpZoneColor     = clrGray;
-input color  InpM15Color      = clrGray;
-input color  InpSigColor      = clrMagenta;
-input color  InpBuyColor      = clrGreen;
-input color  InpSellColor     = clrRed;
+#property indicator_label2  "ImpulseDown"
+#property indicator_type2   DRAW_ARROW
+#property indicator_color2  clrRed
+#property indicator_width2  2
 
+#property indicator_label3  "ZoneHigh"
+#property indicator_type3   DRAW_LINE
+#property indicator_color3  clrDodgerBlue
+#property indicator_width3  1
+
+#property indicator_label4  "ZoneLow"
+#property indicator_type4   DRAW_LINE
+#property indicator_color4  clrOrange
+#property indicator_width4  1
+
+#property indicator_label5  "OutBuy"
+#property indicator_type5   DRAW_ARROW
+#property indicator_color5  clrDeepSkyBlue
+#property indicator_width5  2
+
+#property indicator_label6  "OutSell"
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrLightSalmon
+#property indicator_width6  2
+
+input int    InpATRLen       = 14;   // ATR Length (M15)
+input double InpATRMult      = 1.2;  // ATR Multiplier
+input double InpBodyRatioMin = 0.55; // Min Body/Range
+input int    InpMaxM15Bars   = 500;  // Max M15 bars to scan
+input bool   InpShowImpulseText = true; // Show "M15" text on impulse
+input int    InpTextOffsetPoints = 25;  // Text offset in points
+
+double g_impUpBuffer[];
+double g_impDownBuffer[];
 double g_zoneHBuffer[];
 double g_zoneLBuffer[];
-double g_m15Buffer[];
 double g_outBuyBuffer[];
 double g_outSellBuffer[];
+int g_atrHandle = INVALID_HANDLE;
+string g_textPrefix = "M15IMP_TXT_";
 
-static int g_atrHandleM15 = INVALID_HANDLE;
-
-//+------------------------------------------------------------------+
-int OnInit()
-{
-   SetIndexBuffer(0, g_zoneHBuffer, INDICATOR_DATA);
-   SetIndexBuffer(1, g_zoneLBuffer, INDICATOR_DATA);
-   SetIndexBuffer(2, g_m15Buffer, INDICATOR_DATA);
-   SetIndexBuffer(3, g_outBuyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(4, g_outSellBuffer, INDICATOR_DATA);
-
-   ArraySetAsSeries(g_zoneHBuffer, true);
-   ArraySetAsSeries(g_zoneLBuffer, true);
-   ArraySetAsSeries(g_m15Buffer, true);
-   ArraySetAsSeries(g_outBuyBuffer, true);
-   ArraySetAsSeries(g_outSellBuffer, true);
-
-   PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_LINE);
-   PlotIndexSetInteger(1, PLOT_DRAW_TYPE, DRAW_LINE);
-   PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_ARROW);
-   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_ARROW);
-   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_ARROW);
-
-   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpZoneColor);
-   PlotIndexSetInteger(1, PLOT_LINE_COLOR, InpZoneColor);
-   PlotIndexSetInteger(2, PLOT_LINE_COLOR, InpM15Color);
-   PlotIndexSetInteger(3, PLOT_LINE_COLOR, InpBuyColor);
-   PlotIndexSetInteger(4, PLOT_LINE_COLOR, InpSellColor);
-
-   PlotIndexSetInteger(2, PLOT_ARROW, 217); // triangle down
-   PlotIndexSetInteger(3, PLOT_ARROW, 241); // arrow up
-   PlotIndexSetInteger(4, PLOT_ARROW, 242); // arrow down
-
-   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-
-   g_atrHandleM15 = iATR(_Symbol, PERIOD_M15, InpATRLen);
-   if(g_atrHandleM15 == INVALID_HANDLE)
-   {
-      Print("Failed to create M15 ATR handle.");
-      return(INIT_FAILED);
-   }
-
-   return(INIT_SUCCEEDED);
-}
-
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-   if(g_atrHandleM15 != INVALID_HANDLE)
-      IndicatorRelease(g_atrHandleM15);
-   g_atrHandleM15 = INVALID_HANDLE;
-}
-
-//+------------------------------------------------------------------+
 void DeleteObjectsByPrefix(const string prefix)
 {
    int total = ObjectsTotal(0, 0, -1);
@@ -96,54 +64,56 @@ void DeleteObjectsByPrefix(const string prefix)
    }
 }
 
-//+------------------------------------------------------------------+
-void DrawOutObjects(const string base,
-                    const datetime inTime,
-                    const double inHigh,
-                    const double inLow,
-                    const datetime outTime,
-                    const double top,
-                    const double bottom)
+int OnInit()
 {
-   string inLabel = base + "_IN";
-   if(ObjectFind(0, inLabel) < 0)
+   SetIndexBuffer(0, g_impUpBuffer, INDICATOR_DATA);
+   SetIndexBuffer(1, g_impDownBuffer, INDICATOR_DATA);
+   SetIndexBuffer(2, g_zoneHBuffer, INDICATOR_DATA);
+   SetIndexBuffer(3, g_zoneLBuffer, INDICATOR_DATA);
+   SetIndexBuffer(4, g_outBuyBuffer, INDICATOR_DATA);
+   SetIndexBuffer(5, g_outSellBuffer, INDICATOR_DATA);
+
+   ArraySetAsSeries(g_impUpBuffer, true);
+   ArraySetAsSeries(g_impDownBuffer, true);
+   ArraySetAsSeries(g_zoneHBuffer, true);
+   ArraySetAsSeries(g_zoneLBuffer, true);
+   ArraySetAsSeries(g_outBuyBuffer, true);
+   ArraySetAsSeries(g_outSellBuffer, true);
+
+   PlotIndexSetInteger(0, PLOT_ARROW, 241);
+   PlotIndexSetInteger(1, PLOT_ARROW, 242);
+   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(4, PLOT_ARROW, 159);
+   PlotIndexSetInteger(5, PLOT_ARROW, 159);
+   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   g_atrHandle = iATR(_Symbol, PERIOD_M15, InpATRLen);
+   if(g_atrHandle == INVALID_HANDLE)
    {
-      double pad = MathMax((top - bottom) * 0.1, _Point * 10.0);
-      ObjectCreate(0, inLabel, OBJ_TEXT, 0, inTime, inHigh + pad);
-      ObjectSetString(0, inLabel, OBJPROP_TEXT, "IN");
-      ObjectSetInteger(0, inLabel, OBJPROP_COLOR, InpSigColor);
+      Print("Failed to create M15 ATR handle.");
+      return(INIT_FAILED);
    }
 
-   string topLine = base + "_TOP";
-   if(ObjectFind(0, topLine) < 0)
-   {
-      ObjectCreate(0, topLine, OBJ_TREND, 0, inTime, top, outTime, top);
-      ObjectSetInteger(0, topLine, OBJPROP_RAY_RIGHT, false);
-      ObjectSetInteger(0, topLine, OBJPROP_STYLE, STYLE_DASH);
-      ObjectSetInteger(0, topLine, OBJPROP_COLOR, InpSigColor);
-   }
+   string number = StringFormat("%I64d", GetTickCount64());
+   g_textPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_M15IMP_";
 
-   string botLine = base + "_BOT";
-   if(ObjectFind(0, botLine) < 0)
-   {
-      ObjectCreate(0, botLine, OBJ_TREND, 0, inTime, bottom, outTime, bottom);
-      ObjectSetInteger(0, botLine, OBJPROP_RAY_RIGHT, false);
-      ObjectSetInteger(0, botLine, OBJPROP_STYLE, STYLE_DASH);
-      ObjectSetInteger(0, botLine, OBJPROP_COLOR, InpSigColor);
-   }
-
-   string midLine = base + "_MID";
-   if(ObjectFind(0, midLine) < 0)
-   {
-      double mid = (top + bottom) / 2.0;
-      ObjectCreate(0, midLine, OBJ_TREND, 0, inTime, mid, outTime, mid);
-      ObjectSetInteger(0, midLine, OBJPROP_RAY_RIGHT, false);
-      ObjectSetInteger(0, midLine, OBJPROP_STYLE, STYLE_DOT);
-      ObjectSetInteger(0, midLine, OBJPROP_COLOR, InpSigColor);
-   }
+   IndicatorSetString(INDICATOR_SHORTNAME, "M15 Impulse FAG Entry");
+   return(INIT_SUCCEEDED);
 }
 
-//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   if(g_atrHandle != INVALID_HANDLE)
+      IndicatorRelease(g_atrHandle);
+   g_atrHandle = INVALID_HANDLE;
+
+   DeleteObjectsByPrefix(g_textPrefix);
+}
+
 int OnCalculate(const int rates_total,
                 const int prev_calculated,
                 const datetime &time[],
@@ -155,150 +125,204 @@ int OnCalculate(const int rates_total,
                 const long &volume[],
                 const int &spread[])
 {
-   if(rates_total < 3)
+   if(rates_total < 2)
       return(rates_total);
 
-   if(prev_calculated == 0)
-      DeleteObjectsByPrefix("M15FVG_");
+   ArrayFill(g_impUpBuffer, 0, rates_total, EMPTY_VALUE);
+   ArrayFill(g_impDownBuffer, 0, rates_total, EMPTY_VALUE);
+   ArrayFill(g_zoneHBuffer, 0, rates_total, EMPTY_VALUE);
+   ArrayFill(g_zoneLBuffer, 0, rates_total, EMPTY_VALUE);
+   ArrayFill(g_outBuyBuffer, 0, rates_total, EMPTY_VALUE);
+   ArrayFill(g_outSellBuffer, 0, rates_total, EMPTY_VALUE);
+
+   int m15_bars = Bars(_Symbol, PERIOD_M15);
+   if(m15_bars < InpATRLen + 2)
+      return(rates_total);
+
+   int count = m15_bars - 1;
+   if(InpMaxM15Bars > 0)
+      count = MathMin(count, InpMaxM15Bars);
+
+   MqlRates m15Rates[];
+   double atrBuf[];
+   ArraySetAsSeries(m15Rates, true);
+   ArraySetAsSeries(atrBuf, true);
+
+   int copied_rates = CopyRates(_Symbol, PERIOD_M15, 1, count, m15Rates);
+   int copied_atr = CopyBuffer(g_atrHandle, 0, 1, count, atrBuf);
+   if(copied_rates <= 0 || copied_atr <= 0)
+      return(rates_total);
+
+   int limit = MathMin(copied_rates, copied_atr);
+   if(limit <= 0)
+      return(rates_total);
+
+   double m15ImpUp[];
+   double m15ImpDown[];
+   double m15ZoneH[];
+   double m15ZoneL[];
+   double m15OutBuy[];
+   double m15OutSell[];
+   ArrayResize(m15ImpUp, limit);
+   ArrayResize(m15ImpDown, limit);
+   ArrayResize(m15ZoneH, limit);
+   ArrayResize(m15ZoneL, limit);
+   ArrayResize(m15OutBuy, limit);
+   ArrayResize(m15OutSell, limit);
+   ArraySetAsSeries(m15ImpUp, true);
+   ArraySetAsSeries(m15ImpDown, true);
+   ArraySetAsSeries(m15ZoneH, true);
+   ArraySetAsSeries(m15ZoneL, true);
+   ArraySetAsSeries(m15OutBuy, true);
+   ArraySetAsSeries(m15OutSell, true);
+   ArrayFill(m15ImpUp, 0, limit, EMPTY_VALUE);
+   ArrayFill(m15ImpDown, 0, limit, EMPTY_VALUE);
+   ArrayFill(m15ZoneH, 0, limit, EMPTY_VALUE);
+   ArrayFill(m15ZoneL, 0, limit, EMPTY_VALUE);
+   ArrayFill(m15OutBuy, 0, limit, EMPTY_VALUE);
+   ArrayFill(m15OutSell, 0, limit, EMPTY_VALUE);
 
    double zoneH = EMPTY_VALUE;
    double zoneL = EMPTY_VALUE;
-   bool waitingIN = false;
-   bool waitingOUT = false;
-   int inIndex = -1;
-   double inHigh = 0.0;
-   double inLow = 0.0;
-   double minLow = 0.0;
-   double maxHigh = 0.0;
-   datetime m15ImpulseTime = 0;
-   datetime lastM15Time = 0;
+   bool waitingIn = false;
+   bool waitingOut = false;
 
-   for(int i = rates_total - 1; i >= 0; --i)
+   for(int i = limit - 1; i >= 0; --i)
    {
-      g_zoneHBuffer[i] = EMPTY_VALUE;
-      g_zoneLBuffer[i] = EMPTY_VALUE;
-      g_m15Buffer[i] = EMPTY_VALUE;
-      g_outBuyBuffer[i] = EMPTY_VALUE;
-      g_outSellBuffer[i] = EMPTY_VALUE;
-   }
+      double rng = m15Rates[i].high - m15Rates[i].low;
+      if(rng <= 0.0)
+         continue;
 
-   for(int i = rates_total - 2; i >= 0; --i)
-   {
-      int m15_index = iBarShift(_Symbol, PERIOD_M15, time[i], true);
-      if(m15_index >= 0)
+      double atr = atrBuf[i];
+      if(atr <= 0.0)
+         continue;
+
+      double bodyRatio = MathAbs(m15Rates[i].close - m15Rates[i].open) / rng;
+      bool impulse = (rng >= InpATRMult * atr) && (bodyRatio >= InpBodyRatioMin);
+      if(impulse)
       {
-         int m15_closed_index = m15_index;
-         datetime m15Time = iTime(_Symbol, PERIOD_M15, m15_index);
-         datetime currentM15Time = iTime(_Symbol, PERIOD_M15, 0);
-         if(time[i] >= currentM15Time)
-         {
-            m15_closed_index = 1;
-            m15Time = iTime(_Symbol, PERIOD_M15, 1);
-         }
-
-         if(m15Time != 0 && m15Time != lastM15Time && m15_closed_index >= 1)
-         {
-            double mh = iHigh(_Symbol, PERIOD_M15, m15_closed_index);
-            double ml = iLow(_Symbol, PERIOD_M15, m15_closed_index);
-            double mo = iOpen(_Symbol, PERIOD_M15, m15_closed_index);
-            double mc = iClose(_Symbol, PERIOD_M15, m15_closed_index);
-            double rng = mh - ml;
-
-            double atrBuf[1];
-            if(g_atrHandleM15 != INVALID_HANDLE &&
-               CopyBuffer(g_atrHandleM15, 0, m15_closed_index, 1, atrBuf) == 1)
-            {
-               double atr = atrBuf[0];
-               double bodyRatio = (rng > 0.0) ? MathAbs(mc - mo) / rng : 0.0;
-               bool imp = (rng >= InpATRMult * atr) && (bodyRatio >= InpBodyRatioMin);
-               if(imp)
-               {
-                  zoneH = mh;
-                  zoneL = ml;
-                  m15ImpulseTime = m15Time;
-                  waitingIN = true;
-                  waitingOUT = false;
-                  inIndex = -1;
-                  inHigh = 0.0;
-                  inLow = 0.0;
-                  minLow = 0.0;
-                  maxHigh = 0.0;
-
-                  g_m15Buffer[i] = high[i] + MathMax((high[i] - low[i]) * 0.2, _Point * 10.0);
-               }
-            }
-            lastM15Time = m15Time;
-         }
+         zoneH = m15Rates[i].high;
+         zoneL = m15Rates[i].low;
+         waitingIn = true;
+         waitingOut = false;
       }
 
       if(zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE)
       {
-         g_zoneHBuffer[i] = zoneH;
-         g_zoneLBuffer[i] = zoneL;
+         m15ZoneH[i] = zoneH;
+         m15ZoneL[i] = zoneL;
       }
 
-      bool inZone = (zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE && high[i] < zoneH && low[i] > zoneL);
-      bool canIN = waitingIN && m15ImpulseTime > 0 && time[i] > m15ImpulseTime;
-      if(canIN && inZone)
+      if(impulse)
       {
-         inIndex = i;
-         inHigh = high[i];
-         inLow = low[i];
-         minLow = low[i];
-         maxHigh = high[i];
-         waitingIN = false;
-         waitingOUT = true;
+         double pad = MathMax(rng * 0.05, _Point * 5.0);
+         if(m15Rates[i].close >= m15Rates[i].open)
+            m15ImpUp[i] = m15Rates[i].low - pad;
+         else
+            m15ImpDown[i] = m15Rates[i].high + pad;
+         continue;
       }
 
-      if(waitingOUT && inIndex >= 0)
+      if(waitingIn && zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE)
       {
-         minLow = MathMin(minLow, low[i]);
-         maxHigh = MathMax(maxHigh, high[i]);
+         if(m15Rates[i].high < zoneH && m15Rates[i].low > zoneL)
+         {
+            waitingIn = false;
+            waitingOut = true;
+         }
       }
 
-      if(i + 1 >= rates_total)
+      if(waitingOut && zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE)
+      {
+         if(m15Rates[i].close > zoneH)
+         {
+            double pad = MathMax(rng * 0.05, _Point * 5.0);
+            m15OutBuy[i] = m15Rates[i].low - pad;
+            waitingOut = false;
+            zoneH = EMPTY_VALUE;
+            zoneL = EMPTY_VALUE;
+         }
+         else if(m15Rates[i].close < zoneL)
+         {
+            double pad = MathMax(rng * 0.05, _Point * 5.0);
+            m15OutSell[i] = m15Rates[i].high + pad;
+            waitingOut = false;
+            zoneH = EMPTY_VALUE;
+            zoneL = EMPTY_VALUE;
+         }
+      }
+   }
+
+   for(int i = 0; i < limit; i++)
+   {
+      if(m15ZoneH[i] == EMPTY_VALUE && m15ZoneL[i] == EMPTY_VALUE)
          continue;
 
-      bool prevUp = (zoneH != EMPTY_VALUE && close[i + 1] > zoneH);
-      bool prevDown = (zoneL != EMPTY_VALUE && close[i + 1] < zoneL);
+      int chart_index = iBarShift(_Symbol, _Period, m15Rates[i].time, false);
+      if(chart_index < 0 || chart_index >= rates_total)
+         continue;
 
-      bool outUp = (zoneH != EMPTY_VALUE && close[i] > zoneH && low[i] > zoneH && prevUp);
-      bool outDown = (zoneL != EMPTY_VALUE && close[i] < zoneL && high[i] < zoneL && prevDown);
-
-      bool noRevBuy = waitingOUT && (minLow >= inLow);
-      bool noRevSell = waitingOUT && (maxHigh <= inHigh);
-
-      bool outBuy = waitingOUT && outUp && (low[i] > inHigh) && noRevBuy;
-      bool outSell = waitingOUT && outDown && (high[i] < inLow) && noRevSell;
-
-      if(outBuy || outSell)
+      int chart_index_prev = rates_total - 1;
+      if(i + 1 < limit)
       {
-         if(outBuy)
-            g_outBuyBuffer[i] = low[i] - MathMax((high[i] - low[i]) * 0.2, _Point * 10.0);
-         if(outSell)
-            g_outSellBuffer[i] = high[i] + MathMax((high[i] - low[i]) * 0.2, _Point * 10.0);
+         chart_index_prev = iBarShift(_Symbol, _Period, m15Rates[i + 1].time, false);
+         if(chart_index_prev < 0)
+            chart_index_prev = rates_total - 1;
+      }
 
-         double top = 0.0;
-         double bottom = 0.0;
-         if(outBuy)
-         {
-            top = low[i];
-            bottom = inHigh;
-         }
-         else
-         {
-            top = inLow;
-            bottom = high[i];
-         }
+      int from = MathMin(chart_index, chart_index_prev);
+      int to = MathMax(chart_index, chart_index_prev);
+      if(to >= rates_total)
+         to = rates_total - 1;
 
-         string base = "M15FVG_" + IntegerToString((int)time[i]);
-         if(inIndex >= 0)
-            DrawOutObjects(base, time[inIndex], inHigh, inLow, time[i], top, bottom);
+      for(int j = from; j <= to; j++)
+      {
+         g_zoneHBuffer[j] = m15ZoneH[i];
+         g_zoneLBuffer[j] = m15ZoneL[i];
+      }
+   }
 
-         waitingOUT = false;
+   for(int i = 0; i < limit; i++)
+   {
+      if(m15ImpUp[i] == EMPTY_VALUE && m15ImpDown[i] == EMPTY_VALUE &&
+         m15OutBuy[i] == EMPTY_VALUE && m15OutSell[i] == EMPTY_VALUE)
+         continue;
+
+      int chart_index = (_Period == PERIOD_M15)
+                        ? iBarShift(_Symbol, _Period, m15Rates[i].time, true)
+                        : iBarShift(_Symbol, _Period, m15Rates[i].time, false);
+      if(chart_index < 0 || chart_index >= rates_total)
+         continue;
+
+      if(g_impUpBuffer[chart_index] != EMPTY_VALUE || g_impDownBuffer[chart_index] != EMPTY_VALUE)
+         continue;
+
+      if(m15ImpUp[i] != EMPTY_VALUE)
+         g_impUpBuffer[chart_index] = m15ImpUp[i];
+      if(m15ImpDown[i] != EMPTY_VALUE)
+         g_impDownBuffer[chart_index] = m15ImpDown[i];
+      if(m15OutBuy[i] != EMPTY_VALUE)
+         g_outBuyBuffer[chart_index] = m15OutBuy[i];
+      if(m15OutSell[i] != EMPTY_VALUE)
+         g_outSellBuffer[chart_index] = m15OutSell[i];
+
+      if(InpShowImpulseText && (m15ImpUp[i] != EMPTY_VALUE || m15ImpDown[i] != EMPTY_VALUE))
+      {
+         double text_price = (m15ImpUp[i] != EMPTY_VALUE)
+                             ? m15Rates[i].low - InpTextOffsetPoints * _Point
+                             : m15Rates[i].high + InpTextOffsetPoints * _Point;
+         string name = g_textPrefix + IntegerToString((long)m15Rates[i].time);
+         if(!ObjectCreate(0, name, OBJ_TEXT, 0, m15Rates[i].time, text_price))
+            ObjectMove(0, name, 0, m15Rates[i].time, text_price);
+         ObjectSetString(0, name, OBJPROP_TEXT, "M15");
+         ObjectSetInteger(0, name, OBJPROP_COLOR,
+                          (m15ImpUp[i] != EMPTY_VALUE) ? clrLime : clrRed);
+         ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+         ObjectSetInteger(0, name, OBJPROP_BACK, false);
+         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+         ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
       }
    }
 
    return(rates_total);
 }
-//+------------------------------------------------------------------+
