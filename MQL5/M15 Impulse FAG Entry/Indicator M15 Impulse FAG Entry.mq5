@@ -4,54 +4,52 @@
 #property strict
 
 #property indicator_chart_window
-#property indicator_buffers 6
-#property indicator_plots   6
+#property indicator_buffers 5
+#property indicator_plots   5
 
-#property indicator_label1  "ImpulseUp"
+#property indicator_label1  "Impulse"
 #property indicator_type1   DRAW_ARROW
-#property indicator_color1  clrLime
+#property indicator_color1  clrYellow
 #property indicator_width1  2
 
-#property indicator_label2  "ImpulseDown"
-#property indicator_type2   DRAW_ARROW
-#property indicator_color2  clrRed
-#property indicator_width2  2
+#property indicator_label2  "ZoneHigh"
+#property indicator_type2   DRAW_LINE
+#property indicator_color2  clrDodgerBlue
+#property indicator_width2  1
 
-#property indicator_label3  "ZoneHigh"
+#property indicator_label3  "ZoneLow"
 #property indicator_type3   DRAW_LINE
-#property indicator_color3  clrDodgerBlue
+#property indicator_color3  clrOrange
 #property indicator_width3  1
 
-#property indicator_label4  "ZoneLow"
-#property indicator_type4   DRAW_LINE
-#property indicator_color4  clrOrange
-#property indicator_width4  1
+#property indicator_label4  "OutBuy"
+#property indicator_type4   DRAW_ARROW
+#property indicator_color4  clrDeepSkyBlue
+#property indicator_width4  2
 
-#property indicator_label5  "OutBuy"
+#property indicator_label5  "OutSell"
 #property indicator_type5   DRAW_ARROW
-#property indicator_color5  clrDeepSkyBlue
+#property indicator_color5  clrLightSalmon
 #property indicator_width5  2
-
-#property indicator_label6  "OutSell"
-#property indicator_type6   DRAW_ARROW
-#property indicator_color6  clrLightSalmon
-#property indicator_width6  2
 
 input int    InpATRLen       = 14;   // ATR Length (M15)
 input double InpATRMult      = 1.2;  // ATR Multiplier
 input double InpBodyRatioMin = 0.55; // Min Body/Range
 input int    InpMaxM15Bars   = 500;  // Max M15 bars to scan
-input bool   InpShowImpulseText = true; // Show "M15" text on impulse
+input bool   InpShowImpulseText = true; // Show "M15" on impulse bars
 input int    InpTextOffsetPoints = 25;  // Text offset in points
+input bool   InpShowBoxes = true;       // Draw IN/OUT box
+input bool   InpEnableAlerts = true;    // Alert on impulse/OUT
 
-double g_impUpBuffer[];
-double g_impDownBuffer[];
+double g_impBuffer[];
 double g_zoneHBuffer[];
 double g_zoneLBuffer[];
 double g_outBuyBuffer[];
 double g_outSellBuffer[];
 int g_atrHandle = INVALID_HANDLE;
-string g_textPrefix = "M15IMP_TXT_";
+string g_objPrefix = "M15IMP_";
+datetime g_lastImpulseAlert = 0;
+datetime g_lastOutAlert = 0;
 
 void DeleteObjectsByPrefix(const string prefix)
 {
@@ -64,32 +62,80 @@ void DeleteObjectsByPrefix(const string prefix)
    }
 }
 
+void DrawTextLabel(const string name, datetime t, double price, const string text, color clr)
+{
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, price))
+      ObjectMove(0, name, 0, t, price);
+
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+}
+
+void DrawBox(const string base,
+             datetime inTime,
+             datetime outTime,
+             double top,
+             double bottom,
+             color clr)
+{
+   if(top < bottom)
+   {
+      double tmp = top;
+      top = bottom;
+      bottom = tmp;
+   }
+
+   string box = base + "_BOX";
+   if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, inTime, top, outTime, bottom))
+   {
+      ObjectMove(0, box, 0, inTime, top);
+      ObjectMove(0, box, 1, outTime, bottom);
+   }
+   ObjectSetInteger(0, box, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, box, OBJPROP_BACK, true);
+   ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, box, OBJPROP_FILL, false);
+
+   double mid = (top + bottom) / 2.0;
+   string midName = base + "_MID";
+   if(!ObjectCreate(0, midName, OBJ_TREND, 0, inTime, mid, outTime, mid))
+   {
+      ObjectMove(0, midName, 0, inTime, mid);
+      ObjectMove(0, midName, 1, outTime, mid);
+   }
+   ObjectSetInteger(0, midName, OBJPROP_RAY_RIGHT, false);
+   ObjectSetInteger(0, midName, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, midName, OBJPROP_STYLE, STYLE_DOT);
+   ObjectSetInteger(0, midName, OBJPROP_WIDTH, 1);
+}
+
 int OnInit()
 {
-   SetIndexBuffer(0, g_impUpBuffer, INDICATOR_DATA);
-   SetIndexBuffer(1, g_impDownBuffer, INDICATOR_DATA);
-   SetIndexBuffer(2, g_zoneHBuffer, INDICATOR_DATA);
-   SetIndexBuffer(3, g_zoneLBuffer, INDICATOR_DATA);
-   SetIndexBuffer(4, g_outBuyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(5, g_outSellBuffer, INDICATOR_DATA);
+   SetIndexBuffer(0, g_impBuffer, INDICATOR_DATA);
+   SetIndexBuffer(1, g_zoneHBuffer, INDICATOR_DATA);
+   SetIndexBuffer(2, g_zoneLBuffer, INDICATOR_DATA);
+   SetIndexBuffer(3, g_outBuyBuffer, INDICATOR_DATA);
+   SetIndexBuffer(4, g_outSellBuffer, INDICATOR_DATA);
 
-   ArraySetAsSeries(g_impUpBuffer, true);
-   ArraySetAsSeries(g_impDownBuffer, true);
+   ArraySetAsSeries(g_impBuffer, true);
    ArraySetAsSeries(g_zoneHBuffer, true);
    ArraySetAsSeries(g_zoneLBuffer, true);
    ArraySetAsSeries(g_outBuyBuffer, true);
    ArraySetAsSeries(g_outSellBuffer, true);
 
    PlotIndexSetInteger(0, PLOT_ARROW, 241);
-   PlotIndexSetInteger(1, PLOT_ARROW, 242);
    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(3, PLOT_ARROW, 159);
    PlotIndexSetInteger(4, PLOT_ARROW, 159);
-   PlotIndexSetInteger(5, PLOT_ARROW, 159);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
 
    g_atrHandle = iATR(_Symbol, PERIOD_M15, InpATRLen);
    if(g_atrHandle == INVALID_HANDLE)
@@ -99,7 +145,7 @@ int OnInit()
    }
 
    string number = StringFormat("%I64d", GetTickCount64());
-   g_textPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_M15IMP_";
+   g_objPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_M15IMP_";
 
    IndicatorSetString(INDICATOR_SHORTNAME, "M15 Impulse FAG Entry");
    return(INIT_SUCCEEDED);
@@ -111,7 +157,7 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_atrHandle);
    g_atrHandle = INVALID_HANDLE;
 
-   DeleteObjectsByPrefix(g_textPrefix);
+   DeleteObjectsByPrefix(g_objPrefix);
 }
 
 int OnCalculate(const int rates_total,
@@ -128,8 +174,7 @@ int OnCalculate(const int rates_total,
    if(rates_total < 2)
       return(rates_total);
 
-   ArrayFill(g_impUpBuffer, 0, rates_total, EMPTY_VALUE);
-   ArrayFill(g_impDownBuffer, 0, rates_total, EMPTY_VALUE);
+   ArrayFill(g_impBuffer, 0, rates_total, EMPTY_VALUE);
    ArrayFill(g_zoneHBuffer, 0, rates_total, EMPTY_VALUE);
    ArrayFill(g_zoneLBuffer, 0, rates_total, EMPTY_VALUE);
    ArrayFill(g_outBuyBuffer, 0, rates_total, EMPTY_VALUE);
@@ -157,26 +202,22 @@ int OnCalculate(const int rates_total,
    if(limit <= 0)
       return(rates_total);
 
-   double m15ImpUp[];
-   double m15ImpDown[];
+   double m15Imp[];
    double m15ZoneH[];
    double m15ZoneL[];
    double m15OutBuy[];
    double m15OutSell[];
-   ArrayResize(m15ImpUp, limit);
-   ArrayResize(m15ImpDown, limit);
+   ArrayResize(m15Imp, limit);
    ArrayResize(m15ZoneH, limit);
    ArrayResize(m15ZoneL, limit);
    ArrayResize(m15OutBuy, limit);
    ArrayResize(m15OutSell, limit);
-   ArraySetAsSeries(m15ImpUp, true);
-   ArraySetAsSeries(m15ImpDown, true);
+   ArraySetAsSeries(m15Imp, true);
    ArraySetAsSeries(m15ZoneH, true);
    ArraySetAsSeries(m15ZoneL, true);
    ArraySetAsSeries(m15OutBuy, true);
    ArraySetAsSeries(m15OutSell, true);
-   ArrayFill(m15ImpUp, 0, limit, EMPTY_VALUE);
-   ArrayFill(m15ImpDown, 0, limit, EMPTY_VALUE);
+   ArrayFill(m15Imp, 0, limit, EMPTY_VALUE);
    ArrayFill(m15ZoneH, 0, limit, EMPTY_VALUE);
    ArrayFill(m15ZoneL, 0, limit, EMPTY_VALUE);
    ArrayFill(m15OutBuy, 0, limit, EMPTY_VALUE);
@@ -186,6 +227,11 @@ int OnCalculate(const int rates_total,
    double zoneL = EMPTY_VALUE;
    bool waitingIn = false;
    bool waitingOut = false;
+   int inIndex = -1;
+   double inHigh = 0.0;
+   double inLow = 0.0;
+   double minLow = 0.0;
+   double maxHigh = 0.0;
 
    for(int i = limit - 1; i >= 0; --i)
    {
@@ -205,6 +251,11 @@ int OnCalculate(const int rates_total,
          zoneL = m15Rates[i].low;
          waitingIn = true;
          waitingOut = false;
+         inIndex = -1;
+         inHigh = 0.0;
+         inLow = 0.0;
+         minLow = 0.0;
+         maxHigh = 0.0;
       }
 
       if(zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE)
@@ -216,10 +267,20 @@ int OnCalculate(const int rates_total,
       if(impulse)
       {
          double pad = MathMax(rng * 0.05, _Point * 5.0);
-         if(m15Rates[i].close >= m15Rates[i].open)
-            m15ImpUp[i] = m15Rates[i].low - pad;
-         else
-            m15ImpDown[i] = m15Rates[i].high + pad;
+         m15Imp[i] = m15Rates[i].high + pad;
+
+         if(InpShowImpulseText)
+         {
+            double text_price = m15Rates[i].high + InpTextOffsetPoints * _Point;
+            string name = g_objPrefix + "IMP_" + IntegerToString((long)m15Rates[i].time);
+            DrawTextLabel(name, m15Rates[i].time, text_price, "M15", clrYellow);
+         }
+
+         if(InpEnableAlerts && i == 0 && m15Rates[i].time > g_lastImpulseAlert)
+         {
+            Alert("M15 Impulse: ", _Symbol, " at ", TimeToString(m15Rates[i].time));
+            g_lastImpulseAlert = m15Rates[i].time;
+         }
          continue;
       }
 
@@ -227,28 +288,74 @@ int OnCalculate(const int rates_total,
       {
          if(m15Rates[i].high < zoneH && m15Rates[i].low > zoneL)
          {
+            inIndex = i;
+            inHigh = m15Rates[i].high;
+            inLow = m15Rates[i].low;
+            minLow = inLow;
+            maxHigh = inHigh;
             waitingIn = false;
             waitingOut = true;
          }
       }
 
-      if(waitingOut && zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE)
+      if(waitingOut && zoneH != EMPTY_VALUE && zoneL != EMPTY_VALUE && inIndex >= 0)
       {
-         if(m15Rates[i].close > zoneH)
+         minLow = MathMin(minLow, m15Rates[i].low);
+         maxHigh = MathMax(maxHigh, m15Rates[i].high);
+
+         bool prevUp = false;
+         bool prevDown = false;
+         if(i + 1 < limit)
          {
-            double pad = MathMax(rng * 0.05, _Point * 5.0);
-            m15OutBuy[i] = m15Rates[i].low - pad;
-            waitingOut = false;
-            zoneH = EMPTY_VALUE;
-            zoneL = EMPTY_VALUE;
+            prevUp = (m15Rates[i + 1].close > zoneH && m15Rates[i + 1].low > zoneH);
+            prevDown = (m15Rates[i + 1].close < zoneL && m15Rates[i + 1].high < zoneL);
          }
-         else if(m15Rates[i].close < zoneL)
+
+         bool outUp = (m15Rates[i].close > zoneH && m15Rates[i].low > zoneH && prevUp);
+         bool outDown = (m15Rates[i].close < zoneL && m15Rates[i].high < zoneL && prevDown);
+
+         bool noRevBuy = (minLow >= inLow);
+         bool noRevSell = (maxHigh <= inHigh);
+
+         bool outBuy = outUp && (m15Rates[i].low > inHigh) && noRevBuy;
+         bool outSell = outDown && (m15Rates[i].high < inLow) && noRevSell;
+
+         if(outBuy || outSell)
          {
             double pad = MathMax(rng * 0.05, _Point * 5.0);
-            m15OutSell[i] = m15Rates[i].high + pad;
+            if(outBuy)
+               m15OutBuy[i] = m15Rates[i].low - pad;
+            if(outSell)
+               m15OutSell[i] = m15Rates[i].high + pad;
+
+            if(inIndex >= 0)
+            {
+               double inPad = MathMax((inHigh - inLow) * 0.2, _Point * 10.0);
+               string inName = g_objPrefix + "IN_" + IntegerToString((long)m15Rates[inIndex].time);
+               DrawTextLabel(inName, m15Rates[inIndex].time, inHigh + inPad, "IN",
+                             outBuy ? clrDeepSkyBlue : clrLightSalmon);
+            }
+
+            if(InpShowBoxes && inIndex >= 0)
+            {
+               double top = outBuy ? m15Rates[i].low : inLow;
+               double bottom = outBuy ? inHigh : m15Rates[i].high;
+               string base = g_objPrefix + IntegerToString((long)m15Rates[i].time);
+               DrawBox(base, m15Rates[inIndex].time, m15Rates[i].time, top, bottom,
+                       outBuy ? clrDeepSkyBlue : clrLightSalmon);
+            }
+
+            if(InpEnableAlerts && i == 0 && m15Rates[i].time > g_lastOutAlert)
+            {
+               Alert("M15 OUT: ", _Symbol, " at ", TimeToString(m15Rates[i].time));
+               g_lastOutAlert = m15Rates[i].time;
+            }
+
             waitingOut = false;
+            waitingIn = false;
             zoneH = EMPTY_VALUE;
             zoneL = EMPTY_VALUE;
+            inIndex = -1;
          }
       }
    }
@@ -284,7 +391,7 @@ int OnCalculate(const int rates_total,
 
    for(int i = 0; i < limit; i++)
    {
-      if(m15ImpUp[i] == EMPTY_VALUE && m15ImpDown[i] == EMPTY_VALUE &&
+      if(m15Imp[i] == EMPTY_VALUE &&
          m15OutBuy[i] == EMPTY_VALUE && m15OutSell[i] == EMPTY_VALUE)
          continue;
 
@@ -294,34 +401,12 @@ int OnCalculate(const int rates_total,
       if(chart_index < 0 || chart_index >= rates_total)
          continue;
 
-      if(g_impUpBuffer[chart_index] != EMPTY_VALUE || g_impDownBuffer[chart_index] != EMPTY_VALUE)
-         continue;
-
-      if(m15ImpUp[i] != EMPTY_VALUE)
-         g_impUpBuffer[chart_index] = m15ImpUp[i];
-      if(m15ImpDown[i] != EMPTY_VALUE)
-         g_impDownBuffer[chart_index] = m15ImpDown[i];
+      if(m15Imp[i] != EMPTY_VALUE && g_impBuffer[chart_index] == EMPTY_VALUE)
+         g_impBuffer[chart_index] = m15Imp[i];
       if(m15OutBuy[i] != EMPTY_VALUE)
          g_outBuyBuffer[chart_index] = m15OutBuy[i];
       if(m15OutSell[i] != EMPTY_VALUE)
          g_outSellBuffer[chart_index] = m15OutSell[i];
-
-      if(InpShowImpulseText && (m15ImpUp[i] != EMPTY_VALUE || m15ImpDown[i] != EMPTY_VALUE))
-      {
-         double text_price = (m15ImpUp[i] != EMPTY_VALUE)
-                             ? m15Rates[i].low - InpTextOffsetPoints * _Point
-                             : m15Rates[i].high + InpTextOffsetPoints * _Point;
-         string name = g_textPrefix + IntegerToString((long)m15Rates[i].time);
-         if(!ObjectCreate(0, name, OBJ_TEXT, 0, m15Rates[i].time, text_price))
-            ObjectMove(0, name, 0, m15Rates[i].time, text_price);
-         ObjectSetString(0, name, OBJPROP_TEXT, "M15");
-         ObjectSetInteger(0, name, OBJPROP_COLOR,
-                          (m15ImpUp[i] != EMPTY_VALUE) ? clrLime : clrRed);
-         ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
-         ObjectSetInteger(0, name, OBJPROP_BACK, false);
-         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-         ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-      }
    }
 
    return(rates_total);
