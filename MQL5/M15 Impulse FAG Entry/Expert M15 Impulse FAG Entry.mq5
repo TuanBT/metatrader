@@ -211,11 +211,14 @@ void OnTick()
    if(barTime == 0)
       return;
 
+   // Bar [1] = bar vừa đóng (current confirmed bar)
+   // Bar [2] = bar trước bar [1] (previous bar) = close[1] trong Pine Script
    double high1  = iHigh(_Symbol, _Period, 1);
    double low1   = iLow(_Symbol, _Period, 1);
    double close1 = iClose(_Symbol, _Period, 1);
    double close2 = iClose(_Symbol, _Period, 2);
 
+   // IN zone check trên bar [1]
    bool inZone = (g_zoneH != EMPTY_VALUE && g_zoneL != EMPTY_VALUE && high1 < g_zoneH && low1 > g_zoneL);
 
    bool canIN = g_waitingIN && g_m15ImpulseTime > 0 && barTime > g_m15ImpulseTime;
@@ -236,9 +239,12 @@ void OnTick()
       g_maxHigh = MathMax(g_maxHigh, high1);
    }
 
+   // prevUp/prevDown: bar [2] close ngoài zone (bar TRƯỚC bar [1])
+   // Để OUT xảy ra ở bar [1], bar [2] phải đã close ngoài zone
    bool prevUp   = (g_zoneH != EMPTY_VALUE && close2 > g_zoneH);
    bool prevDown = (g_zoneL != EMPTY_VALUE && close2 < g_zoneL);
 
+   // OUT conditions cho bar [1]
    bool outUp   = (g_zoneH != EMPTY_VALUE && close1 > g_zoneH && low1 > g_zoneH && prevUp);
    bool outDown = (g_zoneL != EMPTY_VALUE && close1 < g_zoneL && high1 < g_zoneL && prevDown);
 
@@ -254,24 +260,36 @@ void OnTick()
 
    g_lastOutTime = barTime;
 
-   double top    = 0.0;
-   double bottom = 0.0;
+   // Calculate Entry, SL, TP based on OUT signal
+   double entry = 0.0;
+   double sl    = 0.0;
+   double tp    = 0.0;
+
    if(outBuy)
    {
-      top    = low1;
-      bottom = g_inHigh;
+      // Box: from inHigh to low1 (nến OUT)
+      // Entry: trung điểm của Box
+      entry = (g_inHigh + low1) / 2.0;
+      // SL: đáy của Zone
+      sl = g_zoneL;
+      // TP: high của nến OUT
+      tp = high1;
    }
    else if(outSell)
    {
-      top    = g_inLow;
-      bottom = high1;
+      // Box: from high1 (nến OUT) to inLow
+      // Entry: trung điểm của Box
+      entry = (high1 + g_inLow) / 2.0;
+      // SL: đỉnh của Zone
+      sl = g_zoneH;
+      // TP: low của nến OUT
+      tp = low1;
    }
 
-   double mid = (top + bottom) / 2.0;
-
    if(!InpOnePosition || !HasActiveOrders())
-      PlaceFvgOrder(outBuy, mid, bottom, top, TimeCurrent());
+      PlaceFvgOrder(outBuy, entry, sl, tp, TimeCurrent());
 
    g_waitingOUT = false;
 }
 //+------------------------------------------------------------------+
+ 

@@ -189,7 +189,7 @@ int OnInit()
    string number = StringFormat("%I64d", GetTickCount64());
    g_objPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_M15IMP_";
 
-   IndicatorSetString(INDICATOR_SHORTNAME, "M15 Impulse FAG Entry");
+   IndicatorSetString(INDICATOR_SHORTNAME, "M15 Impulse FVG Entry");
    return(INIT_SUCCEEDED);
 }
 
@@ -349,7 +349,6 @@ int OnCalculate(const int rates_total,
    double minLow = 0.0;
    double maxHigh = 0.0;
    datetime currentEventTime = 0;
-   int directionLock = 0; // 1 = up, -1 = down, 0 = unset
 
    for(int i = m5_limit - 1; i >= 0; --i)
    {
@@ -366,7 +365,6 @@ int OnCalculate(const int rates_total,
          minLow = 0.0;
          maxHigh = 0.0;
          currentEventTime = impulseEventTimes[impIdx];
-         directionLock = 0;
 
          impIdx++;
       }
@@ -387,7 +385,6 @@ int OnCalculate(const int rates_total,
          maxHigh = inHigh;
          waitingIn = false;
          waitingOut = true;
-         directionLock = 0;
       }
 
       if(waitingOut && inIndex >= 0)
@@ -395,15 +392,11 @@ int OnCalculate(const int rates_total,
          minLow = MathMin(minLow, m5Rates[i].low);
          maxHigh = MathMax(maxHigh, m5Rates[i].high);
 
-         // Lock direction on first breakout from zone
-         if(directionLock == 0)
-         {
-            if(m5Rates[i].close > zoneH)
-               directionLock = 1;  // Up break
-            else if(m5Rates[i].close < zoneL)
-               directionLock = -1; // Down break
-         }
-
+         // prevUp/prevDown: check previous bar (i-1 is newer bar in time, but in our loop
+         // we go from old to new, so i+1 is the bar that came BEFORE in our processing = older in time)
+         // Pine Script [1] means the previous bar in time order
+         // Since m5Rates is ArraySetAsSeries=true, m5Rates[i+1] is older, m5Rates[i-1] is newer
+         // We need to check the bar BEFORE current in time = m5Rates[i+1] (older)
          bool prevUp = false;
          bool prevDown = false;
          if(i + 1 < m5_limit)
@@ -418,42 +411,42 @@ int OnCalculate(const int rates_total,
          bool noRevBuy = (minLow >= inLow);
          bool noRevSell = (maxHigh <= inHigh);
 
-         // OUT Buy only valid if direction locked UP
-         bool outBuy = outUp && (m5Rates[i].low > inHigh) && noRevBuy && directionLock != -1;
-         // OUT Sell only valid if direction locked DOWN
-         bool outSell = outDown && (m5Rates[i].high < inLow) && noRevSell && directionLock != 1;
+         // OUT Buy: breakout up, current low > IN candle high, no reversal below IN low
+         bool outBuy = outUp && (m5Rates[i].low > inHigh) && noRevBuy;
+         // OUT Sell: breakout down, current high < IN candle low, no reversal above IN high
+         bool outSell = outDown && (m5Rates[i].high < inLow) && noRevSell;
 
-            if(outBuy || outSell)
+         if(outBuy || outSell)
+         {
+            double rng = m5Rates[i].high - m5Rates[i].low;
+            double pad = MathMax(rng * 0.05, _Point * 5.0);
+            double iconOffset = _Point * (InpOutIconWidth * 2 + 4);
+            if(outBuy)
             {
-               double rng = m5Rates[i].high - m5Rates[i].low;
-               double pad = MathMax(rng * 0.05, _Point * 5.0);
-               double iconOffset = _Point * (InpOutIconWidth * 2 + 4);
-               if(outBuy)
+               m5OutBuy[i] = m5Rates[i].low - pad;
+               string outName = g_objPrefix + "OUTB_" + IntegerToString((long)m5Rates[i].time);
+               // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].low - pad, "B",
+               //                    clrGreen, InpOutTextSize);
+               if(InpShowOutIcons)
                {
-                  m5OutBuy[i] = m5Rates[i].low - pad;
-                  string outName = g_objPrefix + "OUTB_" + IntegerToString((long)m5Rates[i].time);
-                  // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].low - pad, "B",
-                  //                    clrGreen, InpOutTextSize);
-                  if(InpShowOutIcons)
-                  {
-                     string iconName = g_objPrefix + "OUTB_ICON_" + IntegerToString((long)m5Rates[i].time);
-                     DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].low - pad - iconOffset,
-                                   InpOutIconCode, clrGreen, InpOutIconWidth);
-                  }
+                  string iconName = g_objPrefix + "OUTB_ICON_" + IntegerToString((long)m5Rates[i].time);
+                  DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].low - pad - iconOffset,
+                                InpOutIconCode, clrGreen, InpOutIconWidth);
                }
-               if(outSell)
+            }
+            if(outSell)
+            {
+               m5OutSell[i] = m5Rates[i].high + pad;
+               string outName = g_objPrefix + "OUTS_" + IntegerToString((long)m5Rates[i].time);
+               // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].high + pad, "S",
+               //                    clrRed, InpOutTextSize);
+               if(InpShowOutIcons)
                {
-                  m5OutSell[i] = m5Rates[i].high + pad;
-                  string outName = g_objPrefix + "OUTS_" + IntegerToString((long)m5Rates[i].time);
-                  // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].high + pad, "S",
-                  //                    clrRed, InpOutTextSize);
-                  if(InpShowOutIcons)
-                  {
-                     string iconName = g_objPrefix + "OUTS_ICON_" + IntegerToString((long)m5Rates[i].time);
-                     DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].high + pad + iconOffset,
-                                   InpOutIconCode, clrRed, InpOutIconWidth);
-                  }
+                  string iconName = g_objPrefix + "OUTS_ICON_" + IntegerToString((long)m5Rates[i].time);
+                  DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].high + pad + iconOffset,
+                                InpOutIconCode, clrRed, InpOutIconWidth);
                }
+            }
 
             if(inIndex >= 0)
             {
@@ -539,3 +532,4 @@ int OnCalculate(const int rates_total,
 
    return(rates_total);
 }
+ 
