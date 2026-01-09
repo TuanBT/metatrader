@@ -23,14 +23,14 @@
 #property indicator_width3  1
 
 #property indicator_label4  "OutBuy"
-#property indicator_type4   DRAW_ARROW
+#property indicator_type4   DRAW_NONE
 #property indicator_color4  clrDeepSkyBlue
-#property indicator_width4  2
+#property indicator_width4  1
 
 #property indicator_label5  "OutSell"
-#property indicator_type5   DRAW_ARROW
+#property indicator_type5   DRAW_NONE
 #property indicator_color5  clrLightSalmon
-#property indicator_width5  2
+#property indicator_width5  1
 
 input int    InpATRLen       = 14;   // ATR Length (M15)
 input double InpATRMult      = 1.2;  // ATR Multiplier
@@ -41,6 +41,10 @@ input bool   InpShowImpulseText = true; // Show "M15" on impulse bars
 input int    InpTextOffsetPoints = 25;  // Text offset in points
 input bool   InpShowBoxes = true;       // Draw IN/OUT box
 input bool   InpEnableAlerts = true;    // Alert on impulse/OUT
+input bool   InpShowOutIcons = true;    // Show icon for OUT
+input int    InpOutIconCode = 159;      // OUT icon code
+input int    InpOutIconWidth = 3;       // OUT icon size
+input int    InpOutTextSize = 10;       // OUT text size
 
 double g_impBuffer[];
 double g_zoneHBuffer[];
@@ -71,6 +75,37 @@ void DrawTextLabel(const string name, datetime t, double price, const string tex
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+}
+
+void DrawTextLabelSized(const string name,
+                        datetime t,
+                        double price,
+                        const string text,
+                        color clr,
+                        int fontSize)
+{
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, price))
+      ObjectMove(0, name, 0, t, price);
+
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+}
+
+void DrawArrowIcon(const string name, datetime t, double price, int code, color clr, int width)
+{
+   if(!ObjectCreate(0, name, OBJ_ARROW, 0, t, price))
+      ObjectMove(0, name, 0, t, price);
+
+   ObjectSetInteger(0, name, OBJPROP_ARROWCODE, code);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
@@ -135,12 +170,12 @@ int OnInit()
    ArraySetAsSeries(g_outBuyBuffer, true);
    ArraySetAsSeries(g_outSellBuffer, true);
 
-   PlotIndexSetInteger(0, PLOT_ARROW, 241);
+   PlotIndexSetInteger(0, PLOT_ARROW, 242);
    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetInteger(3, PLOT_ARROW, 159);
-   PlotIndexSetInteger(4, PLOT_ARROW, 159);
+   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_NONE);
    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
 
@@ -209,6 +244,7 @@ int OnCalculate(const int rates_total,
    if(m15_limit <= 0)
       return(rates_total);
 
+   datetime impulseEventTimes[];
    datetime impulseMarkTimes[];
    double impulseZoneH[];
    double impulseZoneL[];
@@ -231,13 +267,15 @@ int OnCalculate(const int rates_total,
          continue;
 
       int newSize = impulseCount + 1;
+      ArrayResize(impulseEventTimes, newSize);
       ArrayResize(impulseMarkTimes, newSize);
       ArrayResize(impulseZoneH, newSize);
       ArrayResize(impulseZoneL, newSize);
       ArrayResize(impulseMarks, newSize);
 
-      datetime markTime = m15Rates[i].time + PeriodSeconds(PERIOD_M15) - PeriodSeconds(PERIOD_M5);
-      impulseMarkTimes[impulseCount] = markTime;
+      datetime eventTime = m15Rates[i].time + PeriodSeconds(PERIOD_M15);
+      impulseEventTimes[impulseCount] = eventTime;
+      impulseMarkTimes[impulseCount] = eventTime;
       impulseZoneH[impulseCount] = m15Rates[i].high;
       impulseZoneL[impulseCount] = m15Rates[i].low;
 
@@ -315,7 +353,7 @@ int OnCalculate(const int rates_total,
    for(int i = m5_limit - 1; i >= 0; --i)
    {
       datetime t = m5Rates[i].time;
-      while(impIdx < impulseCount && t >= impulseMarkTimes[impIdx])
+      while(impIdx < impulseCount && t >= impulseEventTimes[impIdx])
       {
          zoneH = impulseZoneH[impIdx];
          zoneL = impulseZoneL[impIdx];
@@ -326,7 +364,7 @@ int OnCalculate(const int rates_total,
          inLow = 0.0;
          minLow = 0.0;
          maxHigh = 0.0;
-         currentEventTime = impulseMarkTimes[impIdx];
+         currentEventTime = impulseEventTimes[impIdx];
 
          impIdx++;
       }
@@ -371,21 +409,43 @@ int OnCalculate(const int rates_total,
          bool outBuy = outUp && (m5Rates[i].low > inHigh) && noRevBuy;
          bool outSell = outDown && (m5Rates[i].high < inLow) && noRevSell;
 
-         if(outBuy || outSell)
-         {
-            double rng = m5Rates[i].high - m5Rates[i].low;
-            double pad = MathMax(rng * 0.05, _Point * 5.0);
-            if(outBuy)
-               m5OutBuy[i] = m5Rates[i].low - pad;
-            if(outSell)
-               m5OutSell[i] = m5Rates[i].high + pad;
+            if(outBuy || outSell)
+            {
+               double rng = m5Rates[i].high - m5Rates[i].low;
+               double pad = MathMax(rng * 0.05, _Point * 5.0);
+               double iconOffset = _Point * (InpOutIconWidth * 2 + 4);
+               if(outBuy)
+               {
+                  m5OutBuy[i] = m5Rates[i].low - pad;
+                  string outName = g_objPrefix + "OUTB_" + IntegerToString((long)m5Rates[i].time);
+                  // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].low - pad, "B",
+                  //                    clrGreen, InpOutTextSize);
+                  if(InpShowOutIcons)
+                  {
+                     string iconName = g_objPrefix + "OUTB_ICON_" + IntegerToString((long)m5Rates[i].time);
+                     DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].low - pad - iconOffset,
+                                   InpOutIconCode, clrGreen, InpOutIconWidth);
+                  }
+               }
+               if(outSell)
+               {
+                  m5OutSell[i] = m5Rates[i].high + pad;
+                  string outName = g_objPrefix + "OUTS_" + IntegerToString((long)m5Rates[i].time);
+                  // DrawTextLabelSized(outName, m5Rates[i].time, m5Rates[i].high + pad, "S",
+                  //                    clrRed, InpOutTextSize);
+                  if(InpShowOutIcons)
+                  {
+                     string iconName = g_objPrefix + "OUTS_ICON_" + IntegerToString((long)m5Rates[i].time);
+                     DrawArrowIcon(iconName, m5Rates[i].time, m5Rates[i].high + pad + iconOffset,
+                                   InpOutIconCode, clrRed, InpOutIconWidth);
+                  }
+               }
 
             if(inIndex >= 0)
             {
                double inPad = MathMax((inHigh - inLow) * 0.2, _Point * 10.0);
                string inName = g_objPrefix + "IN_" + IntegerToString((long)m5Rates[inIndex].time);
-               DrawTextLabel(inName, m5Rates[inIndex].time, inHigh + inPad, "IN",
-                             outBuy ? clrDeepSkyBlue : clrLightSalmon);
+               // DrawTextLabel(inName, m5Rates[inIndex].time, inHigh + inPad, "IN", clrMagenta);
             }
 
             if(InpShowBoxes && inIndex >= 0)
@@ -393,8 +453,7 @@ int OnCalculate(const int rates_total,
                double top = outBuy ? m5Rates[i].low : inLow;
                double bottom = outBuy ? inHigh : m5Rates[i].high;
                string base = g_objPrefix + IntegerToString((long)m5Rates[i].time);
-               DrawBox(base, m5Rates[inIndex].time, m5Rates[i].time, top, bottom,
-                       outBuy ? clrDeepSkyBlue : clrLightSalmon);
+               DrawBox(base, m5Rates[inIndex].time, m5Rates[i].time, top, bottom, clrMagenta);
             }
 
             if(InpEnableAlerts && i == 0 && m5Rates[i].time > g_lastOutAlert)
