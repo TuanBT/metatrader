@@ -11,7 +11,7 @@
 //| INPUTS                                                           |
 //+------------------------------------------------------------------+
 // Indicator selection
-input string InpIndicatorName = "Indicator M15 Impulse FVG Entry"; // Tên indicator (indicatorTest hoặc indicator)
+input string InpIndicatorName = "Indicator M15 Impulse FVG Entry"; // Indicator
 
 // Trade parameters
 input double InpLotSize       = 0.01;  // Lot size
