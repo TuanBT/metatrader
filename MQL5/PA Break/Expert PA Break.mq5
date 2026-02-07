@@ -1,16 +1,16 @@
 //+------------------------------------------------------------------+
 //| Expert PA Break.mq5                                              |
 //| PA Break EA — Trade + Visual on Swing HH/LL Breakout            |
-//| Converted from TradingView Pine Script v0.2.0                   |
+//| Converted from TradingView Pine Script v0.4.0                   |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "1.10"
+#property version   "1.30"
 #property strict
 
 //--- Inputs: Signal
 input int    InpPivotLen    = 5;     // Pivot Lookback
-input double InpBreakMult   = 1.0;   // Break Strength (x Swing Range)
+input double InpBreakMult   = 0;     // Break Strength (x Swing Range, 0=OFF)
 
 //--- Inputs: Trade
 input double InpLotSize     = 0.01;  // Lot Size
@@ -51,6 +51,12 @@ static datetime g_slBeforeSH_time = 0;
 static double g_shBeforeSL = EMPTY_VALUE;
 static datetime g_shBeforeSL_time = 0;
 
+// Group tracking: highest SH / lowest SL in swing group before break
+static double   g_shGroupMax      = EMPTY_VALUE;
+static datetime g_shGroupMax_time = 0;
+static double   g_slGroupMin      = EMPTY_VALUE;
+static datetime g_slGroupMin_time = 0;
+
 // Track last signal to avoid duplicates
 static datetime g_lastBuySignal  = 0;
 static datetime g_lastSellSignal = 0;
@@ -67,6 +73,15 @@ static bool   g_hasActiveLine       = false;
 
 // Break count for unique naming
 static int g_breakCount = 0;
+
+// Confirmation state machine
+static int      g_pendingState     = 0;           // 0=idle, 1=pendingBuy, -1=pendingSell
+static double   g_pendBreakPoint   = EMPTY_VALUE;  // Break point (sh1 for buy, sl1 for sell)
+static double   g_pendEntry        = EMPTY_VALUE;  // Entry level (sh0 for buy, sl0 for sell)
+static double   g_pendSL           = EMPTY_VALUE;  // SL level
+static datetime g_pendEntry_time   = 0;
+static datetime g_pendSL_time      = 0;
+static datetime g_pendBreak_time   = 0;
 
 // ATR handle for SL buffer
 static int g_atrHandle = INVALID_HANDLE;
@@ -454,6 +469,15 @@ void OnTick()
    // ── Update Swing Low first (same order as Pine) ──
    if(isSwL)
    {
+      // Tích lũy sl1 cũ vào slGroupMin trước khi bị đẩy thành sl0
+      if(g_sl1 != EMPTY_VALUE)
+      {
+         if(g_slGroupMin == EMPTY_VALUE || g_sl1 < g_slGroupMin)
+         {
+            g_slGroupMin      = g_sl1;
+            g_slGroupMin_time = g_sl1_time;
+         }
+      }
       g_sl0 = g_sl1;       g_sl0_time = g_sl1_time;
       g_sl1 = checkLow;    g_sl1_time = checkTime;
    }
@@ -461,6 +485,15 @@ void OnTick()
    // ── Update Swing High ──
    if(isSwH)
    {
+      // Tích lũy sh1 cũ vào shGroupMax trước khi bị đẩy thành sh0
+      if(g_sh1 != EMPTY_VALUE)
+      {
+         if(g_shGroupMax == EMPTY_VALUE || g_sh1 > g_shGroupMax)
+         {
+            g_shGroupMax      = g_sh1;
+            g_shGroupMax_time = g_sh1_time;
+         }
+      }
       g_slBeforeSH = g_sl1;
       g_slBeforeSH_time = g_sl1_time;
 
@@ -494,68 +527,160 @@ void OnTick()
       }
    }
 
-   // ── Detect HH / LL ──
+   // ── HH / LL Detection (simple) ──
    bool isNewHH = isSwH && g_sh0 != EMPTY_VALUE && g_sh1 > g_sh0;
    bool isNewLL = isSwL && g_sl0 != EMPTY_VALUE && g_sl1 < g_sl0;
 
-   // ── Break Strength Filter ──
-   bool breakUp   = false;
-   bool breakDown = false;
-   double entryBuy = 0, slBuy = 0;
-   double entrySell = 0, slSell = 0;
+   // ── Break Strength Filter (optional, default OFF) ──
+   bool rawBreakUp   = false;
+   bool rawBreakDown = false;
 
    if(isNewHH && g_slBeforeSH != EMPTY_VALUE)
    {
-      double swingRange = g_sh0 - g_slBeforeSH;
-      double breakDist  = g_sh1 - g_sh0;
-      if(swingRange > 0 && breakDist >= swingRange * InpBreakMult)
+      if(InpBreakMult <= 0)
+         rawBreakUp = true;
+      else
       {
-         breakUp  = true;
-         entryBuy = g_sh0;
-         slBuy    = g_slBeforeSH;
+         double swingRange = g_sh0 - g_slBeforeSH;
+         double breakDist  = g_sh1 - g_sh0;
+         if(swingRange > 0 && breakDist >= swingRange * InpBreakMult)
+            rawBreakUp = true;
       }
    }
 
    if(isNewLL && g_shBeforeSL != EMPTY_VALUE)
    {
-      double swingRange = g_shBeforeSL - g_sl0;
-      double breakDist  = g_sl0 - g_sl1;
-      if(swingRange > 0 && breakDist >= swingRange * InpBreakMult)
+      if(InpBreakMult <= 0)
+         rawBreakDown = true;
+      else
       {
-         breakDown = true;
-         entrySell = g_sl0;
-         slSell    = g_shBeforeSL;
+         double swingRange = g_shBeforeSL - g_sl0;
+         double breakDist  = g_sl0 - g_sl1;
+         if(swingRange > 0 && breakDist >= swingRange * InpBreakMult)
+            rawBreakDown = true;
       }
    }
 
-   // ── Process Break UP ──
-   if(breakUp)
+   // ============================================================
+   // CONFIRMATION STATE MACHINE
+   // States: 0=idle, 1=pendingBuy, -1=pendingSell
+   //
+   // BUY: after HH break, wait for new swing HIGH > break point
+   //      Invalidate if price low <= entry.
+   //
+   // SELL: after LL break, wait for new swing LOW < break point
+   //       Invalidate if price high >= entry.
+   // ============================================================
+
+   // ── Step 1: Check confirmation FIRST (before new break overwrites) ──
+   bool confirmedBuy  = false;
+   bool confirmedSell = false;
+
+   if(g_pendingState == 1 && isSwH && g_pendBreakPoint != EMPTY_VALUE)
+   {
+      if(checkHigh > g_pendBreakPoint)
+      {
+         confirmedBuy   = true;
+         g_pendingState = 0;
+      }
+   }
+
+   if(g_pendingState == -1 && isSwL && g_pendBreakPoint != EMPTY_VALUE)
+   {
+      if(checkLow < g_pendBreakPoint)
+      {
+         confirmedSell  = true;
+         g_pendingState = 0;
+      }
+   }
+
+   // ── Step 2: Check invalidation (price touched entry level) ──
+   double prevLow  = iLow(_Symbol, _Period, 1);
+   double prevHigh = iHigh(_Symbol, _Period, 1);
+
+   if(g_pendingState == 1 && g_pendEntry != EMPTY_VALUE)
+   {
+      if(prevLow <= g_pendEntry)
+         g_pendingState = 0;
+   }
+
+   if(g_pendingState == -1 && g_pendEntry != EMPTY_VALUE)
+   {
+      if(prevHigh >= g_pendEntry)
+         g_pendingState = 0;
+   }
+
+   // ── Step 3: Raw break → set pending state ──
+   if(rawBreakUp)
+   {
+      g_pendingState   = 1;
+      g_pendBreakPoint = g_sh1;
+      if(g_shGroupMax != EMPTY_VALUE && g_shGroupMax < g_sh1)
+      {
+         g_pendEntry      = g_shGroupMax;
+         g_pendEntry_time = g_shGroupMax_time;
+      }
+      else
+      {
+         g_pendEntry      = g_sh0;
+         g_pendEntry_time = g_sh0_time;
+      }
+      g_pendSL         = g_slBeforeSH;
+      g_pendSL_time    = g_slBeforeSH_time;
+      g_pendBreak_time = g_sh1_time;
+      g_shGroupMax      = EMPTY_VALUE;
+      g_shGroupMax_time = 0;
+   }
+
+   if(rawBreakDown)
+   {
+      g_pendingState   = -1;
+      g_pendBreakPoint = g_sl1;
+      if(g_slGroupMin != EMPTY_VALUE && g_slGroupMin > g_sl1)
+      {
+         g_pendEntry      = g_slGroupMin;
+         g_pendEntry_time = g_slGroupMin_time;
+      }
+      else
+      {
+         g_pendEntry      = g_sl0;
+         g_pendEntry_time = g_sl0_time;
+      }
+      g_pendSL         = g_shBeforeSL;
+      g_pendSL_time    = g_shBeforeSL_time;
+      g_pendBreak_time = g_sl1_time;
+      g_slGroupMin      = EMPTY_VALUE;
+      g_slGroupMin_time = 0;
+   }
+
+   // ── Process Confirmed BUY ──
+   if(confirmedBuy)
    {
       g_breakCount++;
       string suffix = IntegerToString(g_breakCount);
+      double entryBuy = g_pendEntry;
+      double slBuy    = g_pendSL;
 
       // Visual
       if(InpShowVisual)
       {
-         // Terminate old lines
          if(InpShowBreakLine)
             TerminateActiveLines(checkTime);
 
-         // Break label
          if(InpShowBreakLabel)
          {
-            double pad = (g_sh1 - g_slBeforeSH) * 0.08;
+            double pad = (g_pendBreakPoint - g_pendSL) * 0.08;
             if(pad < _Point * 10) pad = _Point * 10;
             string lblName = g_objPrefix + "BRK_UP_" + suffix;
-            DrawTextLabel(lblName, g_sh1_time, g_sh1 + pad, "▲ Break", InpColBreakUp, 9);
+            DrawTextLabel(lblName, g_pendBreak_time, g_pendBreakPoint + pad,
+                          "▲ Break ✓", InpColBreakUp, 9);
          }
 
-         // New Entry/SL lines
-         if(InpShowBreakLine && g_sh0_time > 0 && g_slBeforeSH_time > 0)
+         if(InpShowBreakLine && g_pendEntry_time > 0 && g_pendSL_time > 0)
          {
             g_activeIsBuy = true;
-            g_activeEntryPrice = g_sh0;
-            g_activeSLPrice    = g_slBeforeSH;
+            g_activeEntryPrice = entryBuy;
+            g_activeSLPrice    = slBuy;
 
             g_activeEntryLineName = g_objPrefix + "ENT_" + suffix;
             g_activeSLLineName    = g_objPrefix + "SL_" + suffix;
@@ -564,21 +689,20 @@ void OnTick()
             g_hasActiveLine = true;
 
             datetime now = TimeCurrent();
-            DrawHLine(g_activeEntryLineName, g_sh0_time, g_sh0, now,
+            DrawHLine(g_activeEntryLineName, g_pendEntry_time, entryBuy, now,
                       InpColEntryBuy, STYLE_DASH, 1);
-            DrawTextLabel(g_activeEntryLblName, now, g_sh0, "Entry Buy", InpColEntryBuy, 7);
-            DrawHLine(g_activeSLLineName, g_slBeforeSH_time, g_slBeforeSH, now,
+            DrawTextLabel(g_activeEntryLblName, now, entryBuy, "Entry Buy", InpColEntryBuy, 7);
+            DrawHLine(g_activeSLLineName, g_pendSL_time, slBuy, now,
                       InpColSL, STYLE_DASH, 1);
-            DrawTextLabel(g_activeSLLblName, now, g_slBeforeSH, "SL", InpColSL, 7);
+            DrawTextLabel(g_activeSLLblName, now, slBuy, "SL", InpColSL, 7);
          }
       }
 
       // Trade
-      if(checkTime > g_lastBuySignal)
+      if(g_pendBreak_time > g_lastBuySignal)
       {
-         g_lastBuySignal = checkTime;
+         g_lastBuySignal = g_pendBreak_time;
 
-         // Lấy ATR hiện tại làm buffer
          double atrBuf[1];
          double slBuffer = 0;
          if(g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) == 1)
@@ -586,49 +710,47 @@ void OnTick()
          double slBuffered = slBuy - slBuffer; // SL ra xa thêm ATR buffer
 
          if(InpEnableAlerts)
-            Alert("PA Break BUY: ", _Symbol,
+            Alert("PA Break CONFIRMED BUY: ", _Symbol,
                   " Entry=", DoubleToString(entryBuy, _Digits),
                   " SL=", DoubleToString(slBuffered, _Digits));
 
          if(InpEnableTrade)
          {
-            // Đóng tất cả lệnh cũ + xóa pending cũ
             CloseAllPositions();
             DeleteAllPendingOrders();
-            // Đặt lệnh BUY mới, TP = 0 (chốt lời khi có break kế tiếp)
             PlaceOrder(true, entryBuy, slBuffered, 0);
          }
       }
    }
 
-   // ── Process Break DOWN ──
-   if(breakDown)
+   // ── Process Confirmed SELL ──
+   if(confirmedSell)
    {
       g_breakCount++;
       string suffix = IntegerToString(g_breakCount);
+      double entrySell = g_pendEntry;
+      double slSell    = g_pendSL;
 
       // Visual
       if(InpShowVisual)
       {
-         // Terminate old lines
          if(InpShowBreakLine)
             TerminateActiveLines(checkTime);
 
-         // Break label
          if(InpShowBreakLabel)
          {
-            double pad = (g_shBeforeSL - g_sl1) * 0.08;
+            double pad = (g_pendSL - g_pendBreakPoint) * 0.08;
             if(pad < _Point * 10) pad = _Point * 10;
             string lblName = g_objPrefix + "BRK_DN_" + suffix;
-            DrawTextLabel(lblName, g_sl1_time, g_sl1 - pad, "▼ Break", InpColBreakDown, 9);
+            DrawTextLabel(lblName, g_pendBreak_time, g_pendBreakPoint - pad,
+                          "▼ Break ✓", InpColBreakDown, 9);
          }
 
-         // New Entry/SL lines
-         if(InpShowBreakLine && g_sl0_time > 0 && g_shBeforeSL_time > 0)
+         if(InpShowBreakLine && g_pendEntry_time > 0 && g_pendSL_time > 0)
          {
             g_activeIsBuy = false;
-            g_activeEntryPrice = g_sl0;
-            g_activeSLPrice    = g_shBeforeSL;
+            g_activeEntryPrice = entrySell;
+            g_activeSLPrice    = slSell;
 
             g_activeEntryLineName = g_objPrefix + "ENT_" + suffix;
             g_activeSLLineName    = g_objPrefix + "SL_" + suffix;
@@ -637,21 +759,20 @@ void OnTick()
             g_hasActiveLine = true;
 
             datetime now = TimeCurrent();
-            DrawHLine(g_activeEntryLineName, g_sl0_time, g_sl0, now,
+            DrawHLine(g_activeEntryLineName, g_pendEntry_time, entrySell, now,
                       InpColEntrySell, STYLE_DASH, 1);
-            DrawTextLabel(g_activeEntryLblName, now, g_sl0, "Entry Sell", InpColEntrySell, 7);
-            DrawHLine(g_activeSLLineName, g_shBeforeSL_time, g_shBeforeSL, now,
+            DrawTextLabel(g_activeEntryLblName, now, entrySell, "Entry Sell", InpColEntrySell, 7);
+            DrawHLine(g_activeSLLineName, g_pendSL_time, slSell, now,
                       InpColSL, STYLE_DASH, 1);
-            DrawTextLabel(g_activeSLLblName, now, g_shBeforeSL, "SL", InpColSL, 7);
+            DrawTextLabel(g_activeSLLblName, now, slSell, "SL", InpColSL, 7);
          }
       }
 
       // Trade
-      if(checkTime > g_lastSellSignal)
+      if(g_pendBreak_time > g_lastSellSignal)
       {
-         g_lastSellSignal = checkTime;
+         g_lastSellSignal = g_pendBreak_time;
 
-         // Lấy ATR hiện tại làm buffer
          double atrBuf[1];
          double slBuffer = 0;
          if(g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) == 1)
@@ -659,16 +780,14 @@ void OnTick()
          double slBuffered = slSell + slBuffer; // SL ra xa thêm ATR buffer
 
          if(InpEnableAlerts)
-            Alert("PA Break SELL: ", _Symbol,
+            Alert("PA Break CONFIRMED SELL: ", _Symbol,
                   " Entry=", DoubleToString(entrySell, _Digits),
                   " SL=", DoubleToString(slBuffered, _Digits));
 
          if(InpEnableTrade)
          {
-            // Đóng tất cả lệnh cũ + xóa pending cũ
             CloseAllPositions();
             DeleteAllPendingOrders();
-            // Đặt lệnh SELL mới, TP = 0 (chốt lời khi có break kế tiếp)
             PlaceOrder(false, entrySell, slBuffered, 0);
          }
       }
