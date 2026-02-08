@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "1.30"
+#property version   "1.40"
 #property strict
 
 //--- Inputs: Signal
@@ -16,6 +16,7 @@ input double InpBreakMult   = 0;     // Break Strength (x Swing Range, 0=OFF)
 input double InpLotSize     = 0.01;  // Lot Size
 input int    InpATRLen       = 14;    // ATR Period (for SL buffer)
 input double InpSLBufferATR  = 0.2;   // SL Buffer (x ATR)
+input double InpRRRatio      = 2.0;   // TP Risk:Reward Ratio (0=OFF)
 input int    InpDeviation   = 20;    // Max Deviation (points)
 input ulong  InpMagic       = 20260207; // Magic Number
 input int    InpExpiryMin   = 0;     // Pending Expiry (min, 0=none)
@@ -32,6 +33,7 @@ input color  InpColBreakDown   = clrRed;         // Break DOWN Label Color
 input color  InpColEntryBuy    = clrDodgerBlue;  // Entry Buy Line Color
 input color  InpColEntrySell   = clrHotPink;     // Entry Sell Line Color
 input color  InpColSL          = clrYellow;      // SL Line Color
+input color  InpColTP          = clrLimeGreen;   // TP Line Color
 input color  InpColSwingHigh   = clrOrange;      // Swing High Color
 input color  InpColSwingLow    = clrCornflowerBlue; // Swing Low Color
 
@@ -68,8 +70,11 @@ static string g_activeEntryLblName  = "";
 static string g_activeSLLblName     = "";
 static double g_activeEntryPrice    = EMPTY_VALUE;
 static double g_activeSLPrice       = EMPTY_VALUE;
+static double g_activeTPPrice       = EMPTY_VALUE;
 static bool   g_activeIsBuy         = false;
 static bool   g_hasActiveLine       = false;
+static string g_activeTPLineName    = "";
+static string g_activeTPLblName     = "";
 
 // Break count for unique naming
 static int g_breakCount = 0;
@@ -185,6 +190,9 @@ void TerminateActiveLines(datetime endTime)
    if(g_activeSLLineName != "")
       DrawHLine(g_activeSLLineName, 0, g_activeSLPrice, endTime,
                 InpColSL, STYLE_DASH, 1);
+   if(g_activeTPLineName != "" && g_activeTPPrice != EMPTY_VALUE)
+      DrawHLine(g_activeTPLineName, 0, g_activeTPPrice, endTime,
+                InpColTP, STYLE_DASH, 1);
    // Move labels to end
    if(g_activeEntryLblName != "")
       DrawTextLabel(g_activeEntryLblName, endTime, g_activeEntryPrice,
@@ -192,6 +200,8 @@ void TerminateActiveLines(datetime endTime)
                    g_activeIsBuy ? InpColEntryBuy : InpColEntrySell, 7);
    if(g_activeSLLblName != "")
       DrawTextLabel(g_activeSLLblName, endTime, g_activeSLPrice, "SL", InpColSL, 7);
+   if(g_activeTPLblName != "")
+      DrawTextLabel(g_activeTPLblName, endTime, g_activeTPPrice, "TP", InpColTP, 7);
 }
 
 //+------------------------------------------------------------------+
@@ -210,6 +220,10 @@ void ExtendActiveLines()
       ObjectMove(0, g_activeEntryLblName, 0, now, g_activeEntryPrice);
    if(g_activeSLLblName != "")
       ObjectMove(0, g_activeSLLblName, 0, now, g_activeSLPrice);
+   if(g_activeTPLineName != "" && g_activeTPPrice != EMPTY_VALUE)
+      ObjectMove(0, g_activeTPLineName, 1, now, g_activeTPPrice);
+   if(g_activeTPLblName != "" && g_activeTPPrice != EMPTY_VALUE)
+      ObjectMove(0, g_activeTPLblName, 0, now, g_activeTPPrice);
 }
 
 //+------------------------------------------------------------------+
@@ -661,6 +675,21 @@ void OnTick()
       double entryBuy = g_pendEntry;
       double slBuy    = g_pendSL;
 
+      // Calculate SL with ATR buffer
+      double atrBuf[1];
+      double slBuffer = 0;
+      if(g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) == 1)
+         slBuffer = atrBuf[0] * InpSLBufferATR;
+      double slBuffered = slBuy - slBuffer;
+
+      // Calculate TP based on RR ratio (0=OFF)
+      double tpBuy = 0;
+      if(InpRRRatio > 0)
+      {
+         double risk = entryBuy - slBuffered;
+         tpBuy = entryBuy + InpRRRatio * risk;
+      }
+
       // Visual
       if(InpShowVisual)
       {
@@ -681,11 +710,14 @@ void OnTick()
             g_activeIsBuy = true;
             g_activeEntryPrice = entryBuy;
             g_activeSLPrice    = slBuy;
+            g_activeTPPrice    = (tpBuy > 0) ? tpBuy : EMPTY_VALUE;
 
             g_activeEntryLineName = g_objPrefix + "ENT_" + suffix;
             g_activeSLLineName    = g_objPrefix + "SL_" + suffix;
             g_activeEntryLblName  = g_objPrefix + "ENTLBL_" + suffix;
             g_activeSLLblName     = g_objPrefix + "SLLBL_" + suffix;
+            g_activeTPLineName    = (tpBuy > 0) ? g_objPrefix + "TP_" + suffix : "";
+            g_activeTPLblName     = (tpBuy > 0) ? g_objPrefix + "TPLBL_" + suffix : "";
             g_hasActiveLine = true;
 
             datetime now = TimeCurrent();
@@ -695,6 +727,14 @@ void OnTick()
             DrawHLine(g_activeSLLineName, g_pendSL_time, slBuy, now,
                       InpColSL, STYLE_DASH, 1);
             DrawTextLabel(g_activeSLLblName, now, slBuy, "SL", InpColSL, 7);
+
+            if(tpBuy > 0)
+            {
+               DrawHLine(g_activeTPLineName, g_pendEntry_time, tpBuy, now,
+                         InpColTP, STYLE_DASH, 1);
+               DrawTextLabel(g_activeTPLblName, now, tpBuy,
+                             "TP (1:" + DoubleToString(InpRRRatio, 1) + ")", InpColTP, 7);
+            }
          }
       }
 
@@ -703,22 +743,17 @@ void OnTick()
       {
          g_lastBuySignal = g_pendBreak_time;
 
-         double atrBuf[1];
-         double slBuffer = 0;
-         if(g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) == 1)
-            slBuffer = atrBuf[0] * InpSLBufferATR;
-         double slBuffered = slBuy - slBuffer; // SL ra xa thêm ATR buffer
-
          if(InpEnableAlerts)
             Alert("PA Break CONFIRMED BUY: ", _Symbol,
                   " Entry=", DoubleToString(entryBuy, _Digits),
-                  " SL=", DoubleToString(slBuffered, _Digits));
+                  " SL=", DoubleToString(slBuffered, _Digits),
+                  (tpBuy > 0 ? " TP=" + DoubleToString(tpBuy, _Digits) : " TP=none"));
 
          if(InpEnableTrade)
          {
             CloseAllPositions();
             DeleteAllPendingOrders();
-            PlaceOrder(true, entryBuy, slBuffered, 0);
+            PlaceOrder(true, entryBuy, slBuffered, tpBuy);
          }
       }
    }
@@ -730,6 +765,21 @@ void OnTick()
       string suffix = IntegerToString(g_breakCount);
       double entrySell = g_pendEntry;
       double slSell    = g_pendSL;
+
+      // Calculate SL with ATR buffer
+      double atrBuf[1];
+      double slBuffer = 0;
+      if(g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) == 1)
+         slBuffer = atrBuf[0] * InpSLBufferATR;
+      double slBuffered = slSell + slBuffer;
+
+      // Calculate TP based on RR ratio (0=OFF)
+      double tpSell = 0;
+      if(InpRRRatio > 0)
+      {
+         double risk = slBuffered - entrySell;
+         tpSell = entrySell - InpRRRatio * risk;
+      }
 
       // Visual
       if(InpShowVisual)
@@ -751,11 +801,14 @@ void OnTick()
             g_activeIsBuy = false;
             g_activeEntryPrice = entrySell;
             g_activeSLPrice    = slSell;
+            g_activeTPPrice    = (tpSell > 0) ? tpSell : EMPTY_VALUE;
 
             g_activeEntryLineName = g_objPrefix + "ENT_" + suffix;
             g_activeSLLineName    = g_objPrefix + "SL_" + suffix;
             g_activeEntryLblName  = g_objPrefix + "ENTLBL_" + suffix;
             g_activeSLLblName     = g_objPrefix + "SLLBL_" + suffix;
+            g_activeTPLineName    = (tpSell > 0) ? g_objPrefix + "TP_" + suffix : "";
+            g_activeTPLblName     = (tpSell > 0) ? g_objPrefix + "TPLBL_" + suffix : "";
             g_hasActiveLine = true;
 
             datetime now = TimeCurrent();
@@ -765,6 +818,14 @@ void OnTick()
             DrawHLine(g_activeSLLineName, g_pendSL_time, slSell, now,
                       InpColSL, STYLE_DASH, 1);
             DrawTextLabel(g_activeSLLblName, now, slSell, "SL", InpColSL, 7);
+
+            if(tpSell > 0)
+            {
+               DrawHLine(g_activeTPLineName, g_pendEntry_time, tpSell, now,
+                         InpColTP, STYLE_DASH, 1);
+               DrawTextLabel(g_activeTPLblName, now, tpSell,
+                             "TP (1:" + DoubleToString(InpRRRatio, 1) + ")", InpColTP, 7);
+            }
          }
       }
 
@@ -773,22 +834,17 @@ void OnTick()
       {
          g_lastSellSignal = g_pendBreak_time;
 
-         double atrBuf[1];
-         double slBuffer = 0;
-         if(g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) == 1)
-            slBuffer = atrBuf[0] * InpSLBufferATR;
-         double slBuffered = slSell + slBuffer; // SL ra xa thêm ATR buffer
-
          if(InpEnableAlerts)
             Alert("PA Break CONFIRMED SELL: ", _Symbol,
                   " Entry=", DoubleToString(entrySell, _Digits),
-                  " SL=", DoubleToString(slBuffered, _Digits));
+                  " SL=", DoubleToString(slBuffered, _Digits),
+                  (tpSell > 0 ? " TP=" + DoubleToString(tpSell, _Digits) : " TP=none"));
 
          if(InpEnableTrade)
          {
             CloseAllPositions();
             DeleteAllPendingOrders();
-            PlaceOrder(false, entrySell, slBuffered, 0);
+            PlaceOrder(false, entrySell, slBuffered, tpSell);
          }
       }
    }
