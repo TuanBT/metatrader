@@ -1033,10 +1033,11 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    }
 
    // ── Alert ──
-   datetime &lastSig = isBuy ? g_lastBuySignal : g_lastSellSignal;
+   datetime lastSig = isBuy ? g_lastBuySignal : g_lastSellSignal;
    if(signalTime > lastSig)
    {
-      lastSig = signalTime;
+      if(isBuy) g_lastBuySignal = signalTime;
+      else      g_lastSellSignal = signalTime;
 
       if(InpEnableAlerts)
       {
