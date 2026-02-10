@@ -7,7 +7,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 
 #property indicator_chart_window
@@ -804,14 +804,14 @@ void DrawSignal(bool isBuy, int signalBar, double entry, double sl, double w1Pea
       string slLbl = g_objPrefix + "SLLBL_" + suffix;
       DrawTextLabel(slLbl, signalTime, sl, "SL", InpColSL, 7);
 
-      // TP line (W1 Peak)
-      if(w1Peak != EMPTY_VALUE)
+      // TP line (Confirm Break high/low)
+      double tp = isBuy ? waveHigh : waveLow;
+      if(tp > 0)
       {
-         double tp = w1Peak;
          string tpName = g_objPrefix + "TP_" + suffix;
          string tpLbl  = g_objPrefix + "TPLBL_" + suffix;
          DrawHLine(tpName, entryTime, tp, signalTime, InpColTP, STYLE_DASH, 1);
-         DrawTextLabel(tpLbl, signalTime, tp, "TP (W1)", InpColTP, 7);
+         DrawTextLabel(tpLbl, signalTime, tp, "TP (Conf)", InpColTP, 7);
       }
    }
 
@@ -840,9 +840,10 @@ void DrawSignal(bool isBuy, int signalBar, double entry, double sl, double w1Pea
          datetime currentTime = TimeCurrent();
          if(currentTime - signalTime < PeriodSeconds(_Period) * 3)
          {
+            double tp = isBuy ? waveHigh : waveLow;
             string msg = StringFormat("MST Medio: %s | Entry=%.2f SL=%.2f TP=%.2f | %s",
                                        isBuy ? "BUY" : "SELL",
-                                       entry, sl, w1Peak, _Symbol);
+                                       entry, sl, tp, _Symbol);
             Alert(msg);
             Print("🔔 ", msg);
          }

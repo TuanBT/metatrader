@@ -12,7 +12,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 
 // ============================================================================
@@ -27,7 +27,7 @@ input double InpImpulseMult  = 1.5;     // Impulse Body (x Avg Body, 0=OFF)
 // ============================================================================
 input double InpLotSize      = 0.01;    // Lot Size
 input double InpSLBufferPts  = 0;       // SL Buffer (points, 0=none)
-input double InpRRRatio      = 0;       // Fixed TP R:R (0=W1 Peak TP)
+input double InpRRRatio      = 0;       // Fixed TP R:R (0=Confirm Break TP)
 input int    InpDeviation    = 20;      // Max Deviation (points)
 input ulong  InpMagic        = 20260210;// Magic Number
 input bool   InpEnableAlerts = true;    // Enable Alerts
@@ -972,8 +972,8 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    }
    else
    {
-      // W1 Peak TP (default — most profitable from backtest)
-      tp = w1Peak;
+      // Confirm Break TP (high/low of confirm break candle)
+      tp = isBuy ? waveHigh : waveLow;
    }
 
    datetime signalTime = iTime(_Symbol, _Period, 1);  // Signal detected on bar 1
@@ -1012,7 +1012,7 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
             if(InpRRRatio > 0)
                tpText = "TP (1:" + DoubleToString(InpRRRatio, 1) + ")";
             else
-               tpText = "TP (W1)";
+               tpText = "TP (Conf)";
             DrawTextLabel(tpLbl, now, tp, tpText, InpColTP, 7);
          }
 
