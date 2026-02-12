@@ -43,7 +43,7 @@ input int    InpPivotLen      = 5;       // Pivot Lookback
 input double InpBreakMult     = 0.25;    // Break Strength (x Swing Range, 0=OFF)
 input double InpImpulseMult   = 1.5;     // Impulse Body (x Avg Body, 0=OFF)
 
-input bool   InpShowSwings    = true;    // Show Swing Points
+input bool   InpShowSwings    = false;   // Show Swing Points
 input bool   InpShowBreakLabel= true;    // Show Break/Confirm Labels
 input bool   InpShowBreakLine = true;    // Show Entry/SL/TP Lines
 input bool   InpEnableAlerts  = true;    // Enable Alerts

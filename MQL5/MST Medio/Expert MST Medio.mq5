@@ -37,7 +37,7 @@ input bool   InpEnableTrade  = true;    // Enable Trading
 // INPUTS: Visual
 // ============================================================================
 input bool   InpShowVisual      = true;           // Show Visual on Chart
-input bool   InpShowSwings      = true;           // Show Swing Points
+input bool   InpShowSwings      = false;          // Show Swing Points
 input bool   InpShowBreakLabel  = true;           // Show Break/Confirm Labels
 input bool   InpShowBreakLine   = true;           // Show Entry/SL/TP Lines
 input color  InpColBreakUp      = clrLime;        // Break UP Label Color
