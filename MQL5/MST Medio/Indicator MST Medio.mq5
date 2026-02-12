@@ -1,13 +1,13 @@
 //+------------------------------------------------------------------+
 //| Indicator MST Medio.mq5                                         |
-//| MST Medio — 2-Phase Breakout Confirmation Visual Indicator       |
+//| MST Medio — 2-Step Breakout Confirmation Visual Indicator       |
 //| Converted from TradingView Pine Script MST Medio v2.0           |
 //|                                                                  |
 //| Indicator-only (no trading). Use on chart to compare with TV.    |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "1.01"
+#property version   "2.00"
 #property strict
 
 #property indicator_chart_window
@@ -75,7 +75,7 @@ datetime g_slBeforeSH_time;
 double   g_shBeforeSL;
 datetime g_shBeforeSL_time;
 
-//--- 3-Phase Confirmation State ---
+//--- 2-Step Confirmation State ---
 int      g_pendingState;
 double   g_pendBreakPoint;
 double   g_pendW1Peak;
@@ -83,11 +83,6 @@ double   g_pendW1Trough;
 double   g_pendSL;
 datetime g_pendSL_time;
 datetime g_pendBreak_time;
-
-//--- Confirm bar tracking ---
-datetime g_waveConfTime;
-double   g_waveConfHigh;
-double   g_waveConfLow;
 
 //--- Signal tracking ---
 datetime g_lastBuySignal;
@@ -244,9 +239,6 @@ void ResetState()
    g_pendSL = EMPTY_VALUE;
    g_pendSL_time = 0;
    g_pendBreak_time = 0;
-   g_waveConfTime = 0;
-   g_waveConfHigh = 0;
-   g_waveConfLow = 0;
    g_lastBuySignal = 0;
    g_lastSellSignal = 0;
    g_breakCount = 0;

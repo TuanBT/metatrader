@@ -1,18 +1,17 @@
 //+------------------------------------------------------------------+
 //| Expert MST Medio.mq5                                            |
-//| MST Medio EA — 3-Phase Breakout Confirmation System              |
-//| Converted from TradingView Pine Script MST Medio v0.3           |
+//| MST Medio EA — 2-Step Breakout Confirmation System               |
+//| Synced with TradingView Pine Script MST Medio v2.0               |
 //|                                                                  |
 //| Logic:                                                           |
 //|   1. Detect HH/LL breakout (with impulse body filter)            |
 //|   2. Find W1 Peak (first impulse wave extreme)                   |
-//|   3. Phase 1: Wait for CLOSE beyond W1 Peak (Confirm)            |
-//|   4. Phase 2: Wait for Retest at Entry (sh0/sl0)                 |
-//|   5. Signal → Place trade                                        |
+//|   3. Wait for CLOSE beyond W1 Peak → Confirmed! → Signal         |
+//|   4. Entry = old SH/SL, SL = swing opposite, TP = confirm H/L   |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "1.01"
+#property version   "2.00"
 #property strict
 
 // ============================================================================
@@ -28,6 +27,7 @@ input double InpImpulseMult  = 1.5;     // Impulse Body (x Avg Body, 0=OFF)
 input double InpLotSize      = 0.01;    // Lot Size
 input double InpSLBufferPts  = 0;       // SL Buffer (points, 0=none)
 input double InpRRRatio      = 0;       // Fixed TP R:R (0=Confirm Break TP)
+input double InpMinRR        = 0;       // Min R:R to trade (0=no filter)
 input int    InpDeviation    = 20;      // Max Deviation (points)
 input ulong  InpMagic        = 20260210;// Magic Number
 input bool   InpEnableAlerts = true;    // Enable Alerts
@@ -66,8 +66,8 @@ static datetime g_slBeforeSH_time = 0;
 static double   g_shBeforeSL = EMPTY_VALUE;
 static datetime g_shBeforeSL_time = 0;
 
-// -- 3-Phase Confirmation State --
-// States: 0=idle, 1=phase1 BUY, 2=phase2 BUY, -1=phase1 SELL, -2=phase2 SELL
+// -- 2-Step Confirmation State --
+// States: 0=idle, 1=waiting confirm BUY, -1=waiting confirm SELL
 static int    g_pendingState   = 0;
 static double g_pendBreakPoint = EMPTY_VALUE;  // Entry level (sh0 for BUY, sl0 for SELL)
 static double g_pendW1Peak     = EMPTY_VALUE;  // W1 peak (BUY) or W1 trough (SELL)
@@ -75,11 +75,6 @@ static double g_pendW1Trough   = EMPTY_VALUE;  // W1 trough tracking
 static double g_pendSL         = EMPTY_VALUE;  // SL level
 static datetime g_pendSL_time  = 0;
 static datetime g_pendBreak_time = 0;          // Entry line start time
-
-// -- Confirm bar tracking --
-static datetime g_waveConfTime = 0;
-static double g_waveConfHigh  = 0;
-static double g_waveConfLow   = 0;
 
 // -- Signal tracking --
 static datetime g_lastBuySignal  = 0;
@@ -596,7 +591,7 @@ void OnTick()
    }
 
    // ================================================================
-   // STEP 3: 3-PHASE CONFIRMATION STATE MACHINE
+   // STEP 3: 2-STEP CONFIRMATION STATE MACHINE
    // ================================================================
    bool confirmedBuy  = false;
    bool confirmedSell = false;
@@ -624,65 +619,7 @@ void OnTick()
       }
    }
 
-   // -- Phase 2: Retest at Entry --
-   if(g_pendingState == 2 && g_pendBreakPoint != EMPTY_VALUE)
-   {
-      if(g_pendSL != EMPTY_VALUE && prevLow <= g_pendSL)
-      {
-         // SL invalidation
-         g_pendingState = 0;
-         if(InpShowVisual && InpShowBreakLine) { TerminateActiveLines(iTime(_Symbol, _Period, 1)); ClearActiveLines(); }
-      }
-      else if(prevLow <= g_pendBreakPoint)
-      {
-         // Retest Entry → BUY signal!
-         confirmedBuy = true;
-         confEntry    = g_pendBreakPoint;
-         confSL       = g_pendSL;
-         confW1Peak   = g_pendW1Peak;
-         confEntryTime = g_pendBreak_time;
-         confSLTime    = g_pendSL_time;
-         confWaveTime  = g_waveConfTime;
-         confWaveHigh  = g_waveConfHigh;
-         confWaveLow   = g_waveConfLow;
-         g_pendingState = 0;
-      }
-      else if(g_pendW1Trough != EMPTY_VALUE && prevLow <= g_pendW1Trough)
-      {
-         // W1 trough invalidation
-         g_pendingState = 0;
-         if(InpShowVisual && InpShowBreakLine) { TerminateActiveLines(iTime(_Symbol, _Period, 1)); ClearActiveLines(); }
-      }
-   }
-
-   if(g_pendingState == -2 && g_pendBreakPoint != EMPTY_VALUE)
-   {
-      if(g_pendSL != EMPTY_VALUE && prevHigh >= g_pendSL)
-      {
-         g_pendingState = 0;
-         if(InpShowVisual && InpShowBreakLine) { TerminateActiveLines(iTime(_Symbol, _Period, 1)); ClearActiveLines(); }
-      }
-      else if(prevHigh >= g_pendBreakPoint)
-      {
-         confirmedSell = true;
-         confEntry     = g_pendBreakPoint;
-         confSL        = g_pendSL;
-         confW1Peak    = g_pendW1Peak;
-         confEntryTime = g_pendBreak_time;
-         confSLTime    = g_pendSL_time;
-         confWaveTime  = g_waveConfTime;
-         confWaveHigh  = g_waveConfHigh;
-         confWaveLow   = g_waveConfLow;
-         g_pendingState = 0;
-      }
-      else if(g_pendW1Trough != EMPTY_VALUE && prevHigh >= g_pendW1Trough)
-      {
-         g_pendingState = 0;
-         if(InpShowVisual && InpShowBreakLine) { TerminateActiveLines(iTime(_Symbol, _Period, 1)); ClearActiveLines(); }
-      }
-   }
-
-   // -- Phase 1: Wait for Close beyond W1 Peak --
+   // -- Wait for Confirm: CLOSE beyond W1 Peak --
    if(g_pendingState == 1)
    {
       // Track W1 trough
@@ -697,10 +634,17 @@ void OnTick()
       // Confirm: close > W1 peak
       else if(g_pendW1Peak != EMPTY_VALUE && prevClose > g_pendW1Peak)
       {
-         g_pendingState  = 2;
-         g_waveConfTime  = iTime(_Symbol, _Period, 1);
-         g_waveConfHigh  = prevHigh;
-         g_waveConfLow   = prevLow;
+         // Confirmed BUY! Signal fires immediately.
+         confirmedBuy  = true;
+         confEntry     = g_pendBreakPoint;
+         confSL        = g_pendSL;
+         confW1Peak    = g_pendW1Peak;
+         confEntryTime = g_pendBreak_time;
+         confSLTime    = g_pendSL_time;
+         confWaveTime  = iTime(_Symbol, _Period, 1);
+         confWaveHigh  = prevHigh;
+         confWaveLow   = prevLow;
+         g_pendingState = 0;
       }
    }
 
@@ -714,17 +658,24 @@ void OnTick()
          g_pendingState = 0;
       else if(g_pendW1Peak != EMPTY_VALUE && prevClose < g_pendW1Peak)
       {
-         g_pendingState  = -2;
-         g_waveConfTime  = iTime(_Symbol, _Period, 1);
-         g_waveConfHigh  = prevHigh;
-         g_waveConfLow   = prevLow;
+         // Confirmed SELL! Signal fires immediately.
+         confirmedSell = true;
+         confEntry     = g_pendBreakPoint;
+         confSL        = g_pendSL;
+         confW1Peak    = g_pendW1Peak;
+         confEntryTime = g_pendBreak_time;
+         confSLTime    = g_pendSL_time;
+         confWaveTime  = iTime(_Symbol, _Period, 1);
+         confWaveHigh  = prevHigh;
+         confWaveLow   = prevLow;
+         g_pendingState = 0;
       }
    }
 
    // ================================================================
    // STEP 4: NEW RAW BREAK → Start tracking W1 Peak + Phase 1
    // ================================================================
-   if(rawBreakUp && g_pendingState != 2)
+   if(rawBreakUp)
    {
       // Terminate old lines
       if(InpShowVisual && InpShowBreakLine)
@@ -795,34 +746,19 @@ void OnTick()
                { g_pendingState = 0; break; }
                if(rC > g_pendW1Peak)
                {
-                  g_pendingState  = 2;
-                  g_waveConfTime  = iTime(_Symbol, _Period, i);
-                  g_waveConfHigh  = rH;
-                  g_waveConfLow   = rL;
-                  continue;  // Phase 1→2 continuation
-               }
-            }
-            if(g_pendingState == 2)
-            {
-               if(g_pendSL != EMPTY_VALUE && rL <= g_pendSL)
-               { g_pendingState = 0; break; }
-               if(rL <= g_pendBreakPoint)
-               {
-                  // Retest Entry → BUY signal (retro)
+                  // Confirmed BUY (retro scan)
                   confirmedBuy  = true;
                   confEntry     = g_pendBreakPoint;
                   confSL        = g_pendSL;
                   confW1Peak    = g_pendW1Peak;
                   confEntryTime = g_pendBreak_time;
                   confSLTime    = g_pendSL_time;
-                  confWaveTime  = g_waveConfTime;
-                  confWaveHigh  = g_waveConfHigh;
-                  confWaveLow   = g_waveConfLow;
+                  confWaveTime  = iTime(_Symbol, _Period, i);
+                  confWaveHigh  = rH;
+                  confWaveLow   = rL;
                   g_pendingState = 0;
                   break;
                }
-               if(g_pendW1Trough != EMPTY_VALUE && rL <= g_pendW1Trough)
-               { g_pendingState = 0; break; }
             }
             if(g_pendingState == 0) break;
          }
@@ -830,7 +766,7 @@ void OnTick()
    }
 
    // rawBreakDown
-   if(rawBreakDown && g_pendingState != -2)
+   if(rawBreakDown)
    {
       if(InpShowVisual && InpShowBreakLine)
       { TerminateActiveLines(checkTime); ClearActiveLines(); }
@@ -897,33 +833,19 @@ void OnTick()
                { g_pendingState = 0; break; }
                if(rC < g_pendW1Peak)
                {
-                  g_pendingState  = -2;
-                  g_waveConfTime  = iTime(_Symbol, _Period, i);
-                  g_waveConfHigh  = rH;
-                  g_waveConfLow   = rL;
-                  continue;
-               }
-            }
-            if(g_pendingState == -2)
-            {
-               if(g_pendSL != EMPTY_VALUE && rH >= g_pendSL)
-               { g_pendingState = 0; break; }
-               if(rH >= g_pendBreakPoint)
-               {
+                  // Confirmed SELL (retro scan)
                   confirmedSell = true;
                   confEntry     = g_pendBreakPoint;
                   confSL        = g_pendSL;
                   confW1Peak    = g_pendW1Peak;
                   confEntryTime = g_pendBreak_time;
                   confSLTime    = g_pendSL_time;
-                  confWaveTime  = g_waveConfTime;
-                  confWaveHigh  = g_waveConfHigh;
-                  confWaveLow   = g_waveConfLow;
+                  confWaveTime  = iTime(_Symbol, _Period, i);
+                  confWaveHigh  = rH;
+                  confWaveLow   = rL;
                   g_pendingState = 0;
                   break;
                }
-               if(g_pendW1Trough != EMPTY_VALUE && rH >= g_pendW1Trough)
-               { g_pendingState = 0; break; }
             }
             if(g_pendingState == 0) break;
          }
@@ -1051,9 +973,23 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       // ── Trade ──
       if(InpEnableTrade)
       {
-         CloseAllPositions();
-         DeleteAllPendingOrders();
-         PlaceOrder(isBuy, entry, slBuffered, tp);
+         // R:R filter
+         double risk   = MathAbs(entry - slBuffered);
+         double reward = MathAbs(tp - entry);
+         double rr     = (risk > 0) ? reward / risk : 0;
+
+         if(InpMinRR > 0 && rr < InpMinRR)
+         {
+            Print("⚠️ Skipped trade: R:R=", DoubleToString(rr, 2),
+                  " < MinRR=", DoubleToString(InpMinRR, 2),
+                  " | Entry=", entry, " SL=", slBuffered, " TP=", tp);
+         }
+         else
+         {
+            CloseAllPositions();
+            DeleteAllPendingOrders();
+            PlaceOrder(isBuy, entry, slBuffered, tp);
+         }
       }
    }
 }
