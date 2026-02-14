@@ -328,6 +328,16 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
    double slN    = NormalizePrice(sl);
    double tpN    = (tp > 0) ? NormalizePrice(tp) : 0;
 
+   // Normalize lot size to symbol constraints
+   double lot = InpLotSize;
+   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   double stepLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(lot < minLot) lot = minLot;
+   if(lot > maxLot) lot = maxLot;
+   if(stepLot > 0) lot = MathFloor(lot / stepLot) * stepLot;
+   lot = NormalizeDouble(lot, 2);
+
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
@@ -348,13 +358,13 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
          MqlTradeRequest req; MqlTradeResult res;
          ZeroMemory(req); ZeroMemory(res);
          req.action = TRADE_ACTION_DEAL; req.symbol = _Symbol;
-         req.volume = InpLotSize; req.type = ORDER_TYPE_BUY;
+         req.volume = lot; req.type = ORDER_TYPE_BUY;
          req.price = ask; req.sl = slN; req.tp = tpN;
          req.magic = InpMagic; req.deviation = InpDeviation;
          req.comment = "MST_MEDIO_BUY";
          if(!OrderSend(req, res))
          { Print("OrderSend BUY market failed. Retcode=", res.retcode); return false; }
-         Print("✅ BUY market. Ticket=", res.order, " Entry=", ask, " SL=", slN, " TP=", tpN);
+         Print("✅ BUY market. Ticket=", res.order, " Lot=", lot, " Entry=", ask, " SL=", slN, " TP=", tpN);
          return true;
       }
    }
@@ -368,13 +378,13 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
          MqlTradeRequest req; MqlTradeResult res;
          ZeroMemory(req); ZeroMemory(res);
          req.action = TRADE_ACTION_DEAL; req.symbol = _Symbol;
-         req.volume = InpLotSize; req.type = ORDER_TYPE_SELL;
+         req.volume = lot; req.type = ORDER_TYPE_SELL;
          req.price = bid; req.sl = slN; req.tp = tpN;
          req.magic = InpMagic; req.deviation = InpDeviation;
          req.comment = "MST_MEDIO_SELL";
          if(!OrderSend(req, res))
          { Print("OrderSend SELL market failed. Retcode=", res.retcode); return false; }
-         Print("✅ SELL market. Ticket=", res.order, " Entry=", bid, " SL=", slN, " TP=", tpN);
+         Print("✅ SELL market. Ticket=", res.order, " Lot=", lot, " Entry=", bid, " SL=", slN, " TP=", tpN);
          return true;
       }
    }
@@ -385,7 +395,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
    ZeroMemory(req); ZeroMemory(res);
    req.action    = TRADE_ACTION_PENDING;
    req.symbol    = _Symbol;
-   req.volume    = InpLotSize;
+   req.volume    = lot;
    req.type      = type;
    req.price     = entryN;
    req.sl        = slN;
@@ -400,7 +410,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
       return false;
    }
    Print("✅ Pending ", (isBuy ? "BUY" : "SELL"),
-         " Ticket=", res.order, " Entry=", entryN, " SL=", slN, " TP=", tpN);
+         " Ticket=", res.order, " Lot=", lot, " Entry=", entryN, " SL=", slN, " TP=", tpN);
    return true;
 }
 
