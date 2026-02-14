@@ -1,13 +1,22 @@
 //+------------------------------------------------------------------+
 //| Expert MST Medio.mq5                                            |
-//| MST Medio EA — 2-Step Breakout Confirmation System               |
+//| MST Medio (Make Simple Trading by Medio)                        |
+//| EA — 2-Step Breakout Confirmation System                        |
 //| Synced with TradingView Pine Script MST Medio v2.0               |
 //|                                                                  |
 //| Logic:                                                           |
 //|   1. Detect HH/LL breakout (with impulse body filter)            |
-//|   2. Find W1 Peak (first impulse wave extreme)                   |
+//|   2. Find W1 Peak (first impulse wave extreme after break)       |
 //|   3. Wait for CLOSE beyond W1 Peak → Confirmed! → Signal         |
-//|   4. Entry = old SH/SL, SL = swing opposite, TP = confirm H/L   |
+//|   4. Entry = old SH/SL, SL = swing opposite                     |
+//|   5. TP = Confirm Break candle H/L (W1 Peak area)               |
+//|   6. SL buffer = auto 5% of risk distance                       |
+//|   7. Auto lot normalization (min/max/step)                       |
+//|   8. Partial TP (optional):                                      |
+//|      - Close 50% at TP (Confirm Break level)                     |
+//|      - Move SL to breakeven                                      |
+//|      - Hold remaining 50% until next opposite signal             |
+//|   9. On new signal: close all existing positions → open new      |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""

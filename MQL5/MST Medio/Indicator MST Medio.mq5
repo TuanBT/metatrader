@@ -1,6 +1,7 @@
 //+------------------------------------------------------------------+
 //| Indicator MST Medio.mq5                                         |
-//| MST Medio — 2-Step Breakout Confirmation Visual Indicator       |
+//| MST Medio (Make Simple Trading by Medio)                        |
+//| 2-Step Breakout Confirmation Visual Indicator                   |
 //| Converted from TradingView Pine Script MST Medio v2.0           |
 //|                                                                  |
 //| Indicator-only (no trading). Use on chart to compare with TV.    |
