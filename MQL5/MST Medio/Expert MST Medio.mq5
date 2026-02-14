@@ -15,39 +15,33 @@
 #property strict
 
 // ============================================================================
-// INPUTS: Signal
-// ============================================================================
-input int    InpPivotLen     = 5;       // Pivot Lookback
-input double InpBreakMult    = 0.25;    // Break Strength (x Swing Range, 0=OFF)
-input double InpImpulseMult  = 1.5;     // Impulse Body (x Avg Body, 0=OFF)
-
-// ============================================================================
-// INPUTS: Trade
+// INPUTS
 // ============================================================================
 input double InpLotSize      = 0.01;    // Lot Size
-input double InpSLBufferPts  = 0;       // SL Buffer (points, 0=none)
-input double InpRRRatio      = 0;       // Fixed TP R:R (0=Confirm Break TP)
-input double InpMinRR        = 0;       // Min R:R to trade (0=no filter)
-input int    InpDeviation    = 20;      // Max Deviation (points)
+input bool   InpPartialTP    = false;   // Partial TP (close half at TP, hold rest)
 input ulong  InpMagic        = 20260210;// Magic Number
-input bool   InpEnableAlerts = true;    // Enable Alerts
-input bool   InpEnableTrade  = true;    // Enable Trading
 
 // ============================================================================
-// INPUTS: Visual
+// FIXED SETTINGS (not exposed as inputs)
 // ============================================================================
-input bool   InpShowVisual      = true;           // Show Visual on Chart
-input bool   InpShowSwings      = false;          // Show Swing Points
-input bool   InpShowBreakLabel  = true;           // Show Break/Confirm Labels
-input bool   InpShowBreakLine   = true;           // Show Entry/SL/TP Lines
-input color  InpColBreakUp      = clrLime;        // Break UP Label Color
-input color  InpColBreakDown    = clrRed;         // Break DOWN Label Color
-input color  InpColEntryBuy     = clrDodgerBlue;  // Entry Buy Line Color
-input color  InpColEntrySell    = clrHotPink;     // Entry Sell Line Color
-input color  InpColSL           = clrYellow;      // SL Line Color
-input color  InpColTP           = clrLimeGreen;   // TP Line Color
-input color  InpColSwingHigh    = clrOrange;      // Swing High Color
-input color  InpColSwingLow     = clrCornflowerBlue; // Swing Low Color
+#define PIVOT_LEN        5
+#define BREAK_MULT       0.25
+#define IMPULSE_MULT     1.5
+#define PARTIAL_PCT      50
+#define SL_BUFFER_PCT    5      // SL buffer = 5% of risk distance
+#define DEVIATION        20
+#define SHOW_VISUAL      true
+#define SHOW_SWINGS      false
+#define SHOW_BREAK_LABEL true
+#define SHOW_BREAK_LINE  true
+#define COL_BREAK_UP     clrLime
+#define COL_BREAK_DOWN   clrRed
+#define COL_ENTRY_BUY    clrDodgerBlue
+#define COL_ENTRY_SELL   clrHotPink
+#define COL_SL           clrYellow
+#define COL_TP           clrLimeGreen
+#define COL_SWING_HIGH   clrOrange
+#define COL_SWING_LOW    clrCornflowerBlue
 
 // ============================================================================
 // GLOBAL STATE
@@ -79,6 +73,12 @@ static datetime g_pendBreak_time = 0;          // Entry line start time
 // -- Signal tracking --
 static datetime g_lastBuySignal  = 0;
 static datetime g_lastSellSignal = 0;
+
+// -- Partial TP tracking --
+static bool   g_partialTPDone  = false;  // Has Part1 been closed?
+static double g_partialTPLevel = 0;      // TP1 level to monitor
+static double g_partialEntry   = 0;      // Entry level for BE SL
+static bool   g_partialIsBuy   = false;  // Direction of partial position
 
 // -- Active Lines --
 static string g_activeEntryLineName = "";
@@ -164,13 +164,13 @@ void TerminateActiveLines(datetime endTime)
    if(!g_hasActiveLine) return;
    if(g_activeEntryLineName != "")
       DrawHLine(g_activeEntryLineName, 0, g_activeEntryPrice, endTime,
-                g_activeIsBuy ? InpColEntryBuy : InpColEntrySell, STYLE_DASH, 1);
+                g_activeIsBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, STYLE_DASH, 1);
    if(g_activeSLLineName != "")
       DrawHLine(g_activeSLLineName, 0, g_activeSLPrice, endTime,
-                InpColSL, STYLE_DASH, 1);
+                COL_SL, STYLE_DASH, 1);
    if(g_activeTPLineName != "" && g_activeTPPrice != EMPTY_VALUE)
       DrawHLine(g_activeTPLineName, 0, g_activeTPPrice, endTime,
-                InpColTP, STYLE_DASH, 1);
+                COL_TP, STYLE_DASH, 1);
 }
 
 void ClearActiveLines()
@@ -281,7 +281,7 @@ void CloseAllPositions()
       req.action    = TRADE_ACTION_DEAL;
       req.symbol    = _Symbol;
       req.volume    = PositionGetDouble(POSITION_VOLUME);
-      req.deviation = InpDeviation;
+      req.deviation = DEVIATION;
       req.magic     = InpMagic;
 
       long posType = PositionGetInteger(POSITION_TYPE);
@@ -360,7 +360,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
          req.action = TRADE_ACTION_DEAL; req.symbol = _Symbol;
          req.volume = lot; req.type = ORDER_TYPE_BUY;
          req.price = ask; req.sl = slN; req.tp = tpN;
-         req.magic = InpMagic; req.deviation = InpDeviation;
+         req.magic = InpMagic; req.deviation = DEVIATION;
          req.comment = "MST_MEDIO_BUY";
          if(!OrderSend(req, res))
          { Print("OrderSend BUY market failed. Retcode=", res.retcode); return false; }
@@ -380,7 +380,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
          req.action = TRADE_ACTION_DEAL; req.symbol = _Symbol;
          req.volume = lot; req.type = ORDER_TYPE_SELL;
          req.price = bid; req.sl = slN; req.tp = tpN;
-         req.magic = InpMagic; req.deviation = InpDeviation;
+         req.magic = InpMagic; req.deviation = DEVIATION;
          req.comment = "MST_MEDIO_SELL";
          if(!OrderSend(req, res))
          { Print("OrderSend SELL market failed. Retcode=", res.retcode); return false; }
@@ -401,7 +401,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
    req.sl        = slN;
    req.tp        = tpN;
    req.magic     = InpMagic;
-   req.deviation = InpDeviation;
+   req.deviation = DEVIATION;
    req.comment   = isBuy ? "MST_MEDIO_BUY" : "MST_MEDIO_SELL";
 
    if(!OrderSend(req, res))
@@ -437,6 +437,96 @@ int TimeToShift(datetime t)
 }
 
 // ============================================================================
+// PARTIAL TP — Close Part1, move SL to breakeven for Part2
+// ============================================================================
+void CheckPartialTP()
+{
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      long posType = PositionGetInteger(POSITION_TYPE);
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+      bool tpHit = false;
+      if(posType == POSITION_TYPE_BUY && bid >= g_partialTPLevel)
+         tpHit = true;
+      if(posType == POSITION_TYPE_SELL && ask <= g_partialTPLevel)
+         tpHit = true;
+
+      if(!tpHit) continue;
+
+      // ── TP1 hit! Close partial volume ──
+      double fullVol  = PositionGetDouble(POSITION_VOLUME);
+      double closeVol = NormalizeDouble(fullVol * PARTIAL_PCT / 100.0, 2);
+      double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      double stepLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+
+      if(closeVol < minLot) closeVol = minLot;
+      if(stepLot > 0) closeVol = MathFloor(closeVol / stepLot) * stepLot;
+      closeVol = NormalizeDouble(closeVol, 2);
+
+      // Don't close more than available
+      if(closeVol >= fullVol) closeVol = fullVol;
+
+      // Close Part1
+      MqlTradeRequest req; MqlTradeResult res;
+      ZeroMemory(req); ZeroMemory(res);
+      req.action    = TRADE_ACTION_DEAL;
+      req.symbol    = _Symbol;
+      req.volume    = closeVol;
+      req.deviation = DEVIATION;
+      req.magic     = InpMagic;
+      req.position  = ticket;
+      req.comment   = "MST_MEDIO_TP1";
+
+      if(posType == POSITION_TYPE_BUY)
+      {  req.type = ORDER_TYPE_SELL; req.price = bid; }
+      else
+      {  req.type = ORDER_TYPE_BUY;  req.price = ask; }
+
+      if(!OrderSend(req, res))
+      {
+         Print("⚠️ Partial close failed. Retcode=", res.retcode);
+         continue;
+      }
+      Print("✅ Partial TP1 closed ", closeVol, " lots. Remaining=", NormalizeDouble(fullVol - closeVol, 2));
+
+      // ── Move SL to breakeven (entry) on remaining position ──
+      double remainVol = NormalizeDouble(fullVol - closeVol, 2);
+      if(remainVol > 0)
+      {
+         // Need to re-select position after partial close
+         Sleep(200);
+         if(PositionSelectByTicket(ticket))
+         {
+            double entryBE = NormalizePrice(g_partialEntry);
+            MqlTradeRequest modReq; MqlTradeResult modRes;
+            ZeroMemory(modReq); ZeroMemory(modRes);
+            modReq.action   = TRADE_ACTION_SLTP;
+            modReq.symbol   = _Symbol;
+            modReq.position = ticket;
+            modReq.sl       = entryBE;
+            modReq.tp       = 0;  // Remove TP — let it run
+
+            if(!OrderSend(modReq, modRes))
+               Print("⚠️ Move SL to BE failed. Retcode=", modRes.retcode);
+            else
+               Print("✅ SL moved to breakeven=", entryBE, " | TP removed → Part2 runs until next signal");
+         }
+      }
+
+      g_partialTPDone = true;
+      break;
+   }
+}
+
+// ============================================================================
 // INIT / DEINIT
 // ============================================================================
 int OnInit()
@@ -457,8 +547,12 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    // Extend lines on every tick
-   if(InpShowVisual && InpShowBreakLine)
+   if(SHOW_VISUAL && SHOW_BREAK_LINE)
       ExtendActiveLines();
+
+   // ── Partial TP: Monitor TP1 hit on every tick ──
+   if(InpPartialTP && !g_partialTPDone && g_partialTPLevel > 0)
+      CheckPartialTP();
 
    // Only process on new bar
    datetime currentBarTime = iTime(_Symbol, _Period, 0);
@@ -466,14 +560,14 @@ void OnTick()
    g_lastBarTime = currentBarTime;
 
    int bars = Bars(_Symbol, _Period);
-   if(bars < InpPivotLen * 2 + 25) return;  // Need enough bars for avg body
+   if(bars < PIVOT_LEN * 2 + 25) return;  // Need enough bars for avg body
 
    // ================================================================
-   // STEP 1: SWING DETECTION (at bar = InpPivotLen, the confirmed pivot)
+   // STEP 1: SWING DETECTION (at bar = PIVOT_LEN, the confirmed pivot)
    // ================================================================
-   int checkBar = InpPivotLen;
-   bool isSwH = IsPivotHigh(checkBar, InpPivotLen);
-   bool isSwL = IsPivotLow(checkBar, InpPivotLen);
+   int checkBar = PIVOT_LEN;
+   bool isSwH = IsPivotHigh(checkBar, PIVOT_LEN);
+   bool isSwL = IsPivotLow(checkBar, PIVOT_LEN);
 
    datetime checkTime = iTime(_Symbol, _Period, checkBar);
    double   checkHigh = iHigh(_Symbol, _Period, checkBar);
@@ -501,21 +595,21 @@ void OnTick()
    }
 
    // Visual: Swing markers
-   if(InpShowVisual && InpShowSwings)
+   if(SHOW_VISUAL && SHOW_SWINGS)
    {
       if(isSwH)
       {
          double pad = (checkHigh - checkLow) * 0.3;
          if(pad < _Point * 5) pad = _Point * 5;
          string name = g_objPrefix + "SWH_" + IntegerToString((long)checkTime);
-         DrawArrowIcon(name, checkTime, checkHigh + pad, 234, InpColSwingHigh, 1);
+         DrawArrowIcon(name, checkTime, checkHigh + pad, 234, COL_SWING_HIGH, 1);
       }
       if(isSwL)
       {
          double pad = (checkHigh - checkLow) * 0.3;
          if(pad < _Point * 5) pad = _Point * 5;
          string name = g_objPrefix + "SWL_" + IntegerToString((long)checkTime);
-         DrawArrowIcon(name, checkTime, checkLow - pad, 233, InpColSwingLow, 1);
+         DrawArrowIcon(name, checkTime, checkLow - pad, 233, COL_SWING_LOW, 1);
       }
    }
 
@@ -526,11 +620,11 @@ void OnTick()
    bool isNewLL = isSwL && g_sl0 != EMPTY_VALUE && g_sl1 < g_sl0;
 
    // Impulse Body Filter
-   if(isNewHH && InpImpulseMult > 0)
+   if(isNewHH && IMPULSE_MULT > 0)
    {
       double avgBody = CalcAvgBody(0, 20);
       int sh0Shift = TimeToShift(g_sh0_time);
-      int toBar    = InpPivotLen;  // sh1 position
+      int toBar    = PIVOT_LEN;  // sh1 position
       bool found   = false;
       if(sh0Shift >= 0)
       {
@@ -540,7 +634,7 @@ void OnTick()
             if(iClose(_Symbol, _Period, i) > g_sh0)
             {
                double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
-               found = (body >= InpImpulseMult * avgBody);
+               found = (body >= IMPULSE_MULT * avgBody);
                break;
             }
          }
@@ -548,11 +642,11 @@ void OnTick()
       if(!found) isNewHH = false;
    }
 
-   if(isNewLL && InpImpulseMult > 0)
+   if(isNewLL && IMPULSE_MULT > 0)
    {
       double avgBody = CalcAvgBody(0, 20);
       int sl0Shift = TimeToShift(g_sl0_time);
-      int toBar    = InpPivotLen;
+      int toBar    = PIVOT_LEN;
       bool found   = false;
       if(sl0Shift >= 0)
       {
@@ -562,7 +656,7 @@ void OnTick()
             if(iClose(_Symbol, _Period, i) < g_sl0)
             {
                double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
-               found = (body >= InpImpulseMult * avgBody);
+               found = (body >= IMPULSE_MULT * avgBody);
                break;
             }
          }
@@ -576,26 +670,26 @@ void OnTick()
 
    if(isNewHH && g_slBeforeSH != EMPTY_VALUE)
    {
-      if(InpBreakMult <= 0)
+      if(BREAK_MULT <= 0)
          rawBreakUp = true;
       else
       {
          double swR = g_sh0 - g_slBeforeSH;
          double brD = g_sh1 - g_sh0;
-         if(swR > 0 && brD >= swR * InpBreakMult)
+         if(swR > 0 && brD >= swR * BREAK_MULT)
             rawBreakUp = true;
       }
    }
 
    if(isNewLL && g_shBeforeSL != EMPTY_VALUE)
    {
-      if(InpBreakMult <= 0)
+      if(BREAK_MULT <= 0)
          rawBreakDown = true;
       else
       {
          double swR = g_shBeforeSL - g_sl0;
          double brD = g_sl0 - g_sl1;
-         if(swR > 0 && brD >= swR * InpBreakMult)
+         if(swR > 0 && brD >= swR * BREAK_MULT)
             rawBreakDown = true;
       }
    }
@@ -688,7 +782,7 @@ void OnTick()
    if(rawBreakUp)
    {
       // Terminate old lines
-      if(InpShowVisual && InpShowBreakLine)
+      if(SHOW_VISUAL && SHOW_BREAK_LINE)
       { TerminateActiveLines(checkTime); ClearActiveLines(); }
 
       // --- Find W1 Peak: highest high from break candle until first bearish ---
@@ -778,7 +872,7 @@ void OnTick()
    // rawBreakDown
    if(rawBreakDown)
    {
-      if(InpShowVisual && InpShowBreakLine)
+      if(SHOW_VISUAL && SHOW_BREAK_LINE)
       { TerminateActiveLines(checkTime); ClearActiveLines(); }
 
       double w1Trough    = EMPTY_VALUE;
@@ -886,34 +980,25 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    g_breakCount++;
    string suffix = IntegerToString(g_breakCount);
 
-   // Calculate SL with buffer
+   // Calculate SL with buffer (auto 5% of risk distance)
    double slBuffered = sl;
-   if(InpSLBufferPts > 0)
+   double riskDist = MathAbs(entry - sl);
+   if(SL_BUFFER_PCT > 0 && riskDist > 0)
    {
-      if(isBuy)  slBuffered = sl - InpSLBufferPts * _Point;
-      else       slBuffered = sl + InpSLBufferPts * _Point;
+      double bufferAmt = riskDist * SL_BUFFER_PCT / 100.0;
+      if(isBuy)  slBuffered = sl - bufferAmt;
+      else       slBuffered = sl + bufferAmt;
    }
 
-   // Calculate TP
-   double tp = 0;
-   if(InpRRRatio > 0)
-   {
-      // Fixed R:R
-      double risk = MathAbs(entry - slBuffered);
-      tp = isBuy ? entry + InpRRRatio * risk : entry - InpRRRatio * risk;
-   }
-   else
-   {
-      // Confirm Break TP (high/low of confirm break candle)
-      tp = isBuy ? waveHigh : waveLow;
-   }
+   // Calculate TP (Confirm Break: high/low of confirm break candle)
+   double tp = isBuy ? waveHigh : waveLow;
 
    datetime signalTime = iTime(_Symbol, _Period, 1);  // Signal detected on bar 1
 
    // ── Visual ──
-   if(InpShowVisual)
+   if(SHOW_VISUAL)
    {
-      if(InpShowBreakLine)
+      if(SHOW_BREAK_LINE)
       {
          TerminateActiveLines(signalTime);
 
@@ -922,45 +1007,40 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
          string entName = g_objPrefix + "ENT_" + suffix;
          string slName  = g_objPrefix + "SL_"  + suffix;
          DrawHLine(entName, entryTime, entry, now,
-                   isBuy ? InpColEntryBuy : InpColEntrySell, STYLE_DASH, 1);
+                   isBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, STYLE_DASH, 1);
          DrawHLine(slName, slTime, sl, now,
-                   InpColSL, STYLE_DASH, 1);
+                   COL_SL, STYLE_DASH, 1);
 
          // Labels
          string entLbl = g_objPrefix + "ENTLBL_" + suffix;
          string slLbl  = g_objPrefix + "SLLBL_"  + suffix;
          DrawTextLabel(entLbl, now, entry,
                        isBuy ? "Entry Buy" : "Entry Sell",
-                       isBuy ? InpColEntryBuy : InpColEntrySell, 7);
-         DrawTextLabel(slLbl, now, sl, "SL", InpColSL, 7);
+                       isBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, 7);
+         DrawTextLabel(slLbl, now, sl, "SL", COL_SL, 7);
 
          // TP line
          if(tp > 0)
          {
             string tpName = g_objPrefix + "TP_" + suffix;
             string tpLbl  = g_objPrefix + "TPLBL_" + suffix;
-            DrawHLine(tpName, entryTime, tp, now, InpColTP, STYLE_DASH, 1);
-            string tpText = "TP";
-            if(InpRRRatio > 0)
-               tpText = "TP (1:" + DoubleToString(InpRRRatio, 1) + ")";
-            else
-               tpText = "TP (Conf)";
-            DrawTextLabel(tpLbl, now, tp, tpText, InpColTP, 7);
+            DrawHLine(tpName, entryTime, tp, now, COL_TP, STYLE_DASH, 1);
+            DrawTextLabel(tpLbl, now, tp, "TP (Conf)", COL_TP, 7);
          }
 
          // Lines are static (don't extend), like Pine Script
          ClearActiveLines();
       }
 
-      if(InpShowBreakLabel)
+      if(SHOW_BREAK_LABEL)
       {
          string lblName = g_objPrefix + (isBuy ? "CONF_UP_" : "CONF_DN_") + suffix;
          if(isBuy)
             DrawTextLabel(lblName, waveTime, waveHigh,
-                          "▲ Confirm Break", InpColBreakUp, 9);
+                          "▲ Confirm Break", COL_BREAK_UP, 9);
          else
             DrawTextLabel(lblName, waveTime, waveLow,
-                          "▼ Confirm Break", InpColBreakDown, 9);
+                          "▼ Confirm Break", COL_BREAK_DOWN, 9);
       }
    }
 
@@ -971,7 +1051,7 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       if(isBuy) g_lastBuySignal = signalTime;
       else      g_lastSellSignal = signalTime;
 
-      if(InpEnableAlerts)
+      // Alert (always on)
       {
          string msg = StringFormat("MST Medio: %s | Entry=%.2f SL=%.2f TP=%.2f | %s",
                                     isBuy ? "BUY" : "SELL",
@@ -981,25 +1061,20 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       }
 
       // ── Trade ──
-      if(InpEnableTrade)
       {
-         // R:R filter
-         double risk   = MathAbs(entry - slBuffered);
-         double reward = MathAbs(tp - entry);
-         double rr     = (risk > 0) ? reward / risk : 0;
+         CloseAllPositions();
+         DeleteAllPendingOrders();
 
-         if(InpMinRR > 0 && rr < InpMinRR)
+         // If Partial TP: place order with TP, track for partial close
+         if(InpPartialTP)
          {
-            Print("⚠️ Skipped trade: R:R=", DoubleToString(rr, 2),
-                  " < MinRR=", DoubleToString(InpMinRR, 2),
-                  " | Entry=", entry, " SL=", slBuffered, " TP=", tp);
+            g_partialTPDone  = false;
+            g_partialTPLevel = tp;
+            g_partialEntry   = entry;
+            g_partialIsBuy   = isBuy;
          }
-         else
-         {
-            CloseAllPositions();
-            DeleteAllPendingOrders();
-            PlaceOrder(isBuy, entry, slBuffered, tp);
-         }
+
+         PlaceOrder(isBuy, entry, slBuffered, tp);
       }
    }
 }

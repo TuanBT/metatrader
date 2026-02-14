@@ -38,22 +38,19 @@
 #property indicator_color4  clrRed
 #property indicator_width4  2
 
-//--- Inputs
-input int    InpPivotLen      = 5;       // Pivot Lookback
-input double InpBreakMult     = 0.25;    // Break Strength (x Swing Range, 0=OFF)
-input double InpImpulseMult   = 1.5;     // Impulse Body (x Avg Body, 0=OFF)
-
-input bool   InpShowSwings    = false;   // Show Swing Points
-input bool   InpShowBreakLabel= true;    // Show Break/Confirm Labels
-input bool   InpShowBreakLine = true;    // Show Entry/SL/TP Lines
-input bool   InpEnableAlerts  = true;    // Enable Alerts
-
-input color  InpColBreakUp    = clrLime;         // Break UP Label Color
-input color  InpColBreakDown  = clrRed;          // Break DOWN Label Color
-input color  InpColEntryBuy   = clrDodgerBlue;   // Entry Buy Line Color
-input color  InpColEntrySell  = clrHotPink;      // Entry Sell Line Color
-input color  InpColSL         = clrYellow;        // SL Line Color
-input color  InpColTP         = clrLimeGreen;     // TP Line Color
+//--- Fixed Settings (not exposed as inputs)
+#define PIVOT_LEN        5
+#define BREAK_MULT       0.25
+#define IMPULSE_MULT     1.5
+#define SHOW_SWINGS      false
+#define SHOW_BREAK_LABEL true
+#define SHOW_BREAK_LINE  true
+#define COL_BREAK_UP     clrLime
+#define COL_BREAK_DOWN   clrRed
+#define COL_ENTRY_BUY    clrDodgerBlue
+#define COL_ENTRY_SELL   clrHotPink
+#define COL_SL           clrYellow
+#define COL_TP           clrLimeGreen
 
 //--- Buffers
 double g_swingHBuf[];
@@ -258,7 +255,7 @@ int OnCalculate(const int rates_total,
                 const long &volume[],
                 const int &spread[])
 {
-   if(rates_total < InpPivotLen * 2 + 25) return(0);
+   if(rates_total < PIVOT_LEN * 2 + 25) return(0);
 
    // Delete old objects and reset state on full recalculation
    int startBar;
@@ -304,19 +301,19 @@ int OnCalculate(const int rates_total,
 void ProcessBar(int bar, int totalBars)
 {
    // bar = the "current" bar shift being processed
-   // Pivot detection: look at bar + InpPivotLen (the confirmed pivot)
-   int checkBar = bar + InpPivotLen;
+   // Pivot detection: look at bar + PIVOT_LEN (the confirmed pivot)
+   int checkBar = bar + PIVOT_LEN;
    if(checkBar >= totalBars) return;
 
-   bool isSwH = IsPivotHigh(checkBar, InpPivotLen, totalBars);
-   bool isSwL = IsPivotLow(checkBar, InpPivotLen, totalBars);
+   bool isSwH = IsPivotHigh(checkBar, PIVOT_LEN, totalBars);
+   bool isSwL = IsPivotLow(checkBar, PIVOT_LEN, totalBars);
 
    datetime checkTime = iTime(_Symbol, _Period, checkBar);
    double   checkHigh = iHigh(_Symbol, _Period, checkBar);
    double   checkLow  = iLow(_Symbol, _Period, checkBar);
 
    // ── Swing markers (on the pivot bar itself) ──
-   if(InpShowSwings)
+   if(SHOW_SWINGS)
    {
       if(isSwH)
       {
@@ -360,7 +357,7 @@ void ProcessBar(int bar, int totalBars)
    bool isNewLL = isSwL && g_sl0 != EMPTY_VALUE && g_sl1 < g_sl0;
 
    // Impulse Body Filter (BUY)
-   if(isNewHH && InpImpulseMult > 0)
+   if(isNewHH && IMPULSE_MULT > 0)
    {
       double avgBody = CalcAvgBody(bar, 20, totalBars);
       int sh0Shift = TimeToShift(g_sh0_time);
@@ -374,7 +371,7 @@ void ProcessBar(int bar, int totalBars)
             if(iClose(_Symbol, _Period, i) > g_sh0)
             {
                double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
-               found = (body >= InpImpulseMult * avgBody);
+               found = (body >= IMPULSE_MULT * avgBody);
                break;
             }
          }
@@ -383,7 +380,7 @@ void ProcessBar(int bar, int totalBars)
    }
 
    // Impulse Body Filter (SELL)
-   if(isNewLL && InpImpulseMult > 0)
+   if(isNewLL && IMPULSE_MULT > 0)
    {
       double avgBody = CalcAvgBody(bar, 20, totalBars);
       int sl0Shift = TimeToShift(g_sl0_time);
@@ -397,7 +394,7 @@ void ProcessBar(int bar, int totalBars)
             if(iClose(_Symbol, _Period, i) < g_sl0)
             {
                double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
-               found = (body >= InpImpulseMult * avgBody);
+               found = (body >= IMPULSE_MULT * avgBody);
                break;
             }
          }
@@ -411,26 +408,26 @@ void ProcessBar(int bar, int totalBars)
 
    if(isNewHH && g_slBeforeSH != EMPTY_VALUE)
    {
-      if(InpBreakMult <= 0)
+      if(BREAK_MULT <= 0)
          rawBreakUp = true;
       else
       {
          double swR = g_sh0 - g_slBeforeSH;
          double brD = g_sh1 - g_sh0;
-         if(swR > 0 && brD >= swR * InpBreakMult)
+         if(swR > 0 && brD >= swR * BREAK_MULT)
             rawBreakUp = true;
       }
    }
 
    if(isNewLL && g_shBeforeSL != EMPTY_VALUE)
    {
-      if(InpBreakMult <= 0)
+      if(BREAK_MULT <= 0)
          rawBreakDown = true;
       else
       {
          double swR = g_shBeforeSL - g_sl0;
          double brD = g_sl0 - g_sl1;
-         if(swR > 0 && brD >= swR * InpBreakMult)
+         if(swR > 0 && brD >= swR * BREAK_MULT)
             rawBreakDown = true;
       }
    }
@@ -709,26 +706,26 @@ void DrawSignal(bool isBuy, int signalBar, double entry, double sl, double w1Pea
       g_sigSellBuf[signalBar] = entry;
 
    // ── Lines ──
-   if(InpShowBreakLine)
+   if(SHOW_BREAK_LINE)
    {
       // Entry line
       string entName = g_objPrefix + "ENT_" + suffix;
       DrawHLine(entName, entryTime, entry, signalTime,
-                isBuy ? InpColEntryBuy : InpColEntrySell, STYLE_DASH, 1);
+                isBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, STYLE_DASH, 1);
 
       // SL line
       string slName = g_objPrefix + "SL_" + suffix;
-      DrawHLine(slName, slTime, sl, signalTime, InpColSL, STYLE_DASH, 1);
+      DrawHLine(slName, slTime, sl, signalTime, COL_SL, STYLE_DASH, 1);
 
       // Entry label
       string entLbl = g_objPrefix + "ENTLBL_" + suffix;
       DrawTextLabel(entLbl, signalTime, entry,
                     isBuy ? "Entry Buy" : "Entry Sell",
-                    isBuy ? InpColEntryBuy : InpColEntrySell, 7);
+                    isBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, 7);
 
       // SL label
       string slLbl = g_objPrefix + "SLLBL_" + suffix;
-      DrawTextLabel(slLbl, signalTime, sl, "SL", InpColSL, 7);
+      DrawTextLabel(slLbl, signalTime, sl, "SL", COL_SL, 7);
 
       // TP line (Confirm Break high/low)
       double tp = isBuy ? waveHigh : waveLow;
@@ -736,43 +733,40 @@ void DrawSignal(bool isBuy, int signalBar, double entry, double sl, double w1Pea
       {
          string tpName = g_objPrefix + "TP_" + suffix;
          string tpLbl  = g_objPrefix + "TPLBL_" + suffix;
-         DrawHLine(tpName, entryTime, tp, signalTime, InpColTP, STYLE_DASH, 1);
-         DrawTextLabel(tpLbl, signalTime, tp, "TP (Conf)", InpColTP, 7);
+         DrawHLine(tpName, entryTime, tp, signalTime, COL_TP, STYLE_DASH, 1);
+         DrawTextLabel(tpLbl, signalTime, tp, "TP (Conf)", COL_TP, 7);
       }
    }
 
    // ── Confirm Break label ──
-   if(InpShowBreakLabel && waveTime > 0)
+   if(SHOW_BREAK_LABEL && waveTime > 0)
    {
       string lblName = g_objPrefix + (isBuy ? "CONF_UP_" : "CONF_DN_") + suffix;
       if(isBuy)
          DrawTextLabel(lblName, waveTime, waveHigh,
-                       "▲ Confirm Break", InpColBreakUp, 9);
+                       "▲ Confirm Break", COL_BREAK_UP, 9);
       else
          DrawTextLabel(lblName, waveTime, waveLow,
-                       "▼ Confirm Break", InpColBreakDown, 9);
+                       "▼ Confirm Break", COL_BREAK_DOWN, 9);
    }
 
    // ── Alert ──
-   if(InpEnableAlerts)
+   datetime lastSig = isBuy ? g_lastBuySignal : g_lastSellSignal;
+   if(signalTime > lastSig)
    {
-      datetime lastSig = isBuy ? g_lastBuySignal : g_lastSellSignal;
-      if(signalTime > lastSig)
-      {
-         if(isBuy) g_lastBuySignal = signalTime;
-         else      g_lastSellSignal = signalTime;
+      if(isBuy) g_lastBuySignal = signalTime;
+      else      g_lastSellSignal = signalTime;
 
-         // Only alert if this is a recent bar (not historical recalculation)
-         datetime currentTime = TimeCurrent();
-         if(currentTime - signalTime < PeriodSeconds(_Period) * 3)
-         {
-            double tp = isBuy ? waveHigh : waveLow;
-            string msg = StringFormat("MST Medio: %s | Entry=%.2f SL=%.2f TP=%.2f | %s",
-                                       isBuy ? "BUY" : "SELL",
-                                       entry, sl, tp, _Symbol);
-            Alert(msg);
-            Print("🔔 ", msg);
-         }
+      // Only alert if this is a recent bar (not historical recalculation)
+      datetime currentTime = TimeCurrent();
+      if(currentTime - signalTime < PeriodSeconds(_Period) * 3)
+      {
+         double tp = isBuy ? waveHigh : waveLow;
+         string msg = StringFormat("MST Medio: %s | Entry=%.2f SL=%.2f TP=%.2f | %s",
+                                    isBuy ? "BUY" : "SELL",
+                                    entry, sl, tp, _Symbol);
+         Alert(msg);
+         Print("🔔 ", msg);
       }
    }
 }
