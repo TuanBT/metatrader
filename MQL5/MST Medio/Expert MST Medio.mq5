@@ -13,11 +13,12 @@
 //|   6. SL buffer = auto 5% of risk distance                       |
 //|   7. Max risk % safety filter (skip trade if risk > limit)       |
 //|   8. Auto lot normalization (min/max/step)                       |
-//|   8. Partial TP (optional):                                      |
-//|      - Close 50% at TP (Confirm Break level)                     |
-//|      - Move SL to breakeven                                      |
-//|      - Hold remaining 50% until next opposite signal             |
-//|   9. On new signal: close all existing positions → open new      |
+//|   9. Partial TP (optional):                                      |
+//|      - Part1: Close 50% at TP (Confirm Break level)              |
+//|      - Part2: Hold 50%, SL stays at original SL                  |
+//|      - After Part1 TP hit → move Part2 SL to breakeven           |
+//|      - Part2 runs until next opposite signal                     |
+//|  10. On new signal: close all existing positions → open new      |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
@@ -28,7 +29,7 @@
 // INPUTS
 // ============================================================================
 input double InpMaxRiskPct   = 2.0;     // Max Risk % per trade (0=no limit)
-input double InpLotSize      = 0.01;    // Lot Size
+input double InpLotSize      = 0.02;    // Lot Size
 input bool   InpPartialTP    = false;   // Partial TP (close half at TP, hold rest)
 input ulong  InpMagic        = 20260210;// Magic Number
 
@@ -469,6 +470,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
 }
 
 // PlaceOrderEx: Same as PlaceOrder but with explicit lot and comment, returns ticket (0 on failure)
+// INTERNAL: Caller MUST pre-check risk via CheckMaxRisk() before calling
 ulong PlaceOrderEx(const bool isBuy, const double entry, const double sl, const double tp,
                    const double lotSize, const string comment)
 {
@@ -1330,6 +1332,14 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       if(stepLot > 0) totalLot = MathFloor(totalLot / stepLot) * stepLot;
       totalLot = NormalizeDouble(totalLot, 2);
 
+      // Partial TP needs >= 2x minLot — adjust BEFORE risk check
+      if(InpPartialTP && totalLot < minLot * 2)
+      {
+         totalLot = minLot * 2;
+         if(totalLot > maxLot) totalLot = maxLot;
+         Print("ℹ️ Partial TP: lot adjusted to ", totalLot, " (2x minLot=", minLot, ")");
+      }
+
       // Max risk check — skip trade if risk exceeds limit
       if(!CheckMaxRisk(entry, slBuffered, totalLot))
          return;
@@ -1337,14 +1347,6 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       if(InpPartialTP)
       {
          // Split lot into Part1 (with TP) and Part2 (no TP)
-
-         // Ensure total lot >= 2x minLot for splitting
-         if(totalLot < minLot * 2)
-         {
-            totalLot = minLot * 2;
-            Print("ℹ️ Partial TP: lot adjusted to ", totalLot, " (2x minLot=", minLot, ")");
-         }
-         if(totalLot > maxLot) totalLot = maxLot;
 
          double part1Lot = NormalizeDouble(totalLot * PARTIAL_PCT / 100.0, 2);
          if(part1Lot < minLot) part1Lot = minLot;
