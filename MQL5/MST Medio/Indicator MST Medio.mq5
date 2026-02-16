@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "2.00"
+#property version   "3.00"
 #property strict
 
 #property indicator_chart_window
@@ -39,10 +39,13 @@
 #property indicator_color4  clrRed
 #property indicator_width4  2
 
+//--- Inputs
+input bool InpShowVisual = true;   // Show visual elements (arrows, lines, labels)
+
 //--- Fixed Settings (not exposed as inputs)
-#define PIVOT_LEN        5
-#define BREAK_MULT       0.25
-#define IMPULSE_MULT     1.5
+#define PIVOT_LEN        3
+#define BREAK_MULT       0
+#define IMPULSE_MULT     1.0
 #define SHOW_SWINGS      false
 #define SHOW_BREAK_LABEL true
 #define SHOW_BREAK_LINE  true
@@ -314,7 +317,7 @@ void ProcessBar(int bar, int totalBars)
    double   checkLow  = iLow(_Symbol, _Period, checkBar);
 
    // ── Swing markers (on the pivot bar itself) ──
-   if(SHOW_SWINGS)
+   if(InpShowVisual && SHOW_SWINGS)
    {
       if(isSwH)
       {
@@ -701,13 +704,16 @@ void DrawSignal(bool isBuy, int signalBar, double entry, double sl, double w1Pea
    datetime signalTime = iTime(_Symbol, _Period, signalBar);
 
    // ── Signal marker in buffer ──
-   if(isBuy)
-      g_sigBuyBuf[signalBar] = entry;
-   else
-      g_sigSellBuf[signalBar] = entry;
+   if(InpShowVisual)
+   {
+      if(isBuy)
+         g_sigBuyBuf[signalBar] = entry;
+      else
+         g_sigSellBuf[signalBar] = entry;
+   }
 
    // ── Lines ──
-   if(SHOW_BREAK_LINE)
+   if(InpShowVisual && SHOW_BREAK_LINE)
    {
       // Entry line
       string entName = g_objPrefix + "ENT_" + suffix;
@@ -740,7 +746,7 @@ void DrawSignal(bool isBuy, int signalBar, double entry, double sl, double w1Pea
    }
 
    // ── Confirm Break label ──
-   if(SHOW_BREAK_LABEL && waveTime > 0)
+   if(InpShowVisual && SHOW_BREAK_LABEL && waveTime > 0)
    {
       string lblName = g_objPrefix + (isBuy ? "CONF_UP_" : "CONF_DN_") + suffix;
       if(isBuy)
