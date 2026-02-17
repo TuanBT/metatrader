@@ -2,73 +2,41 @@
 //| Expert MST Medio.mq5                                            |
 //| MST Medio (Make Simple Trading by Medio)                        |
 //| EA — 2-Step Breakout Confirmation System                        |
-//| Synced with TradingView Pine Script MST Medio v2.0               |
 //|                                                                  |
 //| Logic:                                                           |
 //|   1. Detect HH/LL breakout (with impulse body filter)            |
 //|   2. Find W1 Peak (first impulse wave extreme after break)       |
 //|   3. Wait for CLOSE beyond W1 Peak → Confirmed! → Signal         |
 //|   4. Entry = old SH/SL, SL = swing opposite                     |
-//|   5. TP = Fixed RR (3R) or Confirm Break candle H/L              |
-//|   6. SL buffer = auto % of risk distance (disabled)              |
-//|   7. Max risk % safety filter (skip trade if risk > limit)       |
-//|   8. Auto lot normalization (min/max/step)                       |
-//|   9. On new signal: close all existing positions → open new      |
-//|  10. HTF Trend Filter: H1 EMA50 — BUY above, SELL below         |
-//|  11. Breakeven: move SL to entry when profit >= BE_AT_R × risk   |
+//|   5. TP = Fixed RR or Confirm Break candle H/L                  |
+//|   6. Breakeven: move SL to entry when profit >= BE_AT_R × risk   |
+//|   7. On new signal: close all existing positions → open new      |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "3.00"
+#property version   "4.00"
 #property strict
 
 // ============================================================================
-// STRATEGY PRESETS
-// ============================================================================
-enum ENUM_STRATEGY_PRESET
-{
-   PRESET_V3_OPTIMAL  = 0,  // V3 Optimal (P3 B0 I1.0 FR3R BE@0.5R) +205R
-   PRESET_V3_SAFE     = 1,  // V3 Safe (P3 B0.25 I1.5 Confirm) +163R
-   PRESET_V2_ORIGINAL = 2,  // V2 Original (P5 B0.25 I1.75 Confirm) +107R
-   PRESET_CUSTOM      = 3,  // Custom (use manual inputs below)
-};
-
 // ============================================================================
 // INPUTS
 // ============================================================================
-input ENUM_STRATEGY_PRESET InpPreset = PRESET_V3_OPTIMAL; // Strategy Preset
-input double InpMaxRiskPct   = 0;       // Max Risk % per trade (0=no limit)
 input double InpLotSize      = 0.01;    // Lot Size
+input int    InpPivotLen     = 3;       // Pivot Length
+input double InpBreakMult    = 0.25;    // Break Multiplier
+input double InpImpulseMult  = 0.75;    // Impulse Multiplier
+input double InpTPFixedRR    = 0;     // TP Fixed RR (0=confirm candle)
+input double InpBEAtR        = 0.5;     // Breakeven at R (0=disabled)
+input int    InpSLBufferPct  = 0;       // SL Buffer % (0=disabled)
+input double InpMaxRiskPct   = 2;       // Max Risk % per trade (0=no limit)
+input double InpMaxDailyLossPct = 5;    // Max Daily Loss % (0=no limit)
 input bool   InpShowVisual   = false;   // Show indicator on chart
 input ulong  InpMagic        = 20260210;// Magic Number
 
-// -- Custom preset inputs (only used when Preset = Custom) --
-input int    InpPivotLen     = 3;       // [Custom] Pivot Length
-input double InpBreakMult    = 0;       // [Custom] Break Multiplier
-input double InpImpulseMult  = 1.0;     // [Custom] Impulse Multiplier
-input double InpTPFixedRR    = 3.0;     // [Custom] TP Fixed RR (0=confirm candle)
-input double InpBEAtR        = 0.5;     // [Custom] Breakeven at R (0=disabled)
-input int    InpSLBufferPct  = 0;       // [Custom] SL Buffer % (0=disabled)
-
 // ============================================================================
-// STRATEGY PARAMETERS (set in OnInit from preset)
-// ============================================================================
-int    g_pivotLen     = 3;
-double g_breakMult    = 0;
-double g_impulseMult  = 1.0;
-double g_tpFixedRR    = 3.0;
-double g_beAtR        = 0.5;
-int    g_slBufferPct  = 0;
-
-// ============================================================================
-// FIXED SETTINGS
+// CONSTANTS
 // ============================================================================
 #define DEVIATION        20
-
-// HTF Trend Filter (Higher Timeframe)
-#define HTF_PERIOD       PERIOD_H1    // Higher timeframe for trend
-#define HTF_EMA_LEN      50           // EMA period on HTF
-#define HTF_FILTER       false        // Enable/disable HTF filter
 #define SHOW_VISUAL      InpShowVisual
 #define SHOW_SWINGS      false
 #define SHOW_BREAK_LABEL true
@@ -111,6 +79,11 @@ static datetime g_pendBreak_time = 0;          // Entry line start time
 
 // -- Signal tracking --
 static datetime g_lastBuySignal  = 0;
+
+// -- Daily Loss Protection --
+static double   g_dailyStartBalance = 0;
+static datetime g_lastTradingDay    = 0;
+static bool     g_dailyTradingPaused = false;
 static datetime g_lastSellSignal = 0;
 
 // -- Breakeven tracking --
@@ -134,9 +107,6 @@ static bool   g_hasActiveLine       = false;
 
 // -- Break count --
 static int g_breakCount = 0;
-
-// -- HTF Trend Filter --
-static int g_htfEmaHandle = INVALID_HANDLE;
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -319,6 +289,38 @@ bool CheckMaxRisk(const double entry, const double sl, const double lot)
    return true;
 }
 
+// Check if daily loss limit exceeded — pause trading for the rest of the day
+// Uses BALANCE only (realized P/L) — so open positions can run to TP/SL
+bool CheckDailyLoss()
+{
+   if(InpMaxDailyLossPct <= 0) return true;  // No limit
+
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double currentValue = balance;  // Only realized P/L — let positions run
+
+   if(g_dailyStartBalance <= 0) return true;
+
+   double lossPct = (g_dailyStartBalance - currentValue) / g_dailyStartBalance * 100.0;
+
+   if(lossPct >= InpMaxDailyLossPct)
+   {
+      if(!g_dailyTradingPaused)
+      {
+         g_dailyTradingPaused = true;
+         Print("🛑 DAILY LOSS LIMIT HIT: Loss=", NormalizeDouble(lossPct, 2),
+               "% ($", NormalizeDouble(g_dailyStartBalance - currentValue, 2),
+               ") >= MaxDailyLoss=", InpMaxDailyLossPct,
+               "% | StartBalance=$", NormalizeDouble(g_dailyStartBalance, 2),
+               " CurrentValue=$", NormalizeDouble(currentValue, 2),
+               " | Trading PAUSED until next day");
+         Alert("MST Medio: Daily loss limit ", NormalizeDouble(lossPct, 2),
+               "% reached! Trading paused until next day.");
+      }
+      return false;
+   }
+   return true;
+}
+
 bool HasActiveOrders()
 {
    for(int i = PositionsTotal() - 1; i >= 0; --i)
@@ -373,6 +375,44 @@ void CloseAllPositions()
          Print("Close position failed. Ticket=", ticket, " Retcode=", res.retcode);
       else
          Print("✅ Closed position. Ticket=", ticket);
+   }
+}
+
+// Close only positions that are in profit — let losing positions hit SL naturally
+void ClosePositionsInProfit()
+{
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      double profit = PositionGetDouble(POSITION_PROFIT);
+      if(profit <= 0) continue;  // Skip losing positions — let SL handle them
+
+      MqlTradeRequest req;
+      MqlTradeResult  res;
+      ZeroMemory(req); ZeroMemory(res);
+      req.action    = TRADE_ACTION_DEAL;
+      req.symbol    = _Symbol;
+      req.volume    = PositionGetDouble(POSITION_VOLUME);
+      req.deviation = DEVIATION;
+      req.magic     = InpMagic;
+
+      long posType = PositionGetInteger(POSITION_TYPE);
+      if(posType == POSITION_TYPE_BUY)
+      {  req.type = ORDER_TYPE_SELL; req.price = SymbolInfoDouble(_Symbol, SYMBOL_BID); }
+      else
+      {  req.type = ORDER_TYPE_BUY;  req.price = SymbolInfoDouble(_Symbol, SYMBOL_ASK); }
+      req.position = ticket;
+      req.comment  = "MST_MEDIO_CLOSE_PROFIT";
+
+      if(!OrderSend(req, res))
+         Print("Close profit position failed. Ticket=", ticket, " Retcode=", res.retcode);
+      else
+         Print("✅ Closed profit position. Ticket=", ticket, " Profit=", NormalizeDouble(profit, 2));
    }
 }
 
@@ -518,17 +558,17 @@ int TimeToShift(datetime t)
 }
 
 // ============================================================================
-// BREAKEVEN TRAILING — Move SL to entry when profit >= g_beAtR × risk
+// BREAKEVEN TRAILING — Move SL to entry when profit >= InpBEAtR × risk
 // ============================================================================
 void CheckBreakevenMove()
 {
-   if(g_beDone || g_beAtR <= 0) return;
+   if(g_beDone || InpBEAtR <= 0) return;
    if(g_beEntryPrice == 0 || g_beOrigSL == 0) return;
 
    double risk = MathAbs(g_beEntryPrice - g_beOrigSL);
    if(risk <= 0) return;
 
-   double beTarget = g_beAtR * risk;  // Distance needed for BE move
+   double beTarget = InpBEAtR * risk;  // Distance needed for BE move
 
    // Check all our positions
    for(int i = PositionsTotal() - 1; i >= 0; --i)
@@ -582,7 +622,7 @@ void CheckBreakevenMove()
          return;  // Retry next tick
       }
       Print("✅ BREAKEVEN: SL moved to entry=", newSL,
-            " | Profit was >= ", g_beAtR, "R | Ticket=", ticket);
+            " | Profit was >= ", InpBEAtR, "R | Ticket=", ticket);
    }
 
    g_beDone = true;  // All positions moved to BE
@@ -596,45 +636,18 @@ int OnInit()
    string number = StringFormat("%I64d", GetTickCount64());
    g_objPrefix = StringSubstr(number, MathMax(0, StringLen(number) - 4)) + "_MSM_";
 
-   // ── Apply strategy preset ──
-   switch(InpPreset)
-   {
-      case PRESET_V3_OPTIMAL:
-         g_pivotLen = 3;  g_breakMult = 0;  g_impulseMult = 1.0;
-         g_tpFixedRR = 3.0;  g_beAtR = 0.5;  g_slBufferPct = 0;
-         break;
-      case PRESET_V3_SAFE:
-         g_pivotLen = 3;  g_breakMult = 0.25;  g_impulseMult = 1.5;
-         g_tpFixedRR = 0;  g_beAtR = 0;  g_slBufferPct = 0;
-         break;
-      case PRESET_V2_ORIGINAL:
-         g_pivotLen = 5;  g_breakMult = 0.25;  g_impulseMult = 1.75;
-         g_tpFixedRR = 0;  g_beAtR = 0;  g_slBufferPct = 0;
-         break;
-      case PRESET_CUSTOM:
-         g_pivotLen = InpPivotLen;  g_breakMult = InpBreakMult;  g_impulseMult = InpImpulseMult;
-         g_tpFixedRR = InpTPFixedRR;  g_beAtR = InpBEAtR;  g_slBufferPct = InpSLBufferPct;
-         break;
-   }
-   Print("ℹ️ Strategy: Preset=", EnumToString(InpPreset),
-         " | PivotLen=", g_pivotLen, " BreakMult=", g_breakMult,
-         " ImpulseMult=", g_impulseMult, " TP_RR=", g_tpFixedRR,
-         " BE@R=", g_beAtR, " SLBuf=", g_slBufferPct, "%");
+   // Initialize daily loss tracking — use balance only (realized P/L)
+   g_dailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   MqlDateTime dt;
+   TimeCurrent(dt);
+   g_lastTradingDay = StringToTime(StringFormat("%04d.%02d.%02d", dt.year, dt.mon, dt.day));
+   g_dailyTradingPaused = false;
 
-   // HTF Trend Filter: create EMA indicator on higher timeframe
-   if(HTF_FILTER)
-   {
-      g_htfEmaHandle = iMA(_Symbol, HTF_PERIOD, HTF_EMA_LEN, 0, MODE_EMA, PRICE_CLOSE);
-      if(g_htfEmaHandle == INVALID_HANDLE)
-      {
-         Print("⚠️ Failed to create HTF EMA handle! Trend filter disabled.");
-      }
-      else
-      {
-         Print("ℹ️ HTF Trend Filter: EMA", HTF_EMA_LEN, " on ",
-               EnumToString(HTF_PERIOD), " — BUY only above, SELL only below");
-      }
-   }
+   Print("ℹ️ Strategy:",
+         " PivotLen=", InpPivotLen, " BreakMult=", InpBreakMult,
+         " ImpulseMult=", InpImpulseMult, " TP_RR=", InpTPFixedRR,
+         " BE@R=", InpBEAtR, " SLBuf=", InpSLBufferPct, "%",
+         " MaxDailyLoss=", InpMaxDailyLossPct, "%");
 
    return(INIT_SUCCEEDED);
 }
@@ -642,25 +655,54 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    DeleteObjectsByPrefix(g_objPrefix);
-   if(g_htfEmaHandle != INVALID_HANDLE)
-   {
-      IndicatorRelease(g_htfEmaHandle);
-      g_htfEmaHandle = INVALID_HANDLE;
-   }
 }
+
+// OnTradeTransaction removed — daily loss is checked via OnTick using balance only.
+// This allows positions to run to TP/SL instead of being killed instantly on fill.
 
 // ============================================================================
 // MAIN TICK HANDLER
 // ============================================================================
 void OnTick()
 {
+   // ── Daily Loss Reset: check if new trading day ──
+   {
+      MqlDateTime dt;
+      TimeCurrent(dt);
+      datetime today = StringToTime(StringFormat("%04d.%02d.%02d", dt.year, dt.mon, dt.day));
+      if(today != g_lastTradingDay)
+      {
+         g_lastTradingDay = today;
+         // Use balance only (realized P/L) for daily loss tracking
+         g_dailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(g_dailyTradingPaused)
+         {
+            g_dailyTradingPaused = false;
+            Print("ℹ️ New trading day — Daily loss reset. StartBalance=$",
+                  NormalizeDouble(g_dailyStartBalance, 2));
+         }
+      }
+   }
+
+   // ── Daily Loss Check: skip all trading if limit hit ──
+   // (still allow breakeven and visual updates for existing positions)
+   bool dailyLossHit = !CheckDailyLoss();
+
    // Extend lines on every tick
    if(SHOW_VISUAL && SHOW_BREAK_LINE)
       ExtendActiveLines();
 
    // ── Breakeven: Move SL to entry when profit >= BE_AT_R × risk ──
-   if(!g_beDone && g_beAtR > 0)
+   if(!g_beDone && InpBEAtR > 0)
       CheckBreakevenMove();
+
+   // If daily loss limit hit, stop placing new orders (but let existing positions run)
+   if(dailyLossHit)
+   {
+      // Only delete pending orders (unfilled) — let open positions hit TP/SL naturally
+      DeleteAllPendingOrders();
+      return;
+   }
 
    // Only process on new bar
    datetime currentBarTime = iTime(_Symbol, _Period, 0);
@@ -668,14 +710,14 @@ void OnTick()
    g_lastBarTime = currentBarTime;
 
    int bars = Bars(_Symbol, _Period);
-   if(bars < g_pivotLen * 2 + 25) return;  // Need enough bars for avg body
+   if(bars < InpPivotLen * 2 + 25) return;  // Need enough bars for avg body
 
    // ================================================================
    // STEP 1: SWING DETECTION (at bar = PIVOT_LEN, the confirmed pivot)
    // ================================================================
-   int checkBar = g_pivotLen;
-   bool isSwH = IsPivotHigh(checkBar, g_pivotLen);
-   bool isSwL = IsPivotLow(checkBar, g_pivotLen);
+   int checkBar = InpPivotLen;
+   bool isSwH = IsPivotHigh(checkBar, InpPivotLen);
+   bool isSwL = IsPivotLow(checkBar, InpPivotLen);
 
    datetime checkTime = iTime(_Symbol, _Period, checkBar);
    double   checkHigh = iHigh(_Symbol, _Period, checkBar);
@@ -728,11 +770,11 @@ void OnTick()
    bool isNewLL = isSwL && g_sl0 != EMPTY_VALUE && g_sl1 < g_sl0;
 
    // Impulse Body Filter
-   if(isNewHH && g_impulseMult > 0)
+   if(isNewHH && InpImpulseMult > 0)
    {
       double avgBody = CalcAvgBody(1, 20);
       int sh0Shift = TimeToShift(g_sh0_time);
-      int toBar    = g_pivotLen;  // sh1 position
+      int toBar    = InpPivotLen;  // sh1 position
       bool found   = false;
       if(sh0Shift >= 0)
       {
@@ -742,7 +784,7 @@ void OnTick()
             if(iClose(_Symbol, _Period, i) > g_sh0)
             {
                double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
-               found = (body >= g_impulseMult * avgBody);
+               found = (body >= InpImpulseMult * avgBody);
                break;
             }
          }
@@ -750,11 +792,11 @@ void OnTick()
       if(!found) isNewHH = false;
    }
 
-   if(isNewLL && g_impulseMult > 0)
+   if(isNewLL && InpImpulseMult > 0)
    {
       double avgBody = CalcAvgBody(1, 20);
       int sl0Shift = TimeToShift(g_sl0_time);
-      int toBar    = g_pivotLen;
+      int toBar    = InpPivotLen;
       bool found   = false;
       if(sl0Shift >= 0)
       {
@@ -764,7 +806,7 @@ void OnTick()
             if(iClose(_Symbol, _Period, i) < g_sl0)
             {
                double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
-               found = (body >= g_impulseMult * avgBody);
+               found = (body >= InpImpulseMult * avgBody);
                break;
             }
          }
@@ -778,26 +820,26 @@ void OnTick()
 
    if(isNewHH && g_slBeforeSH != EMPTY_VALUE)
    {
-      if(g_breakMult <= 0)
+      if(InpBreakMult <= 0)
          rawBreakUp = true;
       else
       {
          double swR = g_sh0 - g_slBeforeSH;
          double brD = g_sh1 - g_sh0;
-         if(swR > 0 && brD >= swR * g_breakMult)
+         if(swR > 0 && brD >= swR * InpBreakMult)
             rawBreakUp = true;
       }
    }
 
    if(isNewLL && g_shBeforeSL != EMPTY_VALUE)
    {
-      if(g_breakMult <= 0)
+      if(InpBreakMult <= 0)
          rawBreakDown = true;
       else
       {
          double swR = g_shBeforeSL - g_sl0;
          double brD = g_sl0 - g_sl1;
-         if(swR > 0 && brD >= swR * g_breakMult)
+         if(swR > 0 && brD >= swR * InpBreakMult)
             rawBreakDown = true;
       }
    }
@@ -1085,50 +1127,8 @@ void OnTick()
    }
 
    // ================================================================
-   // STEP 5: HTF TREND FILTER + PROCESS CONFIRMED SIGNALS
+   // STEP 5: PROCESS CONFIRMED SIGNALS
    // ================================================================
-   // Check HTF trend: only trade in direction of higher timeframe EMA
-   if((confirmedBuy || confirmedSell) && HTF_FILTER && g_htfEmaHandle != INVALID_HANDLE)
-   {
-      double emaVal[1];
-      if(CopyBuffer(g_htfEmaHandle, 0, 0, 1, emaVal) == 1)
-      {
-         double currentClose = iClose(_Symbol, _Period, 1);
-         if(confirmedBuy && currentClose < emaVal[0])
-         {
-            Print("⚠️ HTF FILTER: BUY skipped — Price=", NormalizeDouble(currentClose, _Digits),
-                  " < EMA", HTF_EMA_LEN, "(", EnumToString(HTF_PERIOD), ")=",
-                  NormalizeDouble(emaVal[0], _Digits), " → Downtrend");
-            // Draw visual with HTF Filtered note (signal detected but not traded)
-            if(SHOW_VISUAL && SHOW_BREAK_LABEL)
-            {
-               g_breakCount++;
-               string suffix = IntegerToString(g_breakCount);
-               string lblName = g_objPrefix + "CONF_UP_" + suffix;
-               DrawTextLabel(lblName, confWaveTime, confWaveHigh,
-                             "▲ Confirm Break (HTF Filtered)", clrGray, 9);
-            }
-            confirmedBuy = false;
-         }
-         if(confirmedSell && currentClose > emaVal[0])
-         {
-            Print("⚠️ HTF FILTER: SELL skipped — Price=", NormalizeDouble(currentClose, _Digits),
-                  " > EMA", HTF_EMA_LEN, "(", EnumToString(HTF_PERIOD), ")=",
-                  NormalizeDouble(emaVal[0], _Digits), " → Uptrend");
-            // Draw visual with HTF Filtered note (signal detected but not traded)
-            if(SHOW_VISUAL && SHOW_BREAK_LABEL)
-            {
-               g_breakCount++;
-               string suffix = IntegerToString(g_breakCount);
-               string lblName = g_objPrefix + "CONF_DN_" + suffix;
-               DrawTextLabel(lblName, confWaveTime, confWaveLow,
-                             "▼ Confirm Break (HTF Filtered)", clrGray, 9);
-            }
-            confirmedSell = false;
-         }
-      }
-   }
-
    if(confirmedBuy)
       ProcessConfirmedSignal(true, confEntry, confSL, confW1Peak,
                               confEntryTime, confSLTime, confWaveTime,
@@ -1153,20 +1153,20 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    // Calculate SL with buffer (auto 5% of risk distance)
    double slBuffered = sl;
    double riskDist = MathAbs(entry - sl);
-   if(g_slBufferPct > 0 && riskDist > 0)
+   if(InpSLBufferPct > 0 && riskDist > 0)
    {
-      double bufferAmt = riskDist * g_slBufferPct / 100.0;
+      double bufferAmt = riskDist * InpSLBufferPct / 100.0;
       if(isBuy)  slBuffered = sl - bufferAmt;
       else       slBuffered = sl + bufferAmt;
    }
 
    // Calculate TP
    double tp;
-   if(g_tpFixedRR > 0)
+   if(InpTPFixedRR > 0)
    {
-      // Fixed RR TP: TP = entry ± g_tpFixedRR × risk
-      if(isBuy)  tp = entry + g_tpFixedRR * riskDist;
-      else       tp = entry - g_tpFixedRR * riskDist;
+      // Fixed RR TP: TP = entry ± InpTPFixedRR × risk
+      if(isBuy)  tp = entry + InpTPFixedRR * riskDist;
+      else       tp = entry - InpTPFixedRR * riskDist;
    }
    else
    {
@@ -1212,8 +1212,8 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
             string tpName = g_objPrefix + "TP_" + suffix;
             string tpLbl  = g_objPrefix + "TPLBL_" + suffix;
             DrawHLine(tpName, entryTime, tp, now, COL_TP, STYLE_DASH, 1);
-            string tpText = (g_tpFixedRR > 0)
-               ? StringFormat("TP (%.1fR)", g_tpFixedRR)
+            string tpText = (InpTPFixedRR > 0)
+               ? StringFormat("TP (%.1fR)", InpTPFixedRR)
                : "TP (Conf)";
             DrawTextLabel(tpLbl, now, tp, tpText, COL_TP, 7);
          }
@@ -1245,8 +1245,19 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
 
    // ── Trade ──
    {
+      // Cancel pending orders (not yet filled)
       DeleteAllPendingOrders();
-      CloseAllPositions();
+      // Only close existing positions if they are in PROFIT
+      // If position is losing, let SL handle it to avoid realizing large losses
+      ClosePositionsInProfit();
+
+      // If there's still an open position (losing), skip new trade to avoid hedging
+      if(HasActiveOrders())
+      {
+         Print("ℹ️ Skip new ", (isBuy ? "BUY" : "SELL"),
+               " — existing position still open (let SL handle it)");
+         return;
+      }
 
       // Reset breakeven state for new trade
       g_beDone       = false;
@@ -1267,6 +1278,22 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       // Max risk check — use InpLotSize (NOT doubled) for risk check
       if(!CheckMaxRisk(entry, slBuffered, totalLot))
          return;
+
+      // Pre-check: don't place order if equity already near daily loss limit
+      if(InpMaxDailyLossPct > 0 && g_dailyStartBalance > 0)
+      {
+         double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+         double currentLossPct = (g_dailyStartBalance - equity) / g_dailyStartBalance * 100.0;
+         double remainingPct = InpMaxDailyLossPct - currentLossPct;
+         if(remainingPct < 2.0)  // Less than 2% room left before daily limit
+         {
+            Print("⚠️ SKIP TRADE: Equity too close to daily loss limit. ",
+                  "CurrentLoss=", NormalizeDouble(currentLossPct, 2),
+                  "% | Remaining=", NormalizeDouble(remainingPct, 2),
+                  "% | MinRequired=2.0%");
+            return;
+         }
+      }
 
       // Place order
       PlaceOrder(isBuy, entry, slBuffered, tp);
