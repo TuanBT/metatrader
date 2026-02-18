@@ -36,12 +36,12 @@ input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no lim
 // ============================================================================
 input int    InpPivotLen     = 3;       // Pivot Length
 input double InpBreakMult    = 0.25;    // Break Multiplier
-input double InpImpulseMult  = 2.0;     // Impulse Multiplier (BTC-adapted: stronger filter)
-input double InpTPFixedRR    = 5.0;   // TP Fixed RR (0=confirm candle) — 5R optimal for XAUUSD
+input double InpImpulseMult  = 2.0;     // Impulse Multiplier
+input double InpTPFixedRR    = 4.0;   // TP Fixed RR (0=confirm candle)
 input double InpBEAtR        = 0.5;     // Breakeven at R (0=disabled)
 input int    InpSLBufferPct  = 10;      // SL Buffer % (push SL 10% further to avoid stop hunts)
 input int    InpEntryOffsetPts = 0;     // Entry Offset Pts (shift entry deeper vs exact swing level, 0=disabled)
-input bool   InpUseATRSL     = false;   // Use ATR-based SL (vs swing-based) — DISABLED: ATR M5 BTC too large (~$293) blocks all trades
+input bool   InpUseATRSL     = false;   // Use ATR-based SL (vs swing-based)
 input double InpATRMultiplier = 1.5;    // ATR Multiplier for SL distance
 input int    InpATRPeriod    = 14;      // ATR calculation period
 
@@ -59,11 +59,11 @@ input bool   InpAllowNoTrend   = false;   // Allow trades when trend=NONE/CONFLI
 // PARTIAL TAKE PROFIT
 // ============================================================================
 input bool   InpUsePartialTP      = true;    // Use Partial TP (close partial at X×R, move SL to BE)
-input double InpPartialTPAtR      = 1.0;     // Close partial at X × risk (R-multiple)
+input double InpPartialTPAtR      = 0.5;     // Close partial at X × risk (R-multiple)
 input double InpPartialTPPct      = 50.0;    // % of position to close at partial TP
 input int    InpTrailAfterPartialPts = 0;    // Trailing stop pts after partial TP (0=use fixed BE)
 input bool   InpSmartFlip          = true;   // Smart flip: keep profitable position when new signal arrives
-input bool   InpRequireConfirmCandle = false; // Require 1 confirm candle after entry fills (anti-chop)
+input bool   InpRequireConfirmCandle = true;  // Require 1 confirm candle after entry fills (anti-chop)
 
 input bool   InpShowVisual   = false;   // Show indicator on chart
 input ulong  InpMagic        = 20260210;// Magic Number
