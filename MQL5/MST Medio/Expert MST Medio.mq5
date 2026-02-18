@@ -21,15 +21,50 @@
 // ============================================================================
 // INPUTS
 // ============================================================================
-input double InpLotSize      = 0.01;    // Lot Size
+// ============================================================================
+// POSITION SIZING & RISK MANAGEMENT
+// ============================================================================
+input bool   InpUseDynamicLot   = true;     // Use Dynamic Position Sizing
+input double InpLotSize         = 0.01;    // Fixed Lot Size (if dynamic=false)
+input double InpRiskPct         = 2.0;     // Risk % per trade (dynamic sizing)
+input double InpMaxRiskPct      = 2.0;     // Max Risk % per trade (0=no limit)
+input double InpMaxDailyLossPct = 3.0;     // Max Daily Loss % (0=no limit)
+input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no limit) — BTC swing SL ~$29-$293, need wider limit
+
+// ============================================================================
+// TRADING LOGIC PARAMETERS
+// ============================================================================
 input int    InpPivotLen     = 3;       // Pivot Length
 input double InpBreakMult    = 0.25;    // Break Multiplier
-input double InpImpulseMult  = 0.75;    // Impulse Multiplier
-input double InpTPFixedRR    = 0;     // TP Fixed RR (0=confirm candle)
+input double InpImpulseMult  = 2.0;     // Impulse Multiplier (BTC-adapted: stronger filter)
+input double InpTPFixedRR    = 5.0;   // TP Fixed RR (0=confirm candle) — 5R optimal for XAUUSD
 input double InpBEAtR        = 0.5;     // Breakeven at R (0=disabled)
-input int    InpSLBufferPct  = 0;       // SL Buffer % (0=disabled)
-input double InpMaxRiskPct   = 2;       // Max Risk % per trade (0=no limit)
-input double InpMaxDailyLossPct = 5;    // Max Daily Loss % (0=no limit)
+input int    InpSLBufferPct  = 10;      // SL Buffer % (push SL 10% further to avoid stop hunts)
+input int    InpEntryOffsetPts = 0;     // Entry Offset Pts (shift entry deeper vs exact swing level, 0=disabled)
+input bool   InpUseATRSL     = false;   // Use ATR-based SL (vs swing-based) — DISABLED: ATR M5 BTC too large (~$293) blocks all trades
+input double InpATRMultiplier = 1.5;    // ATR Multiplier for SL distance
+input int    InpATRPeriod    = 14;      // ATR calculation period
+
+// ============================================================================
+// TREND FILTER
+// ============================================================================
+input bool   InpUseTrendFilter = true;    // Use EMA Trend Filter
+input int    InpEMAFastPeriod  = 50;      // EMA Fast Period
+input int    InpEMASlowPeriod  = 200;     // EMA Slow Period
+input bool   InpUseHTFFilter   = true;    // Use Higher Timeframe Trend Filter
+input ENUM_TIMEFRAMES InpHTFTimeframe = PERIOD_H1; // HTF Timeframe for trend
+input bool   InpAllowNoTrend   = false;   // Allow trades when trend=NONE/CONFLICT (only block opposite trend)
+
+// ============================================================================
+// PARTIAL TAKE PROFIT
+// ============================================================================
+input bool   InpUsePartialTP      = true;    // Use Partial TP (close partial at X×R, move SL to BE)
+input double InpPartialTPAtR      = 1.0;     // Close partial at X × risk (R-multiple)
+input double InpPartialTPPct      = 50.0;    // % of position to close at partial TP
+input int    InpTrailAfterPartialPts = 0;    // Trailing stop pts after partial TP (0=use fixed BE)
+input bool   InpSmartFlip          = true;   // Smart flip: keep profitable position when new signal arrives
+input bool   InpRequireConfirmCandle = false; // Require 1 confirm candle after entry fills (anti-chop)
+
 input bool   InpShowVisual   = false;   // Show indicator on chart
 input ulong  InpMagic        = 20260210;// Magic Number
 
@@ -92,6 +127,14 @@ static double g_beEntryPrice    = 0;      // Entry price for BE calculation
 static double g_beOrigSL        = 0;      // Original SL price (for risk distance)
 static bool   g_beIsBuy         = false;  // Direction of position
 
+// -- Partial TP tracking --
+static bool   g_partialTPDone   = false;  // Has partial TP been executed for current trade?
+static bool   g_trailingActive  = false;  // Is trailing stop active after partial TP?
+
+// -- Confirmation candle tracking --
+static bool   g_confirmCandlePassed = false;  // Has 1 confirm candle closed after entry fill?
+static int    g_confirmBarsWaited   = 0;       // Bars elapsed since entry (for confirm candle check)
+
 // -- Active Lines --
 static string g_activeEntryLineName = "";
 static string g_activeSLLineName    = "";
@@ -108,9 +151,126 @@ static bool   g_hasActiveLine       = false;
 // -- Break count --
 static int g_breakCount = 0;
 
+// -- Indicator Handles (cached for efficiency) --
+static int g_atrHandle = INVALID_HANDLE;
+static int g_emaFastHandle = INVALID_HANDLE;
+static int g_emaSlowHandle = INVALID_HANDLE;
+static int g_htfEmaFastHandle = INVALID_HANDLE;
+static int g_htfEmaSlowHandle = INVALID_HANDLE;
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+
+// Calculate ATR-based Stop Loss distance
+// Returns SL price based on current ATR instead of swing levels
+double CalculateATRSL(const bool isBuy, const double entry)
+{
+   if(!InpUseATRSL)
+      return 0.0;  // Use swing-based SL
+   
+   // Use cached ATR handle
+   if(g_atrHandle == INVALID_HANDLE)
+   {
+      Print("⚠️ ATR indicator handle not initialized - using swing-based SL");
+      return 0.0;
+   }
+   
+   double atrArray[1];
+   if(CopyBuffer(g_atrHandle, 0, 0, 1, atrArray) <= 0)
+   {
+      Print("⚠️ ATR buffer copy failed - using swing-based SL");
+      return 0.0;
+   }
+   
+   double currentATR = atrArray[0];
+   
+   if(currentATR <= 0)
+   {
+      Print("⚠️ Invalid ATR value: ", currentATR, " - using swing-based SL");
+      return 0.0;
+   }
+   
+   // Calculate SL distance = ATR × Multiplier
+   double slDistance = currentATR * InpATRMultiplier;
+   double slPrice;
+   
+   if(isBuy)
+      slPrice = entry - slDistance;
+   else
+      slPrice = entry + slDistance;
+   
+   // Log the calculation
+   double slPips = slDistance / (_Point * 10);
+   Print("📏 ATR-based SL: ATR=", NormalizeDouble(currentATR/_Point, 1), "pts",
+         " × ", InpATRMultiplier, " = ", NormalizeDouble(slDistance/_Point, 1), "pts",
+         " (", NormalizeDouble(slPips, 1), " pips)",
+         " → SL=", NormalizeDouble(slPrice, _Digits));
+   
+   return slPrice;
+}
+
+// ============================================================================
+// TREND FILTER: EMA-based trend detection on current + HTF timeframe
+// Returns: +1 = uptrend (only BUY), -1 = downtrend (only SELL), 0 = no trend/conflicting
+// ============================================================================
+int GetTrendDirection()
+{
+   if(!InpUseTrendFilter)
+      return 0;  // No filter = allow all trades
+   
+   // ── Current TF EMA check ──
+   double emaFast[1], emaSlow[1];
+   if(g_emaFastHandle == INVALID_HANDLE || g_emaSlowHandle == INVALID_HANDLE)
+      return 0;
+   
+   if(CopyBuffer(g_emaFastHandle, 0, 1, 1, emaFast) <= 0 ||
+      CopyBuffer(g_emaSlowHandle, 0, 1, 1, emaSlow) <= 0)
+      return 0;
+   
+   int ctfTrend = 0;
+   if(emaFast[0] > emaSlow[0]) ctfTrend = +1;   // EMA50 > EMA200 = uptrend
+   else if(emaFast[0] < emaSlow[0]) ctfTrend = -1;  // EMA50 < EMA200 = downtrend
+   
+   // ── HTF EMA check (optional) ──
+   if(!InpUseHTFFilter)
+      return ctfTrend;
+   
+   double htfFast[1], htfSlow[1];
+   if(g_htfEmaFastHandle == INVALID_HANDLE || g_htfEmaSlowHandle == INVALID_HANDLE)
+      return ctfTrend;
+   
+   if(CopyBuffer(g_htfEmaFastHandle, 0, 1, 1, htfFast) <= 0 ||
+      CopyBuffer(g_htfEmaSlowHandle, 0, 1, 1, htfSlow) <= 0)
+      return ctfTrend;
+   
+   int htfTrend = 0;
+   if(htfFast[0] > htfSlow[0]) htfTrend = +1;
+   else if(htfFast[0] < htfSlow[0]) htfTrend = -1;
+   
+   // Both timeframes must agree for a valid trend signal
+   if(ctfTrend == htfTrend)
+      return ctfTrend;
+   
+   // Conflicting trends → no trade (protect capital)
+   return 0;
+}
+
+// Check if a specific trade direction is allowed by trend filter
+bool IsTrendAligned(const bool isBuy)
+{
+   int trend = GetTrendDirection();
+   if(trend == 0)
+   {
+      // No clear trend / conflicting
+      if(InpAllowNoTrend) return true;   // Relaxed: allow when no strong opposing trend
+      return false;                       // Strict: skip (capital preservation)
+   }
+   if(isBuy && trend == +1) return true;   // BUY in uptrend ✓
+   if(!isBuy && trend == -1) return true;  // SELL in downtrend ✓
+   return false;  // Counter-trend → always blocked
+}
+
 void DeleteObjectsByPrefix(const string prefix)
 {
    int total = ObjectsTotal(0, 0, -1);
@@ -254,6 +414,61 @@ double NormalizePrice(const double price)
    return NormalizeDouble(MathRound(price / tick) * tick, _Digits);
 }
 
+// ============================================================================
+// ENHANCED POSITION SIZING WITH TIERED RISK SYSTEM
+// ============================================================================
+// Enhanced Position Sizing với Tiered Risk System
+// Adaptive risk management dựa trên account growth
+double CalculateEnhancedLotSize(const double entry, const double sl)
+{
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double tieredRisk;
+   
+   // Tiered risk based on account growth stages
+   if (balance < 1500)
+      tieredRisk = 0.75;      // Conservative start - focus on preservation
+   else if (balance < 2500) 
+      tieredRisk = 1.0;       // Growing phase - moderate risk
+   else if (balance < 5000)
+      tieredRisk = 1.5;       // Standard phase - normal operations
+   else
+      tieredRisk = 2.0;       // Aggressive phase - maximize growth
+   
+   double riskAmount = balance * (tieredRisk / 100.0);
+   
+   // SL is already finalized (ATR or swing) — no double calculation
+   double slDistance = MathAbs(entry - sl);
+   double lossPer1Lot;
+   
+   // Use OrderCalcProfit for accurate loss calculation
+   if (!OrderCalcProfit(ORDER_TYPE_BUY, _Symbol, 1.0, entry, sl, lossPer1Lot))
+   {
+      // Fallback calculation  
+      lossPer1Lot = slDistance / _Point * 10.0;
+      Print("⚠️ OrderCalcProfit failed in CalculateEnhancedLotSize, using fallback");
+   }
+   else
+   {
+      lossPer1Lot = MathAbs(lossPer1Lot);
+   }
+   
+   double calculatedLot = (lossPer1Lot > 0) ? riskAmount / lossPer1Lot : InpLotSize;
+   
+   // Normalize to broker specifications
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   
+   calculatedLot = NormalizeDouble(calculatedLot / lotStep, 0) * lotStep;
+   calculatedLot = MathMax(minLot, MathMin(maxLot, calculatedLot));
+   
+   Print("📊 Enhanced Position Sizing: Balance=$", balance, 
+         " | Tier=", tieredRisk, "% | Risk=$", riskAmount, 
+         " | SL=", slDistance/_Point, "pts | Lot=", calculatedLot);
+   
+   return calculatedLot;
+}
+
 // Check if trade risk exceeds max allowed risk %
 // Returns true if trade is safe, false if risk too high (skip trade)
 bool CheckMaxRisk(const double entry, const double sl, const double lot)
@@ -276,15 +491,71 @@ bool CheckMaxRisk(const double entry, const double sl, const double lot)
 
    if(riskPct > InpMaxRiskPct)
    {
-      Print("⚠️ SKIP TRADE: Risk=", NormalizeDouble(riskPct, 2), "% ($",
+      Print("🛑 MAX RISK EXCEEDED: Calculated=", NormalizeDouble(riskPct, 2), "% ($",
             NormalizeDouble(riskMoney, 2), ") > MaxRisk=", InpMaxRiskPct,
             "% | Balance=$", NormalizeDouble(balance, 2),
-            " Lot=", lot, " SL_pts=", NormalizeDouble(slPoints, 1));
+            " | Lot=", lot, " | SL_Distance=", NormalizeDouble(slPoints, 1), "pts");
       return false;
    }
 
-   Print("ℹ️ Risk check OK: ", NormalizeDouble(riskPct, 2), "% ($",
+   Print("✅ Risk OK: ", NormalizeDouble(riskPct, 2), "% ($",
          NormalizeDouble(riskMoney, 2), ") ≤ MaxRisk=", InpMaxRiskPct,
+         "% | Balance=$", NormalizeDouble(balance, 2));
+   return true;
+}
+
+// Check if SL risk exceeds max allowed % of current balance
+// Uses OrderCalcProfit() for accurate loss calculation
+// Returns true if trade is safe, false if risk too high (skip trade)
+bool CheckMaxSLRisk(const bool isBuy, const double entry, const double sl, const double lot)
+{
+   if(InpMaxSLRiskPct <= 0) return true;  // Disabled
+
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(balance <= 0) return true;
+
+   // SL is already finalized — no ATR override needed
+   double actualSL = sl;
+
+   // Use OrderCalcProfit to get actual $ loss at SL price
+   double slLoss = 0;
+   ENUM_ORDER_TYPE orderType = isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   if(!OrderCalcProfit(orderType, _Symbol, lot, entry, actualSL, slLoss))
+   {
+      // Fallback: manual calculation
+      double slPoints  = MathAbs(entry - actualSL) / _Point;
+      double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      if(tickValue > 0 && tickSize > 0)
+      {
+         double pointValue = tickValue * (_Point / tickSize);
+         slLoss = -(lot * slPoints * pointValue);
+      }
+   }
+
+   // slLoss is negative (it's a loss)
+   double absLoss = MathAbs(slLoss);
+   double riskPct = absLoss / balance * 100.0;
+
+   if(riskPct > InpMaxSLRiskPct)
+   {
+      double balanceNeeded = absLoss / (InpMaxSLRiskPct / 100.0);
+      double slDist = MathAbs(entry - actualSL);
+      double slPips = slDist / (_Point * 10); // Convert to pips for display
+      Print("🛑 MAX SL RISK — TRADE BLOCKED");
+      Print("   Risk: ", NormalizeDouble(riskPct, 1), "% ($",
+            NormalizeDouble(absLoss, 2), ") > MaxSLRisk=", InpMaxSLRiskPct, "%");
+      Print("   Balance: $", NormalizeDouble(balance, 2),
+            " | SL Distance: ", NormalizeDouble(slPips, 1), " pips",
+            " | Lot: ", lot);
+      Print("   ➡️ Cần nạp thêm: $", NormalizeDouble(balanceNeeded - balance, 2),
+            " (tổng $", NormalizeDouble(balanceNeeded, 0),
+            ") để trade lệnh này ở ", InpMaxSLRiskPct, "% risk");
+      return false;
+   }
+
+   Print("✅ SL Risk OK: ", NormalizeDouble(riskPct, 1), "% ($",
+         NormalizeDouble(absLoss, 2), ") ≤ MaxSLRisk=", InpMaxSLRiskPct,
          "% | Balance=$", NormalizeDouble(balance, 2));
    return true;
 }
@@ -441,22 +712,31 @@ void DeleteAllPendingOrders()
 
 bool PlaceOrder(const bool isBuy, const double entry, const double sl, const double tp)
 {
+   // SL/TP already finalized by ProcessConfirmedSignal — no more overriding
    double entryN = NormalizePrice(entry);
    double slN    = NormalizePrice(sl);
    double tpN    = (tp > 0) ? NormalizePrice(tp) : 0;
+   
+   Print("🔄 PlaceOrder: ", (isBuy ? "BUY" : "SELL"), 
+         " Entry=", entryN, " SL=", slN, " TP=", tpN);
 
-   // Normalize lot to symbol constraints
-   double lot     = InpLotSize;
-   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   // Calculate lot size (single, consistent calculation)
+   double lot = CalculateEnhancedLotSize(entryN, slN);
+   
+   // Validate and clamp lot
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double stepLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    if(lot < minLot) lot = minLot;
    if(lot > maxLot) lot = maxLot;
    if(stepLot > 0) lot = MathFloor(lot / stepLot) * stepLot;
    lot = NormalizeDouble(lot, 2);
+   if(lot < minLot) lot = minLot;
 
-   // Max risk check
+   // Risk checks
    if(!CheckMaxRisk(entryN, slN, lot))
+      return false;
+   if(!CheckMaxSLRisk(isBuy, entryN, slN, lot))
       return false;
 
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -558,6 +838,255 @@ int TimeToShift(datetime t)
 }
 
 // ============================================================================
+// CONFIRMATION CANDLE — Close position if first candle after fill closes opposite
+// Protects against entering into chop/liquidity sweeps on M15
+// Only runs once per trade (until g_confirmCandlePassed = true)
+// ============================================================================
+void CheckConfirmCandle()
+{
+   if(!InpRequireConfirmCandle || g_confirmCandlePassed) return;
+   if(g_beEntryPrice == 0) return;
+
+   // Need at least 1 open position
+   int posCount = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(PositionGetSymbol(i) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != (long)InpMagic) continue;
+      posCount++;
+   }
+   if(posCount == 0) { g_confirmCandlePassed = true; return; }  // No position, reset
+
+   // Count bars elapsed since entry (approximate using bar shift of entry)
+   // We track bars waited by incrementing on each new bar in OnTick
+   g_confirmBarsWaited++;
+
+   if(g_confirmBarsWaited < 1) return;  // Wait at least 1 bar
+
+   // Check last CLOSED candle (bar 1) direction vs trade direction
+   double barOpen  = iOpen(_Symbol, _Period, 1);
+   double barClose = iClose(_Symbol, _Period, 1);
+   bool candleIsBull = (barClose > barOpen);
+   bool candleIsBear = (barClose < barOpen);
+
+   bool isConfirmed = (g_beIsBuy && candleIsBull) || (!g_beIsBuy && candleIsBear);
+   bool isAgainst   = (g_beIsBuy && candleIsBear) || (!g_beIsBuy && candleIsBull);
+
+   if(isConfirmed)
+   {
+      g_confirmCandlePassed = true;
+      Print("[CONFIRM] ✅ Confirm candle OK — trade continues. Bar=", g_confirmBarsWaited);
+      return;
+   }
+
+   if(isAgainst && g_confirmBarsWaited >= 2)
+   {
+      // 2 candles gone against us = close position early (anti-chop)
+      Print("[CONFIRM] ⚠️ Confirm candle FAILED (", g_confirmBarsWaited, " bars against) — closing position early");
+      CloseAllPositions();
+      DeleteAllPendingOrders();
+      g_confirmCandlePassed = true;  // Reset so we don't loop
+      g_beDone = true;
+      g_partialTPDone = true;
+   }
+}
+
+// ============================================================================
+// PARTIAL TP — Close InpPartialTPPct% of position at InpPartialTPAtR × risk
+// Then move SL to entry (breakeven) to protect remaining position
+// ============================================================================
+void CheckPartialTP()
+{
+   if(!InpUsePartialTP || g_partialTPDone) return;
+   if(g_beEntryPrice == 0 || g_beOrigSL == 0) return;
+
+   double risk = MathAbs(g_beEntryPrice - g_beOrigSL);
+   if(risk <= 0) return;
+
+   double partialTarget = InpPartialTPAtR * risk;  // Price distance to trigger partial TP
+
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      double posOpen     = PositionGetDouble(POSITION_PRICE_OPEN);
+      double posVolume   = PositionGetDouble(POSITION_VOLUME);
+      double currentSL   = PositionGetDouble(POSITION_SL);
+      double currentTP   = PositionGetDouble(POSITION_TP);
+
+      // Check if price reached partial TP level
+      bool reachedPartial = false;
+      if(g_beIsBuy)
+      {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         if((bid - posOpen) >= partialTarget) reachedPartial = true;
+      }
+      else
+      {
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         if((posOpen - ask) >= partialTarget) reachedPartial = true;
+      }
+
+      if(!reachedPartial) continue;
+
+      // Calculate lots to close (partial %)
+      double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+      double closeLot = posVolume * (InpPartialTPPct / 100.0);
+      closeLot = MathFloor(closeLot / lotStep) * lotStep;
+      closeLot = MathMax(minLot, closeLot);
+      if(closeLot >= posVolume) closeLot = posVolume;  // Close all if rounding
+
+      // Partial close
+      MqlTradeRequest req; MqlTradeResult res;
+      ZeroMemory(req); ZeroMemory(res);
+      req.action    = TRADE_ACTION_DEAL;
+      req.symbol    = _Symbol;
+      req.volume    = NormalizeDouble(closeLot, 2);
+      req.deviation = DEVIATION;
+      req.magic     = InpMagic;
+      req.position  = ticket;
+      req.comment   = "MST_MEDIO_PARTIAL_TP";
+
+      if(g_beIsBuy)
+      { req.type = ORDER_TYPE_SELL; req.price = SymbolInfoDouble(_Symbol, SYMBOL_BID); }
+      else
+      { req.type = ORDER_TYPE_BUY;  req.price = SymbolInfoDouble(_Symbol, SYMBOL_ASK); }
+
+      if(!OrderSend(req, res))
+      {
+         Print("⚠️ Partial TP close failed. Ticket=", ticket, " Retcode=", res.retcode);
+         continue;
+      }
+
+      double partialPips = partialTarget / (_Point * 10);
+      Print("✅ PARTIAL TP: Closed ", NormalizeDouble(closeLot, 2), " lots at ", InpPartialTPAtR,
+            "R (", NormalizeDouble(partialPips, 1), " pips) | Ticket=", ticket,
+            " | Remaining=", NormalizeDouble(posVolume - closeLot, 2), " lots");
+
+      // Move SL to breakeven OR activate trailing stop on remaining position
+      if(posVolume - closeLot >= minLot)
+      {
+         if(InpTrailAfterPartialPts > 0)
+         {
+            // Trailing stop mode: activate trailing, initial SL = breakeven
+            g_trailingActive = true;
+            double newSL = NormalizePrice(posOpen);  // Start at BE
+            if((g_beIsBuy && newSL < SymbolInfoDouble(_Symbol, SYMBOL_BID)) ||
+               (!g_beIsBuy && newSL > SymbolInfoDouble(_Symbol, SYMBOL_ASK)))
+            {
+               MqlTradeRequest modReq; MqlTradeResult modRes;
+               ZeroMemory(modReq); ZeroMemory(modRes);
+               modReq.action   = TRADE_ACTION_SLTP;
+               modReq.symbol   = _Symbol;
+               modReq.position = ticket;
+               modReq.sl       = newSL;
+               modReq.tp       = currentTP;
+               if(OrderSend(modReq, modRes))
+                  Print("✅ SL set to BE=", newSL, " (trailing will follow). TrailPts=", InpTrailAfterPartialPts);
+               else
+                  Print("⚠️ Initial trail BE move failed. Retcode=", modRes.retcode);
+            }
+         }
+         else
+         {
+            // Fixed BE mode (original behavior)
+            double newSL = NormalizePrice(posOpen);
+            if((g_beIsBuy && newSL < SymbolInfoDouble(_Symbol, SYMBOL_BID)) ||
+               (!g_beIsBuy && newSL > SymbolInfoDouble(_Symbol, SYMBOL_ASK)))
+            {
+               MqlTradeRequest modReq; MqlTradeResult modRes;
+               ZeroMemory(modReq); ZeroMemory(modRes);
+               modReq.action   = TRADE_ACTION_SLTP;
+               modReq.symbol   = _Symbol;
+               modReq.position = ticket;
+               modReq.sl       = newSL;
+               modReq.tp       = currentTP;  // Keep original TP
+
+               if(OrderSend(modReq, modRes))
+                  Print("✅ SL moved to breakeven=", newSL, " after partial TP");
+               else
+                  Print("⚠️ BE move after partial TP failed. Retcode=", modRes.retcode);
+            }
+         }
+      }
+
+      g_partialTPDone = true;
+      g_beDone = true;  // Also mark BE as done (partial TP already moved SL to entry)
+      break;
+   }
+}
+
+// ============================================================================
+// TRAILING STOP — After partial TP, trail SL at InpTrailAfterPartialPts behind price
+// Replaces fixed BE when InpTrailAfterPartialPts > 0
+// ============================================================================
+void CheckTrailingStop()
+{
+   if(!g_trailingActive || InpTrailAfterPartialPts <= 0) return;
+
+   double trailDist = InpTrailAfterPartialPts * _Point;
+
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      double posOpen   = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentSL = PositionGetDouble(POSITION_SL);
+      double currentTP = PositionGetDouble(POSITION_TP);
+
+      double newSL;
+      bool   shouldMove = false;
+
+      if(g_beIsBuy)
+      {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         newSL = NormalizePrice(bid - trailDist);
+         // Only move SL forward (higher for BUY), never back, and must be above BE
+         if(newSL > currentSL && newSL >= posOpen && newSL < bid)
+            shouldMove = true;
+      }
+      else
+      {
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         newSL = NormalizePrice(ask + trailDist);
+         // Only move SL forward (lower for SELL), never back, and must be below BE
+         if(newSL < currentSL && newSL <= posOpen && newSL > ask)
+            shouldMove = true;
+      }
+
+      if(!shouldMove) continue;
+
+      MqlTradeRequest modReq; MqlTradeResult modRes;
+      ZeroMemory(modReq); ZeroMemory(modRes);
+      modReq.action   = TRADE_ACTION_SLTP;
+      modReq.symbol   = _Symbol;
+      modReq.position = ticket;
+      modReq.sl       = newSL;
+      modReq.tp       = currentTP;
+
+      if(OrderSend(modReq, modRes))
+      {
+         double profitPts = g_beIsBuy
+            ? (newSL - posOpen) / _Point
+            : (posOpen - newSL) / _Point;
+         Print("[TRAIL] ✅ Trailing SL moved to ", newSL,
+               " (", NormalizeDouble(profitPts, 0), " pts profit locked)");
+      }
+      else
+         Print("[TRAIL] ⚠️ Trail SL move failed. Retcode=", modRes.retcode);
+   }
+}
+
+// ============================================================================
 // BREAKEVEN TRAILING — Move SL to entry when profit >= InpBEAtR × risk
 // ============================================================================
 void CheckBreakevenMove()
@@ -643,11 +1172,55 @@ int OnInit()
    g_lastTradingDay = StringToTime(StringFormat("%04d.%02d.%02d", dt.year, dt.mon, dt.day));
    g_dailyTradingPaused = false;
 
+   // ── Create indicator handles (cached for entire EA lifetime) ──
+   // ATR handle
+   if(InpUseATRSL)
+   {
+      g_atrHandle = iATR(_Symbol, _Period, InpATRPeriod);
+      if(g_atrHandle == INVALID_HANDLE)
+         Print("⚠️ Failed to create ATR handle");
+   }
+   
+   // EMA handles for trend filter (current timeframe)
+   if(InpUseTrendFilter)
+   {
+      g_emaFastHandle = iMA(_Symbol, _Period, InpEMAFastPeriod, 0, MODE_EMA, PRICE_CLOSE);
+      g_emaSlowHandle = iMA(_Symbol, _Period, InpEMASlowPeriod, 0, MODE_EMA, PRICE_CLOSE);
+      if(g_emaFastHandle == INVALID_HANDLE || g_emaSlowHandle == INVALID_HANDLE)
+         Print("⚠️ Failed to create EMA handles for trend filter");
+   }
+   
+   // HTF EMA handles
+   if(InpUseHTFFilter)
+   {
+      g_htfEmaFastHandle = iMA(_Symbol, InpHTFTimeframe, InpEMAFastPeriod, 0, MODE_EMA, PRICE_CLOSE);
+      g_htfEmaSlowHandle = iMA(_Symbol, InpHTFTimeframe, InpEMASlowPeriod, 0, MODE_EMA, PRICE_CLOSE);
+      if(g_htfEmaFastHandle == INVALID_HANDLE || g_htfEmaSlowHandle == INVALID_HANDLE)
+         Print("⚠️ Failed to create HTF EMA handles");
+   }
+
    Print("ℹ️ Strategy:",
          " PivotLen=", InpPivotLen, " BreakMult=", InpBreakMult,
          " ImpulseMult=", InpImpulseMult, " TP_RR=", InpTPFixedRR,
-         " BE@R=", InpBEAtR, " SLBuf=", InpSLBufferPct, "%",
-         " MaxDailyLoss=", InpMaxDailyLossPct, "%");
+         " BE@R=", InpBEAtR, " SLBuf=", InpSLBufferPct, "%");
+   Print("💰 Risk Management:", 
+         " DynamicLot=", (InpUseDynamicLot ? "ON" : "OFF"),
+         " | FixedLot=", InpLotSize, 
+         " | RiskPct=", InpRiskPct, "%",
+         " | MaxRisk=", InpMaxRiskPct, "%",
+         " | MaxDailyLoss=", InpMaxDailyLossPct, "%",
+         " | MaxSLRisk=", InpMaxSLRiskPct, "%");
+   Print("📊 SL System:",
+         " ATR-based=", (InpUseATRSL ? "ON" : "OFF"),
+         " | ATRMultiplier=", InpATRMultiplier,
+         " | ATRPeriod=", InpATRPeriod,
+         " | SLBuffer=", InpSLBufferPct, "%");
+   Print("📈 Trend Filter:",
+         " EMA=", (InpUseTrendFilter ? "ON" : "OFF"),
+         " | Fast=", InpEMAFastPeriod,
+         " | Slow=", InpEMASlowPeriod,
+         " | HTF=", (InpUseHTFFilter ? "ON" : "OFF"),
+         " | HTF_TF=", EnumToString(InpHTFTimeframe));
 
    return(INIT_SUCCEEDED);
 }
@@ -655,6 +1228,12 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    DeleteObjectsByPrefix(g_objPrefix);
+   // Release all indicator handles
+   if(g_atrHandle != INVALID_HANDLE) { IndicatorRelease(g_atrHandle); g_atrHandle = INVALID_HANDLE; }
+   if(g_emaFastHandle != INVALID_HANDLE) { IndicatorRelease(g_emaFastHandle); g_emaFastHandle = INVALID_HANDLE; }
+   if(g_emaSlowHandle != INVALID_HANDLE) { IndicatorRelease(g_emaSlowHandle); g_emaSlowHandle = INVALID_HANDLE; }
+   if(g_htfEmaFastHandle != INVALID_HANDLE) { IndicatorRelease(g_htfEmaFastHandle); g_htfEmaFastHandle = INVALID_HANDLE; }
+   if(g_htfEmaSlowHandle != INVALID_HANDLE) { IndicatorRelease(g_htfEmaSlowHandle); g_htfEmaSlowHandle = INVALID_HANDLE; }
 }
 
 // OnTradeTransaction removed — daily loss is checked via OnTick using balance only.
@@ -692,6 +1271,14 @@ void OnTick()
    if(SHOW_VISUAL && SHOW_BREAK_LINE)
       ExtendActiveLines();
 
+   // ── Partial TP: Close partial lot at InpPartialTPAtR × risk ──
+   if(InpUsePartialTP && !g_partialTPDone)
+      CheckPartialTP();
+
+   // ── Trailing Stop: trail SL after partial TP if enabled ──
+   if(g_trailingActive && InpTrailAfterPartialPts > 0)
+      CheckTrailingStop();
+
    // ── Breakeven: Move SL to entry when profit >= BE_AT_R × risk ──
    if(!g_beDone && InpBEAtR > 0)
       CheckBreakevenMove();
@@ -708,6 +1295,10 @@ void OnTick()
    datetime currentBarTime = iTime(_Symbol, _Period, 0);
    if(currentBarTime == g_lastBarTime) return;
    g_lastBarTime = currentBarTime;
+
+   // ── Confirm Candle: close position if first bars close against direction ──
+   if(InpRequireConfirmCandle && !g_confirmCandlePassed)
+      CheckConfirmCandle();
 
    int bars = Bars(_Symbol, _Period);
    if(bars < InpPivotLen * 2 + 25) return;  // Need enough bars for avg body
@@ -1150,29 +1741,76 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    g_breakCount++;
    string suffix = IntegerToString(g_breakCount);
 
-   // Calculate SL with buffer (auto 5% of risk distance)
-   double slBuffered = sl;
-   double riskDist = MathAbs(entry - sl);
+   // ── TREND FILTER: Only trade in direction of the trend ──
+   if(InpUseTrendFilter)
+   {
+      if(!IsTrendAligned(isBuy))
+      {
+         int trend = GetTrendDirection();
+         Print("🚫 TREND FILTER: ", (isBuy ? "BUY" : "SELL"), " blocked. ",
+               "Trend=", (trend == +1 ? "UP" : (trend == -1 ? "DOWN" : "NONE/CONFLICT")),
+               " | Signal=", (isBuy ? "BUY" : "SELL"));
+         return;
+      }
+   }
+
+   // ── Apply Entry Offset: shift limit entry deeper vs exact swing level ──
+   // This avoids placing limit at exact SH/SL level (liquidity sweet spot / stop hunt zone)
+   // For SELL: entry shifts UP (further from SL) → fills slightly above swing high
+   // For BUY:  entry shifts DOWN (further from SL) → fills slightly below swing low
+   double entryFinal = entry;
+   if(InpEntryOffsetPts > 0)
+   {
+      double offsetDist = InpEntryOffsetPts * _Point;
+      entryFinal = isBuy ? entry - offsetDist : entry + offsetDist;
+      entryFinal = NormalizePrice(entryFinal);
+   }
+
+   // ── Determine FINAL SL: ATR-based or swing-based ──
+   // This MUST be done BEFORE TP calculation to ensure consistent RR
+   double finalSL = sl;
+   if(InpUseATRSL)
+   {
+      double atrSL = CalculateATRSL(isBuy, entry);
+      if(atrSL > 0)
+      {
+         finalSL = atrSL;
+         Print("🔧 Using ATR-based SL: Swing=", sl, " → ATR=", finalSL);
+      }
+      else
+      {
+         Print("⚠️ ATR SL failed - using swing-based SL: ", sl);
+      }
+   }
+
+   // Apply SL buffer
+   double slBuffered = finalSL;
+   double riskDist = MathAbs(entryFinal - finalSL);
    if(InpSLBufferPct > 0 && riskDist > 0)
    {
       double bufferAmt = riskDist * InpSLBufferPct / 100.0;
-      if(isBuy)  slBuffered = sl - bufferAmt;
-      else       slBuffered = sl + bufferAmt;
+      if(isBuy)  slBuffered = finalSL - bufferAmt;
+      else       slBuffered = finalSL + bufferAmt;
+      riskDist = MathAbs(entryFinal - slBuffered);
    }
 
-   // Calculate TP
+   // ── Calculate TP from FINAL SL distance (consistent RR) ──
    double tp;
    if(InpTPFixedRR > 0)
    {
-      // Fixed RR TP: TP = entry ± InpTPFixedRR × risk
-      if(isBuy)  tp = entry + InpTPFixedRR * riskDist;
-      else       tp = entry - InpTPFixedRR * riskDist;
+      // Fixed RR TP based on FINAL SL distance = TRUE 1:1.5 RR etc
+      if(isBuy)  tp = entryFinal + InpTPFixedRR * riskDist;
+      else       tp = entryFinal - InpTPFixedRR * riskDist;
    }
    else
    {
       // Confirm Break TP: high/low of confirm break candle
       tp = isBuy ? waveHigh : waveLow;
    }
+
+   Print("📐 CONSISTENT RR: Entry=", entryFinal, " SL=", slBuffered, " TP=", tp,
+         " | RiskDist=", NormalizeDouble(riskDist, 2),
+         " | Actual RR=1:", NormalizeDouble(MathAbs(tp - entryFinal) / riskDist, 2));
 
    datetime signalTime = iTime(_Symbol, _Period, 1);  // Signal detected on bar 1
 
@@ -1193,18 +1831,18 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
          datetime now = signalTime;
          string entName = g_objPrefix + "ENT_" + suffix;
          string slName  = g_objPrefix + "SL_"  + suffix;
-         DrawHLine(entName, entryTime, entry, now,
+         DrawHLine(entName, entryTime, entryFinal, now,
                    isBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, STYLE_DASH, 1);
-         DrawHLine(slName, slTime, sl, now,
+         DrawHLine(slName, slTime, slBuffered, now,
                    COL_SL, STYLE_DASH, 1);
 
          // Labels
          string entLbl = g_objPrefix + "ENTLBL_" + suffix;
          string slLbl  = g_objPrefix + "SLLBL_"  + suffix;
-         DrawTextLabel(entLbl, now, entry,
+         DrawTextLabel(entLbl, now, entryFinal,
                        isBuy ? "Entry Buy" : "Entry Sell",
                        isBuy ? COL_ENTRY_BUY : COL_ENTRY_SELL, 7);
-         DrawTextLabel(slLbl, now, sl, "SL", COL_SL, 7);
+         DrawTextLabel(slLbl, now, slBuffered, "SL", COL_SL, 7);
 
          // TP line
          if(tp > 0)
@@ -1238,7 +1876,7 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    {
       string msg = StringFormat("MST Medio: %s | Entry=%.2f SL=%.2f TP=%.2f | %s",
                                  isBuy ? "BUY" : "SELL",
-                                 entry, slBuffered, tp, _Symbol);
+                                 entryFinal, slBuffered, tp, _Symbol);
       Alert(msg);
       Print("🔔 ", msg);
    }
@@ -1247,37 +1885,58 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
    {
       // Cancel pending orders (not yet filled)
       DeleteAllPendingOrders();
-      // Only close existing positions if they are in PROFIT
-      // If position is losing, let SL handle it to avoid realizing large losses
-      ClosePositionsInProfit();
 
-      // If there's still an open position (losing), skip new trade to avoid hedging
-      if(HasActiveOrders())
+      // Smart flip: if InpSmartFlip=true and current position already passed partial TP
+      // (SL is at BE or trailing), keep it running — don't close it for a new signal
+      // Otherwise: close all existing positions to flip direction
+      bool hasProtectedPos = false;
+      if(InpSmartFlip && g_partialTPDone)
       {
-         Print("ℹ️ Skip new ", (isBuy ? "BUY" : "SELL"),
-               " — existing position still open (let SL handle it)");
-         return;
+         // Check if any position is still open and at-or-above BE
+         for(int pi = PositionsTotal() - 1; pi >= 0; pi--)
+         {
+            ulong t = PositionGetTicket(pi);
+            if(t == 0) continue;
+            if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+            if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+            double profit = PositionGetDouble(POSITION_PROFIT);
+            if(profit >= 0)  // Position at BE or in profit
+            {
+               hasProtectedPos = true;
+               Print("[SmartFlip] Keeping profitable position Ticket=", t,
+                     " P&L=", NormalizeDouble(profit, 2), " while placing new signal");
+               break;
+            }
+         }
       }
 
-      // Reset breakeven state for new trade
-      g_beDone       = false;
-      g_beEntryPrice = entry;
-      g_beOrigSL     = slBuffered;
-      g_beIsBuy      = isBuy;
-
-      // Normalize lot to symbol constraints
-      double totalLot = InpLotSize;
-      double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-      double maxLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-      double stepLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-      if(totalLot < minLot) totalLot = minLot;
-      if(totalLot > maxLot) totalLot = maxLot;
-      if(stepLot > 0) totalLot = MathFloor(totalLot / stepLot) * stepLot;
-      totalLot = NormalizeDouble(totalLot, 2);
-
-      // Max risk check — use InpLotSize (NOT doubled) for risk check
-      if(!CheckMaxRisk(entry, slBuffered, totalLot))
-         return;
+      if(!hasProtectedPos)
+      {
+         // Close all existing positions to flip/reset
+         CloseAllPositions();
+         // Reset breakeven state for new trade
+         g_beDone       = false;
+         g_partialTPDone = false;
+         g_trailingActive = false;
+         g_confirmCandlePassed = false;
+         g_confirmBarsWaited   = 0;
+         g_beEntryPrice = entryFinal;
+         g_beOrigSL     = slBuffered;
+         g_beIsBuy      = isBuy;
+      }
+      else
+      {
+         // Keep the protected position; reset state for new trade tracking
+         g_beDone       = false;
+         g_partialTPDone = false;
+         g_trailingActive = false;
+         g_confirmCandlePassed = false;
+         g_confirmBarsWaited   = 0;
+         g_beEntryPrice = entryFinal;
+         g_beOrigSL     = slBuffered;
+         g_beIsBuy      = isBuy;
+         Print("[SmartFlip] Placing new order alongside protected position");
+      }
 
       // Pre-check: don't place order if equity already near daily loss limit
       if(InpMaxDailyLossPct > 0 && g_dailyStartBalance > 0)
@@ -1285,18 +1944,18 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
          double equity = AccountInfoDouble(ACCOUNT_EQUITY);
          double currentLossPct = (g_dailyStartBalance - equity) / g_dailyStartBalance * 100.0;
          double remainingPct = InpMaxDailyLossPct - currentLossPct;
-         if(remainingPct < 2.0)  // Less than 2% room left before daily limit
+         if(remainingPct < 1.0)  // Less than 1% room left before daily limit
          {
             Print("⚠️ SKIP TRADE: Equity too close to daily loss limit. ",
                   "CurrentLoss=", NormalizeDouble(currentLossPct, 2),
-                  "% | Remaining=", NormalizeDouble(remainingPct, 2),
-                  "% | MinRequired=2.0%");
+                  "% | Remaining=", NormalizeDouble(remainingPct, 2), "%");
             return;
          }
       }
 
-      // Place order
-      PlaceOrder(isBuy, entry, slBuffered, tp);
+      // Place order — PlaceOrder now uses the SAME final SL for lot sizing
+      // No more double calculation: SL/TP/Lot are all consistent
+      PlaceOrder(isBuy, entryFinal, slBuffered, tp);
    }
 }
 //+------------------------------------------------------------------+
