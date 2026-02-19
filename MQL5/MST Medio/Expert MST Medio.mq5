@@ -24,23 +24,24 @@
 // ============================================================================
 // POSITION SIZING & RISK MANAGEMENT
 // ============================================================================
-input bool   InpUseDynamicLot   = true;     // Use Dynamic Position Sizing
-input double InpLotSize         = 0.01;    // Fixed Lot Size (if dynamic=false)
+input bool   InpUseDynamicLot   = false;    // Use Dynamic Position Sizing
+input double InpLotSize         = 0.02;    // Fixed Lot Size (if dynamic=false)
 input double InpRiskPct         = 2.0;     // Risk % per trade (dynamic sizing)
 input double InpMaxRiskPct      = 2.0;     // Max Risk % per trade (0=no limit)
 input double InpMaxDailyLossPct = 3.0;     // Max Daily Loss % (0=no limit)
-input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no limit) — BTC swing SL ~$29-$293, need wider limit
+input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no limit)
 
 // ============================================================================
 // TRADING LOGIC PARAMETERS
 // ============================================================================
-input int    InpPivotLen     = 3;       // Pivot Length
+input int    InpPivotLen     = 5;       // Pivot Length (5=significant swings, 3=frequent)
 input double InpBreakMult    = 0.25;    // Break Multiplier
-input double InpImpulseMult  = 2.0;     // Impulse Multiplier
-input double InpTPFixedRR    = 4.0;   // TP Fixed RR (0=confirm candle)
+input double InpImpulseMult  = 1.5;     // Impulse Multiplier (1.5=strong breakouts only)
+input double InpTPFixedRR    = 3.0;     // TP Fixed RR (0=confirm candle)
 input double InpBEAtR        = 0.5;     // Breakeven at R (0=disabled)
 input int    InpSLBufferPct  = 10;      // SL Buffer % (push SL 10% further to avoid stop hunts)
 input int    InpEntryOffsetPts = 0;     // Entry Offset Pts (shift entry deeper vs exact swing level, 0=disabled)
+input int    InpMinSLDistPts = 0;       // Min SL Distance Pts (skip tiny swings, 0=disabled)
 input bool   InpUseATRSL     = false;   // Use ATR-based SL (vs swing-based)
 input double InpATRMultiplier = 1.5;    // ATR Multiplier for SL distance
 input int    InpATRPeriod    = 14;      // ATR calculation period
@@ -470,8 +471,9 @@ double CalculateEnhancedLotSize(const double entry, const double sl)
 }
 
 // Check if trade risk exceeds max allowed risk %
+// Uses OrderCalcProfit() for accurate cross-currency risk calculation
 // Returns true if trade is safe, false if risk too high (skip trade)
-bool CheckMaxRisk(const double entry, const double sl, const double lot)
+bool CheckMaxRisk(const bool isBuy, const double entry, const double sl, const double lot)
 {
    if(InpMaxRiskPct <= 0) return true;  // No limit
 
@@ -481,12 +483,20 @@ bool CheckMaxRisk(const double entry, const double sl, const double lot)
    double slPoints  = MathAbs(entry - sl) / _Point;
    if(slPoints <= 0) return true;
 
-   double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-   double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   if(tickValue <= 0 || tickSize <= 0) return true;
+   // Use OrderCalcProfit for accurate loss calculation (handles JPY pairs, cross rates, pip mode)
+   double slLoss = 0;
+   ENUM_ORDER_TYPE orderType = isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   if(!OrderCalcProfit(orderType, _Symbol, lot, entry, sl, slLoss))
+   {
+      // Fallback: manual calculation
+      double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      if(tickValue <= 0 || tickSize <= 0) return true;
+      double pointValue = tickValue * (_Point / tickSize);
+      slLoss = -(lot * slPoints * pointValue);
+   }
 
-   double pointValue = tickValue * (_Point / tickSize);
-   double riskMoney  = lot * slPoints * pointValue;
+   double riskMoney  = MathAbs(slLoss);
    double riskPct    = riskMoney / balance * 100.0;
 
    if(riskPct > InpMaxRiskPct)
@@ -721,7 +731,11 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
          " Entry=", entryN, " SL=", slN, " TP=", tpN);
 
    // Calculate lot size (single, consistent calculation)
-   double lot = CalculateEnhancedLotSize(entryN, slN);
+   double lot;
+   if(InpUseDynamicLot)
+      lot = CalculateEnhancedLotSize(entryN, slN);
+   else
+      lot = InpLotSize;
    
    // Validate and clamp lot
    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -734,7 +748,7 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
    if(lot < minLot) lot = minLot;
 
    // Risk checks
-   if(!CheckMaxRisk(entryN, slN, lot))
+   if(!CheckMaxRisk(isBuy, entryN, slN, lot))
       return false;
    if(!CheckMaxSLRisk(isBuy, entryN, slN, lot))
       return false;
@@ -1202,7 +1216,8 @@ int OnInit()
    Print("ℹ️ Strategy:",
          " PivotLen=", InpPivotLen, " BreakMult=", InpBreakMult,
          " ImpulseMult=", InpImpulseMult, " TP_RR=", InpTPFixedRR,
-         " BE@R=", InpBEAtR, " SLBuf=", InpSLBufferPct, "%");
+         " BE@R=", InpBEAtR, " SLBuf=", InpSLBufferPct, "%",
+         " MinSLDist=", InpMinSLDistPts, "pts");
    Print("💰 Risk Management:", 
          " DynamicLot=", (InpUseDynamicLot ? "ON" : "OFF"),
          " | FixedLot=", InpLotSize, 
@@ -1792,6 +1807,21 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       if(isBuy)  slBuffered = finalSL - bufferAmt;
       else       slBuffered = finalSL + bufferAmt;
       riskDist = MathAbs(entryFinal - slBuffered);
+   }
+
+   // ── SIGNAL QUALITY: Skip tiny swings (noise filter) ──
+   if(InpMinSLDistPts > 0)
+   {
+      double minDist = InpMinSLDistPts * _Point;
+      if(riskDist < minDist)
+      {
+         double slPips = riskDist / (_Point * 10);
+         double minPips = minDist / (_Point * 10);
+         Print("🚫 SKIP TINY SWING: SL distance=", NormalizeDouble(slPips, 1),
+               " pips < Min=", NormalizeDouble(minPips, 1), " pips",
+               " | Entry=", entryFinal, " SL=", slBuffered);
+         return;
+      }
    }
 
    // ── Calculate TP from FINAL SL distance (consistent RR) ──
