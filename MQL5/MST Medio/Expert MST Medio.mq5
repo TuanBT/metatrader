@@ -37,13 +37,13 @@ input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no lim
 input int    InpPivotLen     = 5;       // Pivot Length (5=significant swings, 3=frequent)
 input double InpBreakMult    = 0.25;    // Break Multiplier
 input double InpImpulseMult  = 1.5;     // Impulse Multiplier (1.5=strong breakouts only)
-input double InpTPFixedRR    = 3.0;     // TP Fixed RR (0=confirm candle)
+input double InpTPFixedRR    = 2.0;     // TP Fixed RR (0=confirm candle) [optimized: 3.0→2.0 for USDJPY H1]
 input double InpBEAtR        = 0.5;     // Breakeven at R (0=disabled)
 input int    InpSLBufferPct  = 10;      // SL Buffer % (push SL 10% further to avoid stop hunts)
 input int    InpEntryOffsetPts = 0;     // Entry Offset Pts (shift entry deeper vs exact swing level, 0=disabled)
 input int    InpMinSLDistPts = 0;       // Min SL Distance Pts (skip tiny swings, 0=disabled)
-input bool   InpUseATRSL     = false;   // Use ATR-based SL (vs swing-based)
-input double InpATRMultiplier = 1.5;    // ATR Multiplier for SL distance
+input bool   InpUseATRSL     = true;    // Use ATR-based SL (vs swing-based) [optimized: false→true for better TP reachability]
+input double InpATRMultiplier = 2.0;    // ATR Multiplier for SL distance [optimized: 1.5→2.0 to give more room]
 input int    InpATRPeriod    = 14;      // ATR calculation period
 
 // ============================================================================

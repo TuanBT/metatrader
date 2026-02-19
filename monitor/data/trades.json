@@ -1,0 +1,1666 @@
+[
+  {
+    "type": "open",
+    "time": "2026-02-13 18:35:01.201",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "18:35:01.201\tExpert MST Medio (ETHUSDm,M5)\tAlert: MST Medio: BUY | Entry=1946.80 SL=1930.76 TP=1967.44 | ETHUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 13:01:02.688",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "13:01:02.688\tExpert MST Medio (ETHUSDm,M1)\tAlert: MST Medio: SELL | Entry=2050.99 SL=2053.79 TP=2048.85 | ETHUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 13:01:02.772",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "13:01:02.772\tExpert MST Medio (ETHUSDm,M1)\t?? MST Medio: SELL | Entry=2050.99 SL=2053.79 TP=2048.85 | ETHUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 13:01:02.995",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "13:01:02.995\tExpert MST Medio (ETHUSDm,M1)\t? Pending SELL Ticket=3486083367 Lot=0.1 Entry=2050.99 SL=2053.79 TP=2048.85"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 13:26:00.686",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "13:26:00.686\tExpert MST Medio (BTCUSDm,M1)\tAlert: MST Medio: BUY | Entry=68768.38 SL=68683.42 TP=68843.18 | BTCUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 13:26:00.895",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "13:26:00.895\tExpert MST Medio (BTCUSDm,M1)\t? Pending BUY Ticket=3486100308 Lot=0.01 Entry=68768.38 SL=68683.42 TP=68843.18"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 14:57:00.294",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "14:57:00.294\tExpert MST Medio (BTCUSDm,M1)\tAlert: MST Medio: BUY | Entry=68964.80 SL=68911.25 TP=69177.04 | BTCUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 14:57:00.591",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "14:57:00.591\tExpert MST Medio (BTCUSDm,M1)\t? Pending BUY Ticket=3486176832 Lot=0.01 Entry=68964.8 SL=68911.25 TP=69177.04"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 23:29:00.497",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "23:29:00.497\tExpert MST Medio (BTCUSDm,M1)\tAlert: MST Medio: SELL | Entry=69623.16 SL=69719.86 TP=69444.38 | BTCUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-14 23:29:00.739",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "23:29:00.739\tExpert MST Medio (BTCUSDm,M1)\t? Pending SELL Ticket=3486944516 Lot=0.02 Entry=69623.16 SL=69719.86 TP=69444.38"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 00:15:00.260",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "00:15:00.260\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18503 | W1Trough=1.18459 | SL=1.18561 | Waiting close < 1.18459"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 00:15:00.306",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "00:15:00.306\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 00:30:00.244",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "00:30:00.244\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=67797.82 | W1Peak=67943.72 | SL=67239.62 | Waiting close > 67943.72"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 00:30:00.244",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "00:30:00.244\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 00:55:01.087",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "00:55:01.087\tExpert MST Medio (XAUUSDm,M5)\t?? Pending BUY: Break above SH0=4983.131 | W1Peak=4989.377 | SL=4972.936 | Waiting close > 4989.377"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 00:55:01.136",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "00:55:01.136\tExpert MST Medio (XAUUSDm,M5)\tAlert: MST Medio: BUY | Entry=4983.13 SL=4972.94 TP=4994.30 | XAUUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 00:55:01.272",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "00:55:01.272\tExpert MST Medio (XAUUSDm,M5)\t? Pending BUY Ticket=3497148203 Lot=0.01 Entry=4983.131 SL=4972.936 TP=4994.302"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 01:05:01.044",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "01:05:01.044\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1976.03 | W1Peak=1987.34 | SL=1962.29 | Waiting close > 1987.34"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 01:05:01.044",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "01:05:01.044\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 01:25:00.346",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "01:25:00.346\tExpert MST Medio (USOILm,M5)\t?? Pending BUY: Break above SH0=63.547 | W1Peak=63.688 | SL=63.329 | Waiting close > 63.688"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 01:50:01.219",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "01:50:01.219\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=68034.6 | W1Peak=68124.01 | SL=67541.47 | Waiting close > 68124.01"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 01:50:01.253",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "01:50:01.253\tExpert MST Medio (BTCUSDm,M5)\tAlert: MST Medio: BUY | Entry=68034.60 SL=67541.47 TP=68183.92 | BTCUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 01:50:01.444",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "01:50:01.444\tExpert MST Medio (BTCUSDm,M5)\t? Pending BUY Ticket=3497372554 Lot=0.01 Entry=68034.6 SL=67541.47 TP=68183.92"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 04:15:00.356",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "04:15:00.356\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1978.38 | W1Peak=1983.87 | SL=1969.38 | Waiting close > 1983.87"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 04:15:00.356",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "04:15:00.356\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 04:40:02.524",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "04:40:02.524\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=68095.29 | W1Peak=68212.43 | SL=67771.82 | Waiting close > 68212.43"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 04:40:02.524",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "04:40:02.524\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 05:20:02.358",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "05:20:02.358\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=68590.64 | W1Peak=68899.22 | SL=67771.82 | Waiting close > 68899.22"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 05:20:03.432",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "05:20:03.432\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1993.69 | W1Peak=2002.55 | SL=1984.73 | Waiting close > 2002.55"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 05:20:03.432",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "05:20:03.432\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 05:20:13.424",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "05:20:13.424\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18525 | W1Trough=1.1850100000000001 | SL=1.18542 | Waiting close < 1.1850100000000001"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 05:20:13.447",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "05:20:13.447\tExpert MST Medio (EURUSDm,M5)\tAlert: MST Medio: SELL | Entry=1.19 SL=1.19 TP=1.18 | EURUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 05:20:13.520",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "05:20:13.520\tExpert MST Medio (EURUSDm,M5)\t? Pending SELL Ticket=3498002099 Lot=0.01 Entry=1.18525 SL=1.18542 TP=1.18486"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 05:30:00.233",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "05:30:00.233\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY cancelled: Price touched Entry=68590.64 | Low=68534.84"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 05:30:00.865",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "05:30:00.865\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=153.447 | W1Trough=153.353 | SL=153.534 | Waiting close < 153.353"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 05:30:00.865",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "05:30:00.865\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 06:05:01.127",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "06:05:01.127\tExpert MST Medio (USOILm,M5)\t?? Pending BUY cancelled: Price touched Entry=63.547 | Low=63.476"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 07:15:00.179",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "07:15:00.179\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY: Break above SH0=153.534 | W1Peak=153.655 | SL=153.353 | Waiting close > 153.655"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 07:15:00.211",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "07:15:00.211\tExpert MST Medio (USDJPYm,M5)\tAlert: MST Medio: BUY | Entry=153.53 SL=153.35 TP=153.72 | USDJPYm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 07:15:00.347",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "07:15:00.347\tExpert MST Medio (USDJPYm,M5)\t? Pending BUY Ticket=3498470626 Lot=0.01 Entry=153.534 SL=153.353 TP=153.721"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 07:15:01.399",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "07:15:01.399\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=68799.77 | W1Peak=68950.14 | SL=68577.69 | Waiting close > 68950.14"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 07:15:01.399",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "07:15:01.399\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 07:15:01.399",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "07:15:01.399\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1998.39 | W1Peak=2000.99 | SL=1991.01 | Waiting close > 2000.99"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 07:15:01.399",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "07:15:01.399\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 08:10:00.367",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "08:10:00.367\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=2000.99 | W1Peak=2004.98 | SL=1991.64 | Waiting close > 2004.98"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 08:10:00.367",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "08:10:00.367\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 08:20:00.063",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "08:20:00.063\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=153.353 | W1Trough=153.227 | SL=153.721 | Waiting close < 153.227"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 08:20:00.079",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "08:20:00.079\tExpert MST Medio (USDJPYm,M5)\tAlert: MST Medio: SELL | Entry=153.35 SL=153.72 TP=153.16 | USDJPYm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 08:20:00.270",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "08:20:00.270\tExpert MST Medio (USDJPYm,M5)\t? Pending SELL Ticket=3498963228 Lot=0.01 Entry=153.353 SL=153.721 TP=153.159"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 08:25:01.559",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "08:25:01.559\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18464 | W1Trough=1.18418 | SL=1.18518 | Waiting close < 1.18418"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 08:25:01.564",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "08:25:01.564\tExpert MST Medio (EURUSDm,M5)\tAlert: MST Medio: SELL | Entry=1.18 SL=1.19 TP=1.18 | EURUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 08:25:01.738",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "08:25:01.738\tExpert MST Medio (EURUSDm,M5)\t? Pending SELL Ticket=3498993638 Lot=0.01 Entry=1.18464 SL=1.18518 TP=1.18403"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 09:15:00.399",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "09:15:00.399\tExpert MST Medio (USOILm,M5)\t?? Pending SELL: Break below SL0=63.452 | W1Trough=63.404 | SL=63.597 | Waiting close < 63.404"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 09:15:00.399",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "09:15:00.399\tExpert MST Medio (USOILm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 09:25:00.732",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "09:25:00.732\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL: Break below SL0=68739.93 | W1Trough=68335.67 | SL=68970.49 | Waiting close < 68335.67"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 09:25:00.732",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "09:25:00.732\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 09:25:00.909",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "09:25:00.909\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1992.66 | W1Trough=1978.27 | SL=2006.71 | Waiting close < 1978.27"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 09:25:00.909",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "09:25:00.909\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 09:30:00.295",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "09:30:00.295\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=153.159 | W1Trough=153.051 | SL=153.393 | Waiting close < 153.051"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 09:30:00.295",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "09:30:00.295\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 09:35:00.326",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "09:35:00.326\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=68970.49 | W1Peak=69209.85 | SL=68335.67 | Waiting close > 69209.85"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 09:35:00.326",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "09:35:00.326\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 10:30:00.867",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "10:30:00.867\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18409 | W1Trough=1.18378 | SL=1.18469 | Waiting close < 1.18378"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 10:30:00.867",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "10:30:00.867\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 10:30:05.366",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "10:30:05.366\tExpert MST Medio (USOILm,M5)\t?? Pending SELL: Break below SL0=63.404 | W1Trough=63.364 | SL=63.515 | Waiting close < 63.364"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 10:30:05.366",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "10:30:05.366\tExpert MST Medio (USOILm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 11:35:01.816",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "11:35:01.816\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY: Break above SH0=153.164 | W1Peak=153.221 | SL=153.053 | Waiting close > 153.221"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 11:35:01.816",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "11:35:01.816\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 11:55:02.032",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "11:55:02.032\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL: Break below SL0=68338.91 | W1Trough=68235.85 | SL=68665.11 | Waiting close < 68235.85"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 11:55:02.032",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "11:55:02.032\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 12:05:02.150",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "12:05:02.150\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=153.053 | W1Trough=152.985 | SL=153.221 | Waiting close < 152.985"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 12:05:02.150",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "12:05:02.150\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 12:45:00.227",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "12:45:00.227\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18391 | W1Trough=1.1838899999999999 | SL=1.18421 | Waiting close < 1.1838899999999999"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 12:45:00.227",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "12:45:00.227\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 12:55:01.020",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "12:55:01.020\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=152.985 | W1Trough=152.896 | SL=153.146 | Waiting close < 152.896"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 12:55:01.020",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "12:55:01.020\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 13:00:00.889",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "13:00:00.889\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL: Break below SL0=68235.85 | W1Trough=67877.33 | SL=68476.63 | Waiting close < 67877.33"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 13:00:00.889",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "13:00:00.889\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 13:00:01.527",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "13:00:01.527\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1980.25 | W1Trough=1962.86 | SL=1989.51 | Waiting close < 1962.86"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 13:30:00.351",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "13:30:00.351\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL cancelled: Price touched Entry=1980.25 | High=1983.48"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 13:35:00.691",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "13:35:00.691\tExpert MST Medio (EURUSDm,M5)\t?? Pending BUY: Break above SH0=1.18414 | W1Peak=1.18446 | SL=1.18353 | Waiting close > 1.18446"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 13:35:00.736",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "13:35:00.736\tExpert MST Medio (EURUSDm,M5)\tAlert: MST Medio: BUY | Entry=1.18 SL=1.18 TP=1.18 | EURUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 13:35:00.844",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "13:35:00.844\tExpert MST Medio (EURUSDm,M5)\t? Pending BUY Ticket=3501364521 Lot=0.01 Entry=1.18414 SL=1.18353 TP=1.18449"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 13:50:01.205",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "13:50:01.205\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=152.896 | W1Trough=152.857 | SL=153.038 | Waiting close < 152.857"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 13:50:01.205",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "13:50:01.205\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 14:40:02.243",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "14:40:02.243\tExpert MST Medio (USOILm,M5)\t?? Pending SELL: Break below SL0=63.161 | W1Trough=62.994 | SL=63.248 | Waiting close < 62.994"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 15:15:00.143",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "15:15:00.143\tExpert MST Medio (USOILm,M5)\tAlert: MST Medio: SELL | Entry=63.16 SL=63.25 TP=62.96 | USOILm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 15:15:00.404",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "15:15:00.404\tExpert MST Medio (USOILm,M5)\t? Pending SELL Ticket=3502154918 Lot=0.01 Entry=63.161 SL=63.248 TP=62.959"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 15:30:08.485",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "15:30:08.485\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1983.48 | W1Peak=1987.08 | SL=1971.51 | Waiting close > 1987.08"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 15:30:08.485",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "15:30:08.485\tExpert MST Medio (ETHUSDm,M5)\tAlert: MST Medio: BUY | Entry=1983.48 SL=1971.51 TP=1988.58 | ETHUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 15:30:08.730",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "15:30:08.730\tExpert MST Medio (ETHUSDm,M5)\t? Pending BUY Ticket=3502266990 Lot=0.1 Entry=1983.48 SL=1971.51 TP=1988.58"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 15:35:00.344",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "15:35:00.344\tExpert MST Medio (XAUUSDm,M5)\t?? Pending BUY: Break above SH0=4914.219 | W1Peak=4921.271 | SL=4903.85 | Waiting close > 4921.271"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 15:35:00.348",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "15:35:00.348\tExpert MST Medio (XAUUSDm,M5)\tAlert: MST Medio: BUY | Entry=4914.22 SL=4903.85 TP=4926.32 | XAUUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 15:35:00.478",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "15:35:00.478\tExpert MST Medio (XAUUSDm,M5)\t? Pending BUY Ticket=3502309552 Lot=0.01 Entry=4914.219 SL=4903.85 TP=4926.321"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 16:25:00.456",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "16:25:00.456\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=152.824 | W1Trough=152.695 | SL=153.177 | Waiting close < 152.695"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 16:25:00.456",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "16:25:00.456\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 16:40:02.387",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "16:40:02.387\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL: Break below SL0=68118.92 | W1Trough=67937.97 | SL=68267.78 | Waiting close < 67937.97"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 16:50:04.159",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "16:50:04.159\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL cancelled: Price touched Entry=68118.92 | High=68125.68"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 17:00:00.102",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "17:00:00.102\tExpert MST Medio (EURUSDm,M5)\t?? Pending BUY: Break above SH0=1.18436 | W1Peak=1.18462 | SL=1.18285 | Waiting close > 1.18462"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 17:00:00.108",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "17:00:00.108\tExpert MST Medio (EURUSDm,M5)\tAlert: MST Medio: BUY | Entry=1.18 SL=1.18 TP=1.18 | EURUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 17:00:00.235",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "17:00:00.235\tExpert MST Medio (EURUSDm,M5)\t? Pending BUY Ticket=3502950114 Lot=0.01 Entry=1.18436 SL=1.18285 TP=1.18473"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 17:30:00.158",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "17:30:00.158\tExpert MST Medio (USOILm,M5)\t?? Pending BUY: Break above SH0=63.145 | W1Peak=63.351 | SL=62.864 | Waiting close > 63.351"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 17:30:00.158",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "17:30:00.158\tExpert MST Medio (USOILm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 17:35:00.071",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "17:35:00.071\tExpert MST Medio (XAUUSDm,M5)\t?? Pending BUY: Break above SH0=4929.244 | W1Peak=4939.206 | SL=4912.838 | Waiting close > 4939.206"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 17:35:00.071",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "17:35:00.071\tExpert MST Medio (XAUUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 18:10:00.840",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "18:10:00.840\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY: Break above SH0=152.941 | W1Peak=152.973 | SL=152.844 | Waiting close > 152.973"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:10:00.840",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "18:10:00.840\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 18:15:00.734",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "18:15:00.734\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1968.71 | W1Trough=1962.31 | SL=1976.21 | Waiting close < 1962.31"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:15:00.740",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "18:15:00.740\tExpert MST Medio (ETHUSDm,M5)\tAlert: MST Medio: SELL | Entry=1968.71 SL=1976.21 TP=1960.72 | ETHUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:15:00.954",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "18:15:00.954\tExpert MST Medio (ETHUSDm,M5)\t? Pending SELL Ticket=3503597703 Lot=0.1 Entry=1968.71 SL=1976.21 TP=1960.72"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 18:30:00.179",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "18:30:00.179\tExpert MST Medio (USOILm,M5)\t?? Pending BUY: Break above SH0=63.351 | W1Peak=63.476 | SL=62.864 | Waiting close > 63.476"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:30:00.183",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "18:30:00.183\tExpert MST Medio (USOILm,M5)\tAlert: MST Medio: BUY | Entry=63.35 SL=62.86 TP=63.51 | USOILm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:30:00.398",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "18:30:00.398\tExpert MST Medio (USOILm,M5)\t? Pending BUY Ticket=3503707323 Lot=0.01 Entry=63.351 SL=62.864 TP=63.507"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 18:30:01.344",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "18:30:01.344\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL: Break below SL0=67937.97 | W1Trough=67743.5 | SL=68155.55 | Waiting close < 67743.5"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:30:01.350",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "18:30:01.350\tExpert MST Medio (BTCUSDm,M5)\tAlert: MST Medio: SELL | Entry=67937.97 SL=68155.55 TP=67720.13 | BTCUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 18:30:01.561",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "18:30:01.561\tExpert MST Medio (BTCUSDm,M5)\t? Pending SELL Ticket=3503707604 Lot=0.01 Entry=67937.97 SL=68155.55 TP=67720.13"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 19:20:02.001",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "19:20:02.001\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18409 | W1Trough=1.18368 | SL=1.18494 | Waiting close < 1.18368"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 19:20:02.039",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "19:20:02.039\tExpert MST Medio (EURUSDm,M5)\tAlert: MST Medio: SELL | Entry=1.18 SL=1.18 TP=1.18 | EURUSDm"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 19:30:00.199",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "19:30:00.199\tExpert MST Medio (BTCUSDm,M5)\t?? Pending BUY: Break above SH0=67890.58 | W1Peak=68125.14 | SL=67662.94 | Waiting close > 68125.14"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 19:30:01.069",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "19:30:01.069\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1970.82 | W1Peak=1975.13 | SL=1959.64 | Waiting close > 1975.13"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 19:30:01.069",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "19:30:01.069\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 19:40:00.133",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "19:40:00.133\tExpert MST Medio (XAUUSDm,M5)\t?? Pending BUY: Break above SH0=4930.961 | W1Peak=4938.799 | SL=4921.317 | Waiting close > 4938.799"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 19:40:00.148",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "19:40:00.148\tExpert MST Medio (XAUUSDm,M5)\tAlert: MST Medio: BUY | Entry=4930.96 SL=4921.32 TP=4942.13 | XAUUSDm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 19:40:00.304",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "19:40:00.304\tExpert MST Medio (XAUUSDm,M5)\t? Pending BUY Ticket=3504345496 Lot=0.01 Entry=4930.961 SL=4921.317 TP=4942.128"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 19:40:01.525",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "19:40:01.525\tExpert MST Medio (BTCUSDm,M5)\tAlert: MST Medio: BUY | Entry=67890.58 SL=67662.94 TP=68251.90 | BTCUSDm"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 20:55:00.165",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "20:55:00.165\tExpert MST Medio (XAUUSDm,M5)\t?? Pending SELL: Break below SL0=4921.317 | W1Trough=4911.004 | SL=4944.351 | Waiting close < 4911.004"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 20:55:00.165",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "20:55:00.165\tExpert MST Medio (XAUUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 21:15:00.479",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "21:15:00.479\tExpert MST Medio (USOILm,M5)\t?? Pending SELL: Break below SL0=63.045 | W1Trough=62.171 | SL=63.943 | Waiting close < 62.171"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 21:25:00.213",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M5",
+    "raw": "21:25:00.213\tExpert MST Medio (XAUUSDm,M5)\t?? Pending SELL: Break below SL0=4907.871 | W1Trough=4841.149 | SL=4924.233 | Waiting close < 4841.149"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 21:30:00.247",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "21:30:00.247\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1988.13 | W1Peak=1999.37 | SL=1962.63 | Waiting close > 1999.37"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 21:30:00.247",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "21:30:00.247\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 22:15:00.140",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "22:15:00.140\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1962.63 | W1Trough=1941.86 | SL=2001.67 | Waiting close < 1941.86"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 22:15:00.521",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "22:15:00.521\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL: Break below SL0=67684.78 | W1Trough=66654.39 | SL=68337.85 | Waiting close < 66654.39"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 22:20:00.326",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "22:20:00.326\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL cancelled: Price touched Entry=1962.63 | High=1964.14"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 22:30:00.104",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "22:30:00.104\tExpert MST Medio (USOILm,M5)\tAlert: MST Medio: SELL | Entry=63.05 SL=63.94 TP=61.94 | USOILm"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 23:05:00.243",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M5",
+    "raw": "23:05:00.243\tExpert MST Medio (BTCUSDm,M5)\t?? Pending SELL cancelled: Price touched Entry=67684.78 | High=67804.99"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 23:05:00.243",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "23:05:00.243\tExpert MST Medio (USOILm,M5)\t?? Pending SELL: Break below SL0=62.289 | W1Trough=61.757 | SL=62.722 | Waiting close < 61.757"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 23:10:00.130",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "23:10:00.130\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY: Break above SH0=153.183 | W1Peak=153.388 | SL=153.02 | Waiting close > 153.388"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 23:10:00.138",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "23:10:00.138\tExpert MST Medio (USDJPYm,M5)\tAlert: MST Medio: BUY | Entry=153.18 SL=153.02 TP=153.44 | USDJPYm"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-17 23:15:00.861",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "23:15:00.861\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18161 | W1Trough=1.1812 | SL=1.1828 | Waiting close < 1.1812"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-17 23:15:00.861",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "23:15:00.861\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 00:50:00.794",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "00:50:00.794\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL: Break below SL0=1.18055 | W1Trough=1.18015 | SL=1.18139 | Waiting close < 1.18015"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 00:50:00.835",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "00:50:00.835\tExpert MST Medio (EURUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 00:50:00.903",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "00:50:00.903\tExpert MST Medio (USDJPYm,M5)\t?? Pending BUY: Break above SH0=154.485 | W1Peak=154.595 | SL=154.41 | Waiting close > 154.595"
+  },
+  {
+    "type": "signal",
+    "time": "2026-02-19 01:10:00.444",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "01:10:00.444\tExpert MST Medio (USDJPYm,M5)\t?? TREND FILTER: BUY blocked. Trend=NONE/CONFLICT | Signal=BUY"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 01:15:00.490",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "01:15:00.490\tExpert MST Medio (USOILm,M5)\t?? Pending BUY: Break above SH0=64.812 | W1Peak=65.076 | SL=64.431 | Waiting close > 65.076"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 01:35:00.793",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "01:35:00.793\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1970.44 | W1Trough=1953.91 | SL=1976.33 | Waiting close < 1953.91"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 01:40:00.235",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "01:40:00.235\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL cancelled: Price touched Entry=1970.44 | High=1970.5"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 01:40:00.371",
+    "ea": "Expert MST Medio",
+    "symbol": "USOILm",
+    "timeframe": "M5",
+    "raw": "01:40:00.371\tExpert MST Medio (USOILm,M5)\t?? Pending BUY cancelled: Price touched Entry=64.812 | Low=64.602"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 01:55:00.466",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "01:55:00.466\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1953.91 | W1Trough=1946.32 | SL=1970.5 | Waiting close < 1946.32"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 01:55:00.466",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "01:55:00.466\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 02:50:01.022",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "02:50:01.022\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL: Break below SL0=1946.32 | W1Trough=1921.08 | SL=1960.14 | Waiting close < 1921.08"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 03:15:00.397",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M15",
+    "raw": "03:15:00.397\tExpert MST Medio (XAUUSDm,M15)\t?? Pending SELL: Break below SL0=4980.555 | W1Trough=4972.896 | SL=4995.495 | Waiting close < 4972.896"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 03:15:00.397",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M15",
+    "raw": "03:15:00.397\tExpert MST Medio (XAUUSDm,M15)\t?? Pending SELL cancelled (retro): Entry touched"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 03:35:00.581",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "03:35:00.581\tExpert MST Medio (ETHUSDm,M5)\t?? Pending SELL cancelled: Price touched Entry=1946.32 | High=1949.24"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 04:00:00.310",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "04:00:00.310\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1942.49 | W1Peak=1950.92 | SL=1934.22 | Waiting close > 1950.92"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 04:00:00.310",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "04:00:00.310\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 05:20:04.465",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "05:20:04.465\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=154.765 | W1Trough=154.712 | SL=154.842 | Waiting close < 154.712"
+  },
+  {
+    "type": "signal",
+    "time": "2026-02-19 05:20:04.465",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "05:20:04.465\tExpert MST Medio (USDJPYm,M5)\t?? TREND FILTER: SELL blocked. Trend=NONE/CONFLICT | Signal=SELL"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 07:05:00.639",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "07:05:00.639\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1949.43 | W1Peak=1955.33 | SL=1942.99 | Waiting close > 1955.33"
+  },
+  {
+    "type": "signal",
+    "time": "2026-02-19 07:10:00.198",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "07:10:00.198\tExpert MST Medio (ETHUSDm,M5)\t?? TREND FILTER: BUY blocked. Trend=DOWN | Signal=BUY"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 07:15:00.355",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "07:15:00.355\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL: Break below SL0=154.724 | W1Trough=154.615 | SL=154.787 | Waiting close < 154.615"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 07:20:00.414",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "M5",
+    "raw": "07:20:00.414\tExpert MST Medio (USDJPYm,M5)\t?? Pending SELL cancelled: Price touched Entry=154.724 | High=154.779"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 07:30:00.553",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "07:30:00.553\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1955.33 | W1Peak=1957.18 | SL=1951.72 | Waiting close > 1957.18"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 07:30:00.553",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "07:30:00.553\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 08:25:01.817",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "08:25:01.817\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY: Break above SH0=1959.36 | W1Peak=1972.83 | SL=1951.93 | Waiting close > 1972.83"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 08:25:01.817",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M5",
+    "raw": "08:25:01.817\tExpert MST Medio (ETHUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 08:30:01.536",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "08:30:01.536\tExpert MST Medio (EURUSDm,M5)\t?? Pending BUY: Break above SH0=1.17904 | W1Peak=1.17947 | SL=1.17848 | Waiting close > 1.17947"
+  },
+  {
+    "type": "open",
+    "time": "2026-02-19 08:30:01.536",
+    "ea": "Expert MST Medio",
+    "symbol": "EURUSDm",
+    "timeframe": "M5",
+    "raw": "08:30:01.536\tExpert MST Medio (EURUSDm,M5)\t?? Pending BUY cancelled (retro): Entry touched"
+  },
+  {
+    "type": "close",
+    "time": "2026-02-19 10:00:00.070",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M15",
+    "raw": "10:00:00.070\tExpert MST Medio (BTCUSDm,M15)\t?? Pending BUY: Break above SH0=66563.82 | W1Peak=66841.61 | SL=65985.42 | Waiting close > 66841.61"
+  },
+  {
+    "type": "signal",
+    "time": "2026-02-19 10:00:00.070",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M15",
+    "raw": "10:00:00.070\tExpert MST Medio (BTCUSDm,M15)\t?? TREND FILTER: BUY blocked. Trend=DOWN | Signal=BUY"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:23:48.280",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:23:48.280\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:23:48.290",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:23:48.290\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:23:48.305",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:23:48.305\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:24:55.378",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:24:55.378\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:24:55.393",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:24:55.393\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:24:55.407",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:24:55.407\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:30:53.579",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:30:53.579\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:30:53.591",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:30:53.591\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:30:53.604",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:30:53.604\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:31:19.728",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:31:19.728\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:31:19.740",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:31:19.740\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:31:19.752",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:31:19.752\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:31:58.290",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:31:58.290\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:31:58.304",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:31:58.304\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:31:58.314",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:31:58.314\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:32:35.643",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:32:35.643\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:32:35.656",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:32:35.656\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:32:35.677",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:32:35.677\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:00.669",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:00.669\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:00.678",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:00.678\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:00.700",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:00.700\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:25.359",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:25.359\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:25.369",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:25.369\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:25.387",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:25.387\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:49.952",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:49.952\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:49.963",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:49.963\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:33:49.975",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:33:49.975\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:34:16.048",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:34:16.048\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:34:16.058",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:34:16.058\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:34:16.071",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:34:16.071\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:34:39.985",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:34:39.985\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:34:39.996",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:34:39.996\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:34:40.037",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:34:40.037\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:35:05.610",
+    "ea": "Expert MST Medio",
+    "symbol": "BTCUSDm",
+    "timeframe": "M1",
+    "raw": "10:35:05.610\tExpert MST Medio (BTCUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:35:05.623",
+    "ea": "Expert MST Medio",
+    "symbol": "XAUUSDm",
+    "timeframe": "M1",
+    "raw": "10:35:05.623\tExpert MST Medio (XAUUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 10:35:05.635",
+    "ea": "Expert MST Medio",
+    "symbol": "ETHUSDm",
+    "timeframe": "M1",
+    "raw": "10:35:05.635\tExpert MST Medio (ETHUSDm,M1)\t?? Strategy: PivotLen=3 BreakMult=0.25 ImpulseMult=2.0 TP_RR=4.0 BE@R=0.5 SLBuf=10%"
+  },
+  {
+    "type": "be_move",
+    "time": "2026-02-19 19:30:11.858",
+    "ea": "Expert MST Medio",
+    "symbol": "USDJPYm",
+    "timeframe": "H1",
+    "raw": "19:30:11.858\tExpert MST Medio (USDJPYm,H1)\t?? Strategy: PivotLen=5 BreakMult=0.25 ImpulseMult=1.5 TP_RR=2.0 BE@R=0.5 SLBuf=10% MinSLDist=0pts"
+  }
+]

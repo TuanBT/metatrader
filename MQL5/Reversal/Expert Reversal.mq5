@@ -49,11 +49,11 @@ input bool   InpRequireReversal = true;      // Require reversal candle
 // ============================================================================
 // INPUTS — SL/TP
 // ============================================================================
-input double InpSLBufferATR     = 0.5;       // SL buffer beyond band (ATR mult)
+input double InpSLBufferATR     = 0.7;       // SL buffer beyond band (ATR mult) [optimized: 0.5→0.7 for XAUUSD H1 wider wicks]
 input int    InpATRPeriod       = 14;        // ATR Period
 input bool   InpTPUseMidBB      = true;      // TP = Middle BB (mean reversion)
 input double InpTPFixedRR       = 0;         // TP as RR (0=use Middle BB)
-input int    InpMinSLPts        = 50;        // Minimum SL distance in points
+input int    InpMinSLPts        = 100;       // Minimum SL distance in points [optimized: 50→100 for XAUUSD H1]
 
 // ============================================================================
 // INPUTS — TRADE MANAGEMENT
