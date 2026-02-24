@@ -13,6 +13,19 @@ input ulong  InpMagic         = 20260109;
 input bool   InpOnePosition   = true;  // Block if any position/order exists
 input int    InpExpiryMinutes = 0;     // Pending expiry minutes (0 = no expiry)
 
+// Time Filter (Server time GMT+0)
+input bool   InpUseTimeFilter = false; // Enable time filter
+input int    InpStartHour     = 8;     // Start hour (0-23, server time)
+input int    InpEndHour       = 20;    // End hour (0-23, server time)
+
+// Risk:Reward adjustment
+input double InpTPMultiplier  = 1.0;   // TP multiplier (1.0 = zone edge, >1 = extend TP)
+
+// Zone quality filters
+input double InpMinZonePips   = 0.0;   // Min zone size in pips (0 = no filter)
+input double InpSLBufferPips  = 0.0;   // Extra SL buffer in pips (0 = no buffer)
+input int    InpMaxZoneBars   = 0;     // Max bars to wait for OUT signal (0 = unlimited)
+
 // State
 static datetime g_lastBarTime     = 0;
 static datetime g_lastM15Time     = 0;
@@ -252,6 +265,38 @@ void OnTick()
    if(!outSignal || barTime == g_lastOutTime)
       return;
 
+   // Max zone bars filter - skip stale signals
+   if(InpMaxZoneBars > 0 && g_m15ImpulseTime > 0)
+   {
+      int barsSinceImpulse = iBarShift(_Symbol, _Period, g_m15ImpulseTime, false);
+      if(barsSinceImpulse > InpMaxZoneBars)
+      {
+         g_waitingOUT = false;
+         return;
+      }
+   }
+
+   // Time filter check
+   if(InpUseTimeFilter)
+   {
+      MqlDateTime dt;
+      TimeToStruct(barTime, dt);
+      int hour = dt.hour;
+      
+      if(InpStartHour <= InpEndHour)
+      {
+         // Normal range: e.g. 8-20
+         if(hour < InpStartHour || hour >= InpEndHour)
+            return;
+      }
+      else
+      {
+         // Wrap-around: e.g. 20-4 (evening to early morning)
+         if(hour < InpStartHour && hour >= InpEndHour)
+            return;
+      }
+   }
+
    g_lastOutTime = barTime;
 
    double top    = 0.0;
@@ -268,9 +313,36 @@ void OnTick()
    }
 
    double mid = (top + bottom) / 2.0;
+   
+   // Min zone size filter (in pips)
+   double zoneSizePips = MathAbs(top - bottom) / (_Point * 10);
+   if(InpMinZonePips > 0.0 && zoneSizePips < InpMinZonePips)
+   {
+      Print("Zone too small: ", DoubleToString(zoneSizePips, 1), " pips < ", DoubleToString(InpMinZonePips, 1));
+      return;
+   }
+   
+   // Apply SL and TP based on direction
+   // For BUY:  SL at bottom (below entry), TP above entry
+   // For SELL: SL at top (above entry), TP below entry
+   double slBufferPrice = InpSLBufferPips * _Point * 10;
+   double sl_price, tp_price, sl_dist;
+   
+   if(outBuy)
+   {
+      sl_price = bottom - slBufferPrice;           // SL below entry
+      sl_dist  = MathAbs(mid - sl_price);
+      tp_price = mid + sl_dist * InpTPMultiplier;   // TP above entry
+   }
+   else
+   {
+      sl_price = top + slBufferPrice;               // SL above entry
+      sl_dist  = MathAbs(sl_price - mid);
+      tp_price = mid - sl_dist * InpTPMultiplier;   // TP below entry
+   }
 
    if(!InpOnePosition || !HasActiveOrders())
-      PlaceFvgOrder(outBuy, mid, bottom, top, TimeCurrent());
+      PlaceFvgOrder(outBuy, mid, sl_price, tp_price, TimeCurrent());
 
    g_waitingOUT = false;
 }

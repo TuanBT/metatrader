@@ -15,8 +15,12 @@ metatrader/
 │   ├── MST Medio/                  ← 2-Step Breakout Confirmation
 │   ├── Reversal/                   ← Bollinger Band + RSI Mean Reversion
 │   ├── M15 Impulse FAG Entry/      ← M15 Impulse strategy
+│   ├── Grid USDJPY/                ← Grid Trading (USDJPY, range market)
 │   └── Test/                       ← Test EA
-├── backtest/                       ← SSH remote backtest tools
+├── backtest/
+│   ├── mt5_auto_backtest.py        ← Multi-EA batch backtest
+│   ├── bt_grid_usdjpy.py           ← Grid EA specific backtest
+│   └── ...                         ← Other backtest scripts
 ├── monitor/                        ← Trade monitor & analyzer
 ├── profiles/                       ← MT5 chart profiles (.chr)
 └── README.md
@@ -27,9 +31,20 @@ metatrader/
 | Item | Giá trị |
 |------|---------|
 | VPS | `103.122.221.141` (Windows Server 2019) |
+| SSH User | `administrator` |
+| SSH Pass | `password` (hoặc set env: `export MT5_SSH_PASS=...`) |
+| SSH Port | `22` |
 | MT5 | MetaTrader 5 EXNESS, build 5592 |
+| MT5 EXE | `C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe` |
+| MT5 Data | `C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\53785E099C927DB68A545C249CDBCE06` |
 | Account | Demo Exness-MT5Trial7 (433013546) |
 | Timezone | GMT+7 |
+
+### Quick SSH test
+
+```bash
+sshpass -p "password" ssh -o StrictHostKeyChecking=no administrator@103.122.221.141 echo PONG
+```
 
 ## Chiến lược đang chạy
 
@@ -37,6 +52,7 @@ metatrader/
 |----|--------|----|-----|----------|
 | **Expert Reversal** | XAUUSDm | H1 | 0.02 | +13.6%/năm |
 | **Expert MST Medio** | USDJPYm | H1 | 0.02 | +3.9%/năm |
+| **Expert Grid USDJPY** | USDJPYm | M15 | dynamic | In progress |
 
 ---
 
@@ -45,22 +61,20 @@ metatrader/
 ### 1. Trade Monitor (giám sát giao dịch)
 
 ```bash
-cd monitor
-
 # Kiểm tra MT5 + EA có chạy không
-python3 monitor.py status
+python3 monitor/monitor.py status
 
 # Thu thập dữ liệu trade từ server
-python3 monitor.py collect
+python3 monitor/monitor.py collect
 
 # Tạo báo cáo phân tích
-python3 monitor.py report
+python3 monitor/monitor.py report
 
 # Chạy tất cả (status → collect → report)
-python3 monitor.py full
+python3 monitor/monitor.py full
 
 # Xem log EA gần nhất
-python3 monitor.py logs
+python3 monitor/monitor.py logs
 ```
 
 Dữ liệu lưu tại `monitor/data/`:
@@ -71,16 +85,14 @@ Dữ liệu lưu tại `monitor/data/`:
 ### 2. Backtest (chạy test chiến lược)
 
 ```bash
-cd backtest
-
 # Quick test — EURUSD × 4 EA × H1/M15
-python3 mt5_quick_backtest.py
+python3 backtest/mt5_quick_backtest.py
 
 # Optimize tham số MST Medio + Reversal
-python3 mt5_optimize_medio.py
+python3 backtest/mt5_optimize_medio.py
 
 # Full matrix test — nhiều cặp × timeframe × EA
-python3 mt5_full_backtest.py
+python3 backtest/mt5_full_backtest.py
 ```
 
 Kết quả backtest lưu trong `backtest/*.md`.
@@ -88,10 +100,8 @@ Kết quả backtest lưu trong `backtest/*.md`.
 ### 3. Upload + Compile EA
 
 ```bash
-cd backtest
-
 # Auto upload .mq5 → compile → backtest verify
-python3 mt5_auto_backtest.py
+python3 backtest/mt5_auto_backtest.py
 ```
 
 ### 4. Deploy EA lên chart (thủ công)
