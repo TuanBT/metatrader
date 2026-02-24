@@ -1,0 +1,16 @@
+[Parameters]
+InpLotSize=0.01000000
+InpDeviation=20
+InpOnePosition=true
+InpMinBodyPct=0.00000000
+InpMinCandleATR=0.00000000
+InpATRPeriod=14
+InpUseTimeFilter=false
+InpStartHour=7
+InpEndHour=21
+InpUseEMAFilter=true
+InpEMAPeriod=50
+InpEMATF=0
+InpUseADXFilter=true
+InpADXPeriod=14
+InpADXMinValue=25.00000000
