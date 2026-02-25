@@ -64,6 +64,9 @@ void CheckResetState()
 
 // ── Signal: 3 same-color candles at bar[1], bar[2], bar[3] ────────
 // Returns +1 (3 green) or -1 (3 red) or 0 (no signal)
+// Additional filter: trend structure validation
+//   BUY:  each bar's low > previous bar's low  (strictly higher lows → clean uptrend)
+//   SELL: each bar's high < previous bar's high (strictly lower highs → clean downtrend)
 int DetectThreeCandles()
 {
    bool allGreen = true;
@@ -79,7 +82,27 @@ int DetectThreeCandles()
 
    if(!allGreen && !allRed) return 0;
 
-   return allGreen ? 1 : -1;
+   // Validate trend structure
+   if(allGreen)
+   {
+      // Strictly higher lows: bar[1].low > bar[2].low > bar[3].low
+      for(int i = 1; i <= 2; i++)
+      {
+         if(iLow(_Symbol, _Period, i) <= iLow(_Symbol, _Period, i + 1))
+            return 0;   // wick not strictly higher → not clean trend
+      }
+      return 1;
+   }
+   else // allRed
+   {
+      // Strictly lower highs: bar[1].high < bar[2].high < bar[3].high
+      for(int i = 1; i <= 2; i++)
+      {
+         if(iHigh(_Symbol, _Period, i) >= iHigh(_Symbol, _Period, i + 1))
+            return 0;   // wick not strictly lower → not clean trend
+      }
+      return -1;
+   }
 }
 
 // ── Trailing SL: advance on same-color candle ─────────────────────
