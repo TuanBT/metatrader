@@ -1,4 +1,4 @@
-# Expert Candle Counter v1.3
+# Expert Candle Counter v1.4
 
 > **Ý tưởng cốt lõi:** Khi thị trường tạo ra 3 nến liên tục cùng màu → đà (momentum) đang rõ ràng → vào lệnh theo hướng đó ở nến thứ 4.
 
@@ -101,6 +101,8 @@ Thoát lệnh chỉ bằng **SL bị chạm** (trailing hoặc initial). Kết q
 
 ## 6. Giải thích từng tham số (Inputs)
 
+> **v1.4:** Đã xóa các tham số không hiệu quả (body filter, ATR filter, time filter) để code gọn hơn.
+
 ### Nhóm 1: Quản lý lệnh cơ bản
 
 | Tham số | Mặc định | Giải thích |
@@ -115,39 +117,13 @@ Tránh "chồng lệnh" — khi có lệnh đang mở mà signal mới xuất hi
 
 ---
 
-### Nhóm 2: Lọc chất lượng nến
+### Nhóm 2: EMA Trend Filter *(mặc định BẬT)*
 
 | Tham số | Mặc định | Giải thích |
 |---|---|---|
-| `InpMinBodyPct` | 0.0 (tắt) | % thân nến tối thiểu so với tổng range (high-low). Ví dụ: 30% = thân nến phải chiếm ít nhất 30% của cây nến. Lọc bỏ nến doji và spinningtop. |
-| `InpMinCandleATR` | 0.0 (tắt) | Nến phải có range (high-low) ít nhất bằng X lần ATR(14). Ví dụ: 0.5 = range nến ≥ 50% ATR. Lọc bỏ nến quá nhỏ. |
-| `InpATRPeriod` | 14 | Chu kỳ ATR dùng cho filter trên |
-
-**Tại sao không bật mặc định?**
-Backtest cho thấy body filter và ATR filter **không cải thiện Win Rate** (WR vẫn ~50%). Chúng chỉ giảm số lệnh xuống — ít sample hơn, kết quả dễ bị nhiễu. Giữ 0=off để có nhiều lệnh nhất.
-
----
-
-### Nhóm 3: Filter thời gian
-
-| Tham số | Mặc định | Giải thích |
-|---|---|---|
-| `InpUseTimeFilter` | false (tắt) | Bật tắt filter giờ giao dịch |
-| `InpStartHour` | 7 | Chỉ vào lệnh từ giờ X (server time) |
-| `InpEndHour` | 21 | Không vào lệnh từ giờ Y trở đi |
-
-**Khi nào cần dùng?**
-Tránh session market mở/đóng có biến động bất thường (opening gap, low liquidity). Hiện tắt vì H4 ít nhạy cảm với session hơn M15.
-
----
-
-### Nhóm 4: EMA Trend Filter *(đang BẬT)*
-
-| Tham số | Mặc định | Live config | Giải thích |
-|---|---|---|---|
-| `InpUseEMAFilter` | false | **true** | Bật/tắt filter |
-| `InpEMAPeriod` | 50 | 50 | Số chu kỳ EMA |
-| `InpEMATF` | PERIOD_CURRENT | PERIOD_CURRENT | Timeframe tính EMA (0 = dùng TF của chart) |
+| `InpUseEMAFilter` | **true** | Bật/tắt filter |
+| `InpEMAPeriod` | 50 | Số chu kỳ EMA |
+| `InpEMATF` | PERIOD_CURRENT | Timeframe tính EMA (0 = dùng TF của chart) |
 
 **Logic:**
 ```
@@ -169,13 +145,13 @@ EMA50 line
 
 ---
 
-### Nhóm 5: ADX Regime Filter *(đang BẬT)*
+### Nhóm 3: ADX Regime Filter *(mặc định BẬT)*
 
-| Tham số | Mặc định | Live config | Giải thích |
-|---|---|---|---|
-| `InpUseADXFilter` | false | **true** | Bật/tắt filter |
-| `InpADXPeriod` | 14 | 14 | Chu kỳ ADX |
-| `InpADXMinValue` | 25.0 | 25.0 | Chỉ vào lệnh khi ADX ≥ giá trị này |
+| Tham số | Mặc định | Giải thích |
+|---|---|---|
+| `InpUseADXFilter` | **true** | Bật/tắt filter |
+| `InpADXPeriod` | 14 | Chu kỳ ADX |
+| `InpADXMinValue` | 25.0 | Chỉ vào lệnh khi ADX ≥ giá trị này |
 
 **ADX là gì?**
 ADX (Average Directional Index) đo **độ mạnh của trend**, không đo hướng:
@@ -264,9 +240,6 @@ Nếu không có TP, để trend chạy:
 | Lot size | 0.01 |
 | EMA filter | ✅ ON — EMA(50) |
 | ADX filter | ✅ ON — ADX(14) > 25 |
-| Body filter | ❌ OFF |
-| ATR filter | ❌ OFF |
-| Time filter | ❌ OFF |
 | Timeframe | H4 |
 | Pairs | USDJPYm, XAUUSDm |
 

@@ -14,7 +14,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, MTS"
 #property link      ""
-#property version   "4.00"
+#property version   "4.10"
 #property strict
 
 // ============================================================================
@@ -27,6 +27,8 @@
 input bool   InpUseDynamicLot   = false;    // Use Dynamic Position Sizing
 input double InpLotSize         = 0.02;    // Fixed Lot Size (if dynamic=false)
 input double InpRiskPct         = 2.0;     // Risk % per trade (dynamic sizing)
+input bool   InpUseMoneyRisk    = true;    // [MONEY-BASED] Use fixed money risk amount instead of %
+input double InpRiskMoney       = 5.0;     // [MONEY-BASED] Risk amount per trade (e.g. $5)
 input double InpMaxRiskPct      = 2.0;     // Max Risk % per trade (0=no limit)
 input double InpMaxDailyLossPct = 3.0;     // Max Daily Loss % (0=no limit)
 input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no limit)
@@ -37,8 +39,7 @@ input double InpMaxSLRiskPct    = 30.0;    // Max SL Risk % of balance (0=no lim
 input int    InpPivotLen     = 5;       // Pivot Length (5=significant swings, 3=frequent)
 input double InpBreakMult    = 0.25;    // Break Multiplier
 input double InpImpulseMult  = 1.5;     // Impulse Multiplier (1.5=strong breakouts only)
-input double InpTPFixedRR    = 2.0;     // TP Fixed RR (0=confirm candle) [optimized: 3.0→2.0 for USDJPY H1]
-input double InpBEAtR        = 0.5;     // Breakeven at R (0=disabled)
+input double InpTPFixedRR    = 3.0;     // TP Fixed RR (0=confirm candle, 3.0=min 1:3 R/R)
 input int    InpSLBufferPct  = 10;      // SL Buffer % (push SL 10% further to avoid stop hunts)
 input int    InpEntryOffsetPts = 0;     // Entry Offset Pts (shift entry deeper vs exact swing level, 0=disabled)
 input int    InpMinSLDistPts = 0;       // Min SL Distance Pts (skip tiny swings, 0=disabled)
@@ -57,6 +58,18 @@ input ENUM_TIMEFRAMES InpHTFTimeframe = PERIOD_H1; // HTF Timeframe for trend
 input bool   InpAllowNoTrend   = false;   // Allow trades when trend=NONE/CONFLICT (only block opposite trend)
 
 // ============================================================================
+// MTF CONSENSUS FILTER
+// ============================================================================
+input bool   InpUseMTFConsensus    = true;   // [MTF] Enable Multi-Timeframe consensus filter
+input int    InpMTFMinAgree        = 3;       // [MTF] Min TFs must agree with signal (out of 5: M15/H1/H4/D/W)
+input bool   InpMTFTrailOnConsensus = true;  // [MTF] Activate trailing SL immediately when full consensus
+input double InpMTFTrailStartR     = 0.5;    // [MTF] Start trailing after price moves X×R from entry
+input double InpMTFTrailStepR      = 0.25;   // [MTF] Trail SL by X×risk each time price advances this far
+input bool   InpMTFFixedTrail      = false;  // [MTF] Use fixed-points trail (ignores R-based values above)
+input int    InpMTFFixedStartPts   = 50;     // [MTF-Fixed] Start trailing after X pts advance from entry
+input int    InpMTFFixedStepPts    = 25;     // [MTF-Fixed] Move SL every X pts price advances
+
+// ============================================================================
 // PARTIAL TAKE PROFIT
 // ============================================================================
 input bool   InpUsePartialTP      = true;    // Use Partial TP (close partial at X×R, move SL to BE)
@@ -65,6 +78,15 @@ input double InpPartialTPPct      = 50.0;    // % of position to close at partia
 input int    InpTrailAfterPartialPts = 0;    // Trailing stop pts after partial TP (0=use fixed BE)
 input bool   InpSmartFlip          = true;   // Smart flip: keep profitable position when new signal arrives
 input bool   InpRequireConfirmCandle = true;  // Require 1 confirm candle after entry fills (anti-chop)
+
+// ============================================================================
+// SESSION FILTER
+// ============================================================================
+input bool InpUseSessionFilter = false; // Block new entries outside trading sessions (UTC)
+input int  InpSess1Start       = 5;     // Session 1: start hour UTC (0-23)
+input int  InpSess1End         = 7;     // Session 1: end hour UTC  (exclusive, e.g. 7 = blocks at 07:00)
+input int  InpSess2Start       = 10;    // Session 2: start hour UTC (-1 = disabled)
+input int  InpSess2End         = 17;    // Session 2: end hour UTC  (exclusive)
 
 input bool   InpShowVisual   = false;   // Show indicator on chart
 input ulong  InpMagic        = 20260210;// Magic Number
@@ -122,11 +144,11 @@ static datetime g_lastTradingDay    = 0;
 static bool     g_dailyTradingPaused = false;
 static datetime g_lastSellSignal = 0;
 
-// -- Breakeven tracking --
-static bool   g_beDone          = false;  // Has BE been moved for current trade?
-static double g_beEntryPrice    = 0;      // Entry price for BE calculation
-static double g_beOrigSL        = 0;      // Original SL price (for risk distance)
-static bool   g_beIsBuy         = false;  // Direction of position
+// -- Entry tracking (used by MTF trail + Partial TP to know entry price / SL / direction) --
+static bool   g_beDone          = false;  // Partial TP has moved SL to entry?
+static double g_beEntryPrice    = 0;      // Entry price of current trade
+static double g_beOrigSL        = 0;      // Original SL price of current trade
+static bool   g_beIsBuy         = false;  // Direction: true=buy, false=sell
 
 // -- Partial TP tracking --
 static bool   g_partialTPDone   = false;  // Has partial TP been executed for current trade?
@@ -159,8 +181,21 @@ static int g_emaSlowHandle = INVALID_HANDLE;
 static int g_htfEmaFastHandle = INVALID_HANDLE;
 static int g_htfEmaSlowHandle = INVALID_HANDLE;
 
+// MTF consensus handles — 5 TFs: M15/H1/H4/D/W, each needs fast+slow EMA pair
+// Layout: [0..4] = fast EMA handles for M15/H1/H4/D/W
+//         [5..9] = slow EMA handles for M15/H1/H4/D/W
+static int g_mtfFastHandle[5];
+static int g_mtfSlowHandle[5];
+static ENUM_TIMEFRAMES g_mtfTFs[5] = {PERIOD_M15, PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1};
+
+// MTF consensus trailing state (independent of InpTrailAfterPartialPts)
+static bool   g_mtfTrailActive  = false;
+static double g_mtfTrailLast    = 0.0;   // Last SL price set by MTF trailing
+
 // ============================================================================
-// UTILITY FUNCTIONS
+// Expert MST Medio — v4.11
+// Changes v4.11: Removed standalone Breakeven-move function.
+//                Trailing SL (MTF consensus trail) handles all profit protection.
 // ============================================================================
 
 // Calculate ATR-based Stop Loss distance
@@ -209,6 +244,213 @@ double CalculateATRSL(const bool isBuy, const double entry)
          " → SL=", NormalizeDouble(slPrice, _Digits));
    
    return slPrice;
+}
+
+// ============================================================================
+// MTF CONSENSUS
+// Query EMA (fast vs slow cross) on 5 fixed TFs: M15, H1, H4, D, W.
+// Returns count of TFs where EMA cross agrees with the signal direction.
+// IsMTFConsensusOK() gates entry: requires >= InpMTFMinAgree confirmations.
+// ============================================================================
+int GetMTFConsensusCount(const bool isBuy)
+{
+   if(!InpUseMTFConsensus) return 5;  // filter disabled → pass all
+   int agree = 0;
+   double emaF[1], emaS[1];
+   for(int i = 0; i < 5; i++)
+   {
+      if(g_mtfFastHandle[i] == INVALID_HANDLE ||
+         g_mtfSlowHandle[i] == INVALID_HANDLE) continue;
+      if(CopyBuffer(g_mtfFastHandle[i], 0, 1, 1, emaF) <= 0) continue;
+      if(CopyBuffer(g_mtfSlowHandle[i], 0, 1, 1, emaS) <= 0) continue;
+      bool tfUp = emaF[0] > emaS[0];
+      if(isBuy  && tfUp)  agree++;
+      if(!isBuy && !tfUp) agree++;
+   }
+   return agree;
+}
+
+bool IsMTFConsensusOK(const bool isBuy)
+{
+   if(!InpUseMTFConsensus) return true;
+   int cnt = GetMTFConsensusCount(isBuy);
+   if(cnt < InpMTFMinAgree)
+   {
+      Print("[MTF-BLOCK] MTF CONSENSUS BLOCKED: ", cnt, "/5 TFs agree with ",
+            (isBuy ? "BUY" : "SELL"), " | Need >=", InpMTFMinAgree);
+      return false;
+   }
+   Print("[MTF-OK] MTF CONSENSUS OK: ", cnt, "/5 TFs agree with ", (isBuy ? "BUY" : "SELL"));
+   return true;
+}
+
+// ============================================================================
+// MONEY-BASED LOT SIZING
+// Calculates lot size from fixed dollar risk amount (InpRiskMoney)
+// Uses OrderCalcProfit for currency-accurate calculation
+// ============================================================================
+double CalculateMoneyLotSize(const double entry, const double sl)
+{
+   double riskMoney = InpRiskMoney;
+   if(riskMoney <= 0) return InpLotSize;
+
+   double slLossPerLot = 0;
+   if(!OrderCalcProfit(ORDER_TYPE_BUY, _Symbol, 1.0, entry, sl, slLossPerLot))
+   {
+      // Fallback: manual calculation
+      double slDistPts = MathAbs(entry - sl) / _Point;
+      double tickVal   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tickSz    = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      if(tickVal > 0 && tickSz > 0)
+         slLossPerLot = -(slDistPts * tickVal * (_Point / tickSz));
+      else
+         return InpLotSize;  // Cannot calculate
+   }
+   double lossAbs = MathAbs(slLossPerLot);
+   if(lossAbs <= 0) return InpLotSize;
+
+   double rawLot  = riskMoney / lossAbs;
+
+   // Normalize to broker specs
+   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   rawLot = MathFloor(rawLot / lotStep) * lotStep;
+   rawLot = MathMax(minLot, MathMin(maxLot, rawLot));
+
+   // Warn if min lot exceeds requested risk by >50%
+   double actualRisk = rawLot * lossAbs;
+   if(rawLot == minLot && actualRisk > riskMoney * 1.5)
+      Print("⚠️ MONEY RISK: Requested $", riskMoney, " but min lot requires $",
+            NormalizeDouble(actualRisk, 2),
+            " — min lot for ", _Symbol, " is ", minLot);
+
+   Print("💵 MoneyRisk sizing: $", riskMoney, " | SL_loss/lot=$", NormalizeDouble(lossAbs, 4),
+         " | Lot=", rawLot);
+   return rawLot;
+}
+
+// ============================================================================
+// MTF CONSENSUS TRAILING STOP
+// Trails SL by risk-fraction steps as price advances.
+// Active when InpMTFTrailOnConsensus=true and full/near-full consensus at entry.
+// ============================================================================
+void CheckMTFTrailingStop()
+{
+   if(!g_mtfTrailActive) return;
+   if(g_beEntryPrice == 0 || g_beOrigSL == 0) return;
+
+   double risk = MathAbs(g_beEntryPrice - g_beOrigSL);
+   if(risk <= 0) return;
+
+   double startDist, stepDist;
+   if(InpMTFFixedTrail && InpMTFFixedStartPts > 0)
+   {
+      startDist = InpMTFFixedStartPts * _Point;  // fixed-pts mode
+      stepDist  = MathMax(InpMTFFixedStepPts, 1) * _Point;
+   }
+   else
+   {
+      startDist = InpMTFTrailStartR * risk;   // R-fraction mode
+      stepDist  = InpMTFTrailStepR  * risk;
+   }
+   if(stepDist <= 0) return;
+
+   for(int i = PositionsTotal() - 1; i >= 0; --i)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      double currentSL = PositionGetDouble(POSITION_SL);
+      double currentTP = PositionGetDouble(POSITION_TP);
+      double price;
+      double newSL;
+      bool shouldMove = false;
+
+      if(g_beIsBuy)
+      {
+         price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         double advance = price - g_beEntryPrice;
+         if(advance < startDist) continue;   // Not far enough yet
+
+         // How many full steps has price advanced?
+         int steps = (int)MathFloor((advance - startDist) / stepDist);
+         // SL target = entry + (steps × step)
+         newSL = NormalizePrice(g_beEntryPrice + steps * stepDist);
+         if(newSL > currentSL && newSL < price)
+            shouldMove = true;
+      }
+      else
+      {
+         price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         double advance = g_beEntryPrice - price;
+         if(advance < startDist) continue;
+
+         int steps = (int)MathFloor((advance - startDist) / stepDist);
+         newSL = NormalizePrice(g_beEntryPrice - steps * stepDist);
+         if(newSL < currentSL && newSL > price)
+            shouldMove = true;
+      }
+
+      if(!shouldMove) continue;
+
+      MqlTradeRequest modReq; MqlTradeResult modRes;
+      ZeroMemory(modReq); ZeroMemory(modRes);
+      modReq.action   = TRADE_ACTION_SLTP;
+      modReq.symbol   = _Symbol;
+      modReq.position = ticket;
+      modReq.sl       = newSL;
+      modReq.tp       = currentTP;
+
+      if(OrderSend(modReq, modRes))
+      {
+         double lockedR = MathAbs(newSL - g_beEntryPrice) / risk;
+         Print("[MTF-TRAIL] ✅ SL moved to ", newSL,
+               " | Locked ", NormalizeDouble(lockedR, 2), "R",
+               " | Ticket=", ticket);
+         g_mtfTrailLast = newSL;
+      }
+      else
+         Print("[MTF-TRAIL] ⚠️ SL move failed. Retcode=", modRes.retcode);
+   }
+}
+
+// ============================================================================
+// SESSION FILTER — only place NEW entries within allowed UTC hours
+// Returns true if current server time (UTC) is within any allowed window.
+// ============================================================================
+bool IsWithinSession()
+{
+   if(!InpUseSessionFilter) return true;   // filter disabled → always OK
+
+   MqlDateTime dt;
+   TimeCurrent(dt);  // broker server time — consistent with historical bar timestamps and session analysis
+   int h = dt.hour;
+
+   // Window 1: [InpSess1Start, InpSess1End)
+   bool in1 = (InpSess1Start >= 0 && InpSess1End > InpSess1Start)
+              ? (h >= InpSess1Start && h < InpSess1End)
+              : false;
+
+   // Window 2: [InpSess2Start, InpSess2End), -1 = disabled
+   bool in2 = (InpSess2Start >= 0 && InpSess2End > InpSess2Start)
+              ? (h >= InpSess2Start && h < InpSess2End)
+              : false;
+
+   if(!in1 && !in2)
+   {
+      static int g_lastBlockedHour = -1;
+      if(h != g_lastBlockedHour)
+      {
+         Print("[SESSION] Blocked at UTC ", h, ":00 — allowed windows: ",
+               InpSess1Start, "-", InpSess1End, " and ", InpSess2Start, "-", InpSess2End);
+         g_lastBlockedHour = h;
+      }
+   }
+   return in1 || in2;
 }
 
 // ============================================================================
@@ -732,7 +974,9 @@ bool PlaceOrder(const bool isBuy, const double entry, const double sl, const dou
 
    // Calculate lot size (single, consistent calculation)
    double lot;
-   if(InpUseDynamicLot)
+   if(InpUseMoneyRisk)
+      lot = CalculateMoneyLotSize(entryN, slN);
+   else if(InpUseDynamicLot)
       lot = CalculateEnhancedLotSize(entryN, slN);
    else
       lot = InpLotSize;
@@ -1101,77 +1345,6 @@ void CheckTrailingStop()
 }
 
 // ============================================================================
-// BREAKEVEN TRAILING — Move SL to entry when profit >= InpBEAtR × risk
-// ============================================================================
-void CheckBreakevenMove()
-{
-   if(g_beDone || InpBEAtR <= 0) return;
-   if(g_beEntryPrice == 0 || g_beOrigSL == 0) return;
-
-   double risk = MathAbs(g_beEntryPrice - g_beOrigSL);
-   if(risk <= 0) return;
-
-   double beTarget = InpBEAtR * risk;  // Distance needed for BE move
-
-   // Check all our positions
-   for(int i = PositionsTotal() - 1; i >= 0; --i)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(!PositionSelectByTicket(ticket)) continue;
-      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
-
-      double posOpen = PositionGetDouble(POSITION_PRICE_OPEN);
-      double currentSL = PositionGetDouble(POSITION_SL);
-      double currentTP = PositionGetDouble(POSITION_TP);
-
-      // Check if profit reached BE threshold
-      bool reachedBE = false;
-      if(g_beIsBuy)
-      {
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         if((bid - posOpen) >= beTarget)
-            reachedBE = true;
-      }
-      else
-      {
-         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         if((posOpen - ask) >= beTarget)
-            reachedBE = true;
-      }
-
-      if(!reachedBE) continue;
-
-      // Move SL to entry (breakeven)
-      double newSL = NormalizePrice(posOpen);
-      if(MathAbs(currentSL - newSL) <= _Point) continue;  // Already at BE
-
-      // Validate: BUY SL must be below current price, SELL SL above
-      if(g_beIsBuy && newSL >= SymbolInfoDouble(_Symbol, SYMBOL_BID)) continue;
-      if(!g_beIsBuy && newSL <= SymbolInfoDouble(_Symbol, SYMBOL_ASK)) continue;
-
-      MqlTradeRequest modReq; MqlTradeResult modRes;
-      ZeroMemory(modReq); ZeroMemory(modRes);
-      modReq.action   = TRADE_ACTION_SLTP;
-      modReq.symbol   = _Symbol;
-      modReq.position = ticket;
-      modReq.sl       = newSL;
-      modReq.tp       = currentTP;  // Keep existing TP
-
-      if(!OrderSend(modReq, modRes))
-      {
-         Print("⚠️ BE move failed. Ticket=", ticket, " Retcode=", modRes.retcode);
-         return;  // Retry next tick
-      }
-      Print("✅ BREAKEVEN: SL moved to entry=", newSL,
-            " | Profit was >= ", InpBEAtR, "R | Ticket=", ticket);
-   }
-
-   g_beDone = true;  // All positions moved to BE
-}
-
-// ============================================================================
 // INIT / DEINIT
 // ============================================================================
 int OnInit()
@@ -1213,10 +1386,22 @@ int OnInit()
          Print("⚠️ Failed to create HTF EMA handles");
    }
 
+   // MTF Consensus EMA handles (M15/H1/H4/D1/W1)
+   if(InpUseMTFConsensus)
+   {
+      for(int i = 0; i < 5; i++)
+      {
+         g_mtfFastHandle[i] = iMA(_Symbol, g_mtfTFs[i], InpEMAFastPeriod, 0, MODE_EMA, PRICE_CLOSE);
+         g_mtfSlowHandle[i] = iMA(_Symbol, g_mtfTFs[i], InpEMASlowPeriod, 0, MODE_EMA, PRICE_CLOSE);
+         if(g_mtfFastHandle[i] == INVALID_HANDLE || g_mtfSlowHandle[i] == INVALID_HANDLE)
+            Print("⚠️ Failed to create MTF EMA handle for TF index ", i, " (", EnumToString(g_mtfTFs[i]), ")");
+      }
+   }
+
    Print("ℹ️ Strategy:",
          " PivotLen=", InpPivotLen, " BreakMult=", InpBreakMult,
          " ImpulseMult=", InpImpulseMult, " TP_RR=", InpTPFixedRR,
-         " BE@R=", InpBEAtR, " SLBuf=", InpSLBufferPct, "%",
+         " SLBuf=", InpSLBufferPct, "%",
          " MinSLDist=", InpMinSLDistPts, "pts");
    Print("💰 Risk Management:", 
          " DynamicLot=", (InpUseDynamicLot ? "ON" : "OFF"),
@@ -1249,6 +1434,12 @@ void OnDeinit(const int reason)
    if(g_emaSlowHandle != INVALID_HANDLE) { IndicatorRelease(g_emaSlowHandle); g_emaSlowHandle = INVALID_HANDLE; }
    if(g_htfEmaFastHandle != INVALID_HANDLE) { IndicatorRelease(g_htfEmaFastHandle); g_htfEmaFastHandle = INVALID_HANDLE; }
    if(g_htfEmaSlowHandle != INVALID_HANDLE) { IndicatorRelease(g_htfEmaSlowHandle); g_htfEmaSlowHandle = INVALID_HANDLE; }
+   // MTF Consensus handles
+   for(int i = 0; i < 5; i++)
+   {
+      if(g_mtfFastHandle[i] != INVALID_HANDLE) { IndicatorRelease(g_mtfFastHandle[i]); g_mtfFastHandle[i] = INVALID_HANDLE; }
+      if(g_mtfSlowHandle[i] != INVALID_HANDLE) { IndicatorRelease(g_mtfSlowHandle[i]); g_mtfSlowHandle[i] = INVALID_HANDLE; }
+   }
 }
 
 // OnTradeTransaction removed — daily loss is checked via OnTick using balance only.
@@ -1294,9 +1485,9 @@ void OnTick()
    if(g_trailingActive && InpTrailAfterPartialPts > 0)
       CheckTrailingStop();
 
-   // ── Breakeven: Move SL to entry when profit >= BE_AT_R × risk ──
-   if(!g_beDone && InpBEAtR > 0)
-      CheckBreakevenMove();
+   // ── MTF Trailing Stop: step-up SL per R-multiple when consensus active ──
+   if(g_mtfTrailActive)
+      CheckMTFTrailingStop();
 
    // If daily loss limit hit, stop placing new orders (but let existing positions run)
    if(dailyLossHit)
@@ -1769,6 +1960,11 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       }
    }
 
+   // ── MTF CONSENSUS FILTER: Require >= InpMTFMinAgree TFs aligned with signal ──
+   int mtfCount = GetMTFConsensusCount(isBuy);  // save count for trailing decision below
+   if(!IsMTFConsensusOK(isBuy))
+      return;
+
    // ── Apply Entry Offset: shift limit entry deeper vs exact swing level ──
    // This avoids placing limit at exact SH/SL level (liquidity sweet spot / stop hunt zone)
    // For SELL: entry shifts UP (further from SL) → fills slightly above swing high
@@ -1913,6 +2109,14 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
 
    // ── Trade ──
    {
+      // Session filter: skip order if outside allowed hours
+      if(!IsWithinSession())
+      {
+         Print("[SESSION] Signal detected but blocked by session filter | ",
+               isBuy ? "BUY" : "SELL", " Entry=", entryFinal);
+         return;
+      }
+
       // Cancel pending orders (not yet filled)
       DeleteAllPendingOrders();
 
@@ -1944,10 +2148,12 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
       {
          // Close all existing positions to flip/reset
          CloseAllPositions();
-         // Reset breakeven state for new trade
+         // Reset state for new trade
          g_beDone       = false;
          g_partialTPDone = false;
          g_trailingActive = false;
+         g_mtfTrailActive = false;
+         g_mtfTrailLast   = 0.0;
          g_confirmCandlePassed = false;
          g_confirmBarsWaited   = 0;
          g_beEntryPrice = entryFinal;
@@ -1960,6 +2166,8 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
          g_beDone       = false;
          g_partialTPDone = false;
          g_trailingActive = false;
+         g_mtfTrailActive = false;
+         g_mtfTrailLast   = 0.0;
          g_confirmCandlePassed = false;
          g_confirmBarsWaited   = 0;
          g_beEntryPrice = entryFinal;
@@ -1985,7 +2193,16 @@ void ProcessConfirmedSignal(bool isBuy, double entry, double sl, double w1Peak,
 
       // Place order — PlaceOrder now uses the SAME final SL for lot sizing
       // No more double calculation: SL/TP/Lot are all consistent
-      PlaceOrder(isBuy, entryFinal, slBuffered, tp);
+      bool orderOK = PlaceOrder(isBuy, entryFinal, slBuffered, tp);
+
+      // Activate MTF trailing if trade placed and full consensus
+      if(orderOK && InpMTFTrailOnConsensus && mtfCount >= InpMTFMinAgree)
+      {
+         g_mtfTrailActive = true;
+         g_mtfTrailLast   = slBuffered;
+         Print("[MTF-TRAIL] Activated | Consensus=", mtfCount, "/5 | isBuy=", isBuy,
+               " | StartR=", InpMTFTrailStartR, " StepR=", InpMTFTrailStepR);
+      }
    }
 }
 //+------------------------------------------------------------------+

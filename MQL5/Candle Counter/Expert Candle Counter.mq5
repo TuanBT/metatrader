@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Candle Counter EA — v1.3                                         |
+//| Candle Counter EA — v1.4                                         |
 //|                                                                  |
 //| Signal:  3 consecutive same-color candles                        |
 //| Entry:   Market order at open of 4th candle                      |
@@ -14,22 +14,15 @@ input double InpLotSize       = 0.01;    // Lot size
 input int    InpDeviation     = 20;      // Max deviation (points)
 input ulong  InpMagic         = 20260225;// Magic number
 input bool   InpOnePosition   = true;    // Block new entry if already in trade
-input double InpMinBodyPct    = 0.0;     // Min body% of range per candle (0=off)
-input double InpMinCandleATR  = 0.0;     // Min candle range relative to ATR(14) (0=off)
-input int    InpATRPeriod     = 14;      // ATR period for range filter
-input bool   InpUseTimeFilter = false;   // Enable server-time filter
-input int    InpStartHour     = 7;       // Entry allowed from (server hour)
-input int    InpEndHour       = 21;      // Entry allowed until (server hour)
-input bool   InpUseEMAFilter  = false;   // Only trade in EMA trend direction
+input bool   InpUseEMAFilter  = true;    // Only trade in EMA trend direction
 input int    InpEMAPeriod     = 50;      // EMA period for trend filter
 input ENUM_TIMEFRAMES InpEMATF = PERIOD_CURRENT; // EMA timeframe (PERIOD_CURRENT = same TF)
-input bool   InpUseADXFilter  = false;   // Only trade when ADX > threshold (trending market)
+input bool   InpUseADXFilter  = true;    // Only trade when ADX > threshold (trending market)
 input int    InpADXPeriod     = 14;      // ADX period
 input double InpADXMinValue   = 25.0;    // Min ADX value to allow entry
 
 // ── State ─────────────────────────────────────────────────────────
 static datetime g_lastBarTime = 0;
-static int      g_atrHandle   = INVALID_HANDLE;
 static int      g_emaHandle   = INVALID_HANDLE;
 static int      g_adxHandle   = INVALID_HANDLE;
 static bool     g_inTrade     = false;
@@ -84,36 +77,6 @@ int DetectThreeCandles()
    }
 
    if(!allGreen && !allRed) return 0;
-
-   // Optional body ratio filter (body / range >= InpMinBodyPct%)
-   if(InpMinBodyPct > 0.0)
-   {
-      for(int i = 1; i <= 3; i++)
-      {
-         double o   = iOpen(_Symbol, _Period, i);
-         double c   = iClose(_Symbol, _Period, i);
-         double h   = iHigh(_Symbol, _Period, i);
-         double l   = iLow(_Symbol, _Period, i);
-         double rng = h - l;
-         if(rng <= 0.0) return 0;
-         if(MathAbs(c - o) / rng * 100.0 < InpMinBodyPct) return 0;
-      }
-   }
-
-   // Optional ATR range filter: each candle's range >= InpMinCandleATR * ATR
-   if(InpMinCandleATR > 0.0 && g_atrHandle != INVALID_HANDLE)
-   {
-      double atrBuf[4];
-      if(CopyBuffer(g_atrHandle, 0, 1, 4, atrBuf) != 4) return 0;
-      for(int i = 1; i <= 3; i++)
-      {
-         double h = iHigh(_Symbol, _Period, i);
-         double l = iLow(_Symbol, _Period, i);
-         double atr = atrBuf[i - 1];   // atrBuf[0]=bar1, [1]=bar2, [2]=bar3
-         if(atr <= 0.0) return 0;
-         if((h - l) < InpMinCandleATR * atr) return 0;
-      }
-   }
 
    return allGreen ? 1 : -1;
 }
@@ -195,18 +158,6 @@ void OnTick()
    // Entry conditions
    if(InpOnePosition && HasPosition()) return;
 
-   // Time filter (applied to bar[1] time = last closed candle time)
-   if(InpUseTimeFilter)
-   {
-      MqlDateTime dt;
-      TimeToStruct(iTime(_Symbol, _Period, 1), dt);
-      int hour = dt.hour;
-      if(InpStartHour <= InpEndHour)
-      { if(hour < InpStartHour || hour >= InpEndHour) return; }
-      else
-      { if(hour < InpStartHour && hour >= InpEndHour) return; }
-   }
-
    // Detect 3-candle signal
    int sig = DetectThreeCandles();
    if(sig == 0) return;
@@ -282,15 +233,6 @@ void OnTick()
 
 int OnInit()
 {
-   if(InpMinCandleATR > 0.0)
-   {
-      g_atrHandle = iATR(_Symbol, _Period, InpATRPeriod);
-      if(g_atrHandle == INVALID_HANDLE)
-      {
-         Print("Warning: failed to create ATR handle.");
-         return INIT_FAILED;
-      }
-   }
    if(InpUseEMAFilter)
    {
       ENUM_TIMEFRAMES emaTF = (InpEMATF == PERIOD_CURRENT) ? _Period : InpEMATF;
@@ -310,22 +252,14 @@ int OnInit()
          return INIT_FAILED;
       }
    }
-   Print("Candle Counter v1.3 | Lot=", InpLotSize,
-         " | MinBody=", InpMinBodyPct, "%",
-         " | MinCandleATR=", InpMinCandleATR,
+   Print("Candle Counter v1.4 | Lot=", InpLotSize,
          " | EMA=", (InpUseEMAFilter ? StringFormat("EMA%d", InpEMAPeriod) : "off"),
-         " | ADX=", (InpUseADXFilter ? StringFormat("ADX%d>%.0f", InpADXPeriod, InpADXMinValue) : "off"),
-         " | Time=", (InpUseTimeFilter ? StringFormat("%d-%d", InpStartHour, InpEndHour) : "off"));
+         " | ADX=", (InpUseADXFilter ? StringFormat("ADX%d>%.0f", InpADXPeriod, InpADXMinValue) : "off"));
    return INIT_SUCCEEDED;
 }
 
 void OnDeinit(const int reason)
 {
-   if(g_atrHandle != INVALID_HANDLE)
-   {
-      IndicatorRelease(g_atrHandle);
-      g_atrHandle = INVALID_HANDLE;
-   }
    if(g_emaHandle != INVALID_HANDLE)
    {
       IndicatorRelease(g_emaHandle);
