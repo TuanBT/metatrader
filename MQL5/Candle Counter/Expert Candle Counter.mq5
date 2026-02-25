@@ -1,9 +1,9 @@
 //+------------------------------------------------------------------+
-//| Candle Counter EA — v1.4                                         |
+//| Candle Counter EA — v1.5                                         |
 //|                                                                  |
 //| Signal:  3 consecutive same-color candles                        |
 //| Entry:   Market order at open of 4th candle                      |
-//| SL:      Wick of 1st candle (low for buy, high for sell)         |
+//| SL:      Lowest low / highest high of last N bars (lookback)     |
 //| Trail:   Advance SL to low/high of each new same-color candle    |
 //| TP:      None (exit only via SL)                                 |
 //+------------------------------------------------------------------+
@@ -20,6 +20,7 @@ input ENUM_TIMEFRAMES InpEMATF = PERIOD_CURRENT; // EMA timeframe (PERIOD_CURREN
 input bool   InpUseADXFilter  = true;    // Only trade when ADX > threshold (trending market)
 input int    InpADXPeriod     = 14;      // ADX period
 input double InpADXMinValue   = 25.0;    // Min ADX value to allow entry
+input int    InpSLLookback    = 5;       // SL lookback bars (min low/max high of last N bars)
 
 // ── State ─────────────────────────────────────────────────────────
 static datetime g_lastBarTime = 0;
@@ -187,10 +188,23 @@ void OnTick()
       }
    }
 
-   // SL = wick of candle 3 (first of the three-candle pattern → bar[3])
-   double sl = isBuy
-               ? NormalizePrice(iLow(_Symbol, _Period, 3))
-               : NormalizePrice(iHigh(_Symbol, _Period, 3));
+   // SL = lowest low / highest high of last N bars (lookback)
+   int lookback = MathMax(InpSLLookback, 3);  // at least 3 bars
+   double sl;
+   if(isBuy)
+   {
+      double minLow = iLow(_Symbol, _Period, 1);
+      for(int i = 2; i <= lookback; i++)
+         minLow = MathMin(minLow, iLow(_Symbol, _Period, i));
+      sl = NormalizePrice(minLow);
+   }
+   else
+   {
+      double maxHigh = iHigh(_Symbol, _Period, 1);
+      for(int i = 2; i <= lookback; i++)
+         maxHigh = MathMax(maxHigh, iHigh(_Symbol, _Period, i));
+      sl = NormalizePrice(maxHigh);
+   }
 
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -252,9 +266,10 @@ int OnInit()
          return INIT_FAILED;
       }
    }
-   Print("Candle Counter v1.4 | Lot=", InpLotSize,
+   Print("Candle Counter v1.5 | Lot=", InpLotSize,
          " | EMA=", (InpUseEMAFilter ? StringFormat("EMA%d", InpEMAPeriod) : "off"),
-         " | ADX=", (InpUseADXFilter ? StringFormat("ADX%d>%.0f", InpADXPeriod, InpADXMinValue) : "off"));
+         " | ADX=", (InpUseADXFilter ? StringFormat("ADX%d>%.0f", InpADXPeriod, InpADXMinValue) : "off"),
+         " | SL_LB=", InpSLLookback);
    return INIT_SUCCEEDED;
 }
 
