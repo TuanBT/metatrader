@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.17"
+#property version   "1.25"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -155,6 +155,14 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_ENTRY_LINE    PREFIX "entry_line"
 #define OBJ_PENDING_LINE  PREFIX "pending_line"
 
+// Chart lines (Auto TP / Grid DCA)
+#define OBJ_TP1_LINE      PREFIX "tp1_line"
+#define OBJ_AVG_ENTRY     PREFIX "avg_entry"
+#define OBJ_DCA1_LINE     PREFIX "dca1_line"
+#define OBJ_DCA2_LINE     PREFIX "dca2_line"
+#define OBJ_DCA3_LINE     PREFIX "dca3_line"
+#define OBJ_GRID_INFO     PREFIX "grid_info"
+
 #define OBJ_AUTO_BTN      PREFIX "auto_btn"
 
 
@@ -188,6 +196,63 @@ double   g_atrMult    = 0;
 int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
 bool     g_trailEnabled = false;
 ENUM_SL_MODE g_slMode = SL_ATR;
+
+// MST Medio signal state
+bool     g_medioEnabled  = false;
+int      g_medioPivotLen = 5;     // Pivot lookback (bars left and right)
+double   g_medioImpulseMult = 1.0; // Min body size = impulseMult × 20-bar avg body
+
+// MST Medio persistent tracking
+double   g_mSH1 = 0, g_mSH0 = 0;  // Most recent and previous Swing High
+int      g_mSH1_idx = 0, g_mSH0_idx = 0;
+double   g_mSL1 = 0, g_mSL0 = 0;  // Most recent and previous Swing Low
+int      g_mSL1_idx = 0, g_mSL0_idx = 0;
+double   g_mSLBeforeSH = 0;       // Last SL before most recent SH
+int      g_mSLBeforeSH_idx = 0;
+double   g_mSHBeforeSL = 0;       // Last SH before most recent SL
+int      g_mSHBeforeSL_idx = 0;
+
+// MST Medio pending confirmation state
+// 0=idle, 1=waiting confirm BUY, -1=waiting confirm SELL
+int      g_medioPending  = 0;
+double   g_mBreakPoint   = 0;     // Entry level (SH or SL)
+double   g_mW1Peak       = 0;     // W1 peak (BUY) or trough (SELL)
+double   g_mPendSL       = 0;     // Stop loss level
+datetime g_mLastPivotCalc = 0;    // Last bar that pivots were calculated
+
+// FVG (Impulse Zone IN/OUT) signal state
+bool     g_fvgEnabled     = false;
+int      g_fvgATRLen       = 14;
+double   g_fvgATRMult      = 1.2;   // Impulse range >= atrMult × ATR
+double   g_fvgBodyRatio    = 0.55;  // Min body / range
+
+// FVG persistent tracking
+ENUM_TIMEFRAMES g_fvgImpulseTF = PERIOD_M15;  // Auto-mapped impulse TF
+int      g_fvgImpulseATR   = INVALID_HANDLE;  // ATR handle for impulse TF
+double   g_fvgZoneH        = 0;    // Impulse zone High
+double   g_fvgZoneL        = 0;    // Impulse zone Low
+datetime g_fvgZoneTime     = 0;    // Time of impulse bar
+datetime g_fvgLastImpulse  = 0;    // Last checked impulse bar time
+bool     g_fvgHasContext   = false; // Impulse detected, waiting for IN
+bool     g_fvgWaitingIN    = false;
+bool     g_fvgWaitingOUT   = false;
+double   g_fvgInHigh       = 0;    // IN candle high
+double   g_fvgInLow        = 0;    // IN candle low
+double   g_fvgMinLow       = 0;    // Min low since IN
+double   g_fvgMaxHigh      = 0;    // Max high since IN
+datetime g_fvgInTime       = 0;    // IN candle time
+datetime g_fvgLastCheck    = 0;    // Last bar checked
+
+// Auto TP (Partial Take Profit) state
+bool     g_autoTPEnabled  = false;
+bool     g_tp1Hit         = false;    // TP1 (50% @1R) taken
+
+// Grid DCA state
+bool     g_gridEnabled    = false;
+int      g_gridLevel      = 0;       // 0=initial only, 1-3=DCA additions
+int      g_gridMaxLevel   = 3;       // max DCA positions to add
+double   g_gridSpacingMult = 1.5;    // DCA spacing = ATR × this
+double   g_gridBaseATR    = 0;       // ATR value when grid started
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -231,6 +296,10 @@ double CalcSLPrice(bool isBuy)
             CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1)
          {
             double dist = atr[0] * g_atrMult;
+            // When Grid DCA is ON, widen SL to accommodate all grid levels
+            // SL must be beyond last DCA level + 1×ATR buffer
+            if(g_gridEnabled)
+               dist = atr[0] * (g_gridMaxLevel * g_gridSpacingMult + g_atrMult);
             if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
             sl = isBuy ? entry - dist : entry + dist;
          }
@@ -267,6 +336,47 @@ double CalcSLPrice(bool isBuy)
    }
 
    return NormPrice(sl);
+}
+
+// Return the NORMAL SL distance (without grid widening) – used for lot sizing
+// Each position risks $RiskMoney based on normal ATR distance, NOT the wide grid SL
+double CalcNormalSLDist()
+{
+   switch(g_slMode)
+   {
+      case SL_ATR:
+      {
+         double atr[1];
+         if(g_atrHandle != INVALID_HANDLE &&
+            CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1)
+         {
+            double dist = atr[0] * g_atrMult;
+            if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
+            return dist;
+         }
+         return 0;
+      }
+      case SL_LOOKBACK:
+      {
+         int lb = MathMax(InpSLLookback, 3);
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         double mid = (ask + bid) / 2.0;
+         double low = iLow(_Symbol, _Period, 1);
+         for(int i = 2; i <= lb; i++)
+            low = MathMin(low, iLow(_Symbol, _Period, i));
+         double dist = MathAbs(mid - low);
+         if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
+         return dist;
+      }
+      case SL_FIXED:
+      {
+         double dist = InpFixedSLPips * PipSize();
+         if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
+         return dist;
+      }
+   }
+   return 0;
 }
 
 // Lot from risk $ and SL distance
@@ -313,6 +423,186 @@ double GetPositionPnL()
            + PositionGetDouble(POSITION_SWAP);
    }
    return pnl;
+}
+
+// Count positions matching our magic + symbol
+int CountOwnPositions()
+{
+   int count = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      count++;
+   }
+   return count;
+}
+
+// Volume-weighted average entry price
+double GetAvgEntry()
+{
+   double sumLE = 0, sumL = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      double lot = PositionGetDouble(POSITION_VOLUME);
+      sumLE += lot * PositionGetDouble(POSITION_PRICE_OPEN);
+      sumL  += lot;
+   }
+   return (sumL > 0) ? sumLE / sumL : 0;
+}
+
+// Total lots across all positions
+double GetTotalLots()
+{
+   double total = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      total += PositionGetDouble(POSITION_VOLUME);
+   }
+   return total;
+}
+
+// Close X% of total position (most profitable position first)
+bool PartialClosePercent(double pct)
+{
+   ulong   tickets[];
+   double  lots[], profits[];
+   int n = 0;
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      ArrayResize(tickets, n + 1);
+      ArrayResize(lots,    n + 1);
+      ArrayResize(profits, n + 1);
+      tickets[n] = t;
+      lots[n]    = PositionGetDouble(POSITION_VOLUME);
+      profits[n] = PositionGetDouble(POSITION_PROFIT)
+                 + PositionGetDouble(POSITION_SWAP);
+      n++;
+   }
+   if(n == 0) return false;
+
+   double totalLots = 0;
+   for(int i = 0; i < n; i++) totalLots += lots[i];
+
+   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double closeLots = MathFloor(totalLots * pct / lotStep) * lotStep;
+   if(closeLots < minLot) closeLots = minLot;
+   if(closeLots >= totalLots) return false;  // can't close everything
+
+   // Sort by profit descending (bubble sort)
+   for(int i = 0; i < n - 1; i++)
+      for(int j = 0; j < n - 1 - i; j++)
+         if(profits[j] < profits[j + 1])
+         {
+            ulong  tt = tickets[j]; tickets[j] = tickets[j+1]; tickets[j+1] = tt;
+            double tl = lots[j];    lots[j]    = lots[j+1];    lots[j+1]    = tl;
+            double tp = profits[j]; profits[j] = profits[j+1]; profits[j+1] = tp;
+         }
+
+   double remaining = closeLots;
+   bool anyClose = false;
+
+   for(int i = 0; i < n && remaining >= minLot; i++)
+   {
+      if(!PositionSelectByTicket(tickets[i])) continue;
+      double vol = MathMin(lots[i], remaining);
+      vol = MathFloor(vol / lotStep) * lotStep;
+      if(vol < minLot) continue;
+
+      MqlTradeRequest req;
+      MqlTradeResult  res;
+      ZeroMemory(req);
+      ZeroMemory(res);
+
+      req.action    = TRADE_ACTION_DEAL;
+      req.symbol    = _Symbol;
+      req.position  = tickets[i];
+      req.volume    = vol;
+      req.type      = g_isBuy ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+      req.price     = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                              : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      req.deviation = InpDeviation;
+      req.magic     = InpMagic;
+
+      if(OrderSend(req, res))
+      {
+         Print(StringFormat("[AUTO TP] Closed %.2f from #%d", vol, tickets[i]));
+         remaining -= vol;
+         anyClose = true;
+      }
+      else
+         Print(StringFormat("[AUTO TP] Close FAIL rc=%d %s", res.retcode, res.comment));
+   }
+   return anyClose;
+}
+
+// Move SL to breakeven (avgEntry + spread buffer) for all positions
+void MoveSLToBreakeven()
+{
+   double avgEntry = GetAvgEntry();
+   if(avgEntry <= 0) return;
+
+   double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                 - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double buffer = spread + _Point;
+   double beSL = g_isBuy ? NormPrice(avgEntry + buffer)
+                         : NormPrice(avgEntry - buffer);
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      double curSL = PositionGetDouble(POSITION_SL);
+      bool advance = g_isBuy ? (beSL > curSL) : (beSL < curSL);
+      if(!advance) continue;
+
+      // Safety: SL must stay behind current price
+      if(g_isBuy  && beSL >= SymbolInfoDouble(_Symbol, SYMBOL_BID)) continue;
+      if(!g_isBuy && beSL <= SymbolInfoDouble(_Symbol, SYMBOL_ASK)) continue;
+
+      MqlTradeRequest rq;
+      MqlTradeResult  rs;
+      ZeroMemory(rq);
+      ZeroMemory(rs);
+
+      rq.action   = TRADE_ACTION_SLTP;
+      rq.symbol   = _Symbol;
+      rq.position = t;
+      rq.sl       = beSL;
+      rq.tp       = PositionGetDouble(POSITION_TP);
+
+      if(OrderSend(rq, rs))
+         Print(StringFormat("[AUTO TP] SL->BE %s for #%d",
+               DoubleToString(beSL, _Digits), t));
+      else
+         Print(StringFormat("[AUTO TP] BE FAIL rc=%d", rs.retcode));
+   }
+   g_currentSL = beSL;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -373,6 +663,77 @@ void UpdateChartLines()
       if(slSell > 0)
          SetHLine(OBJ_SL_SELL_LINE, slSell, C'239,83,80',
                   STYLE_DASH, 1, StringFormat("SELL SL  %." + IntegerToString(_Digits) + "f", slSell));
+   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CHART LINES – Auto TP & Grid DCA visualization
+// ════════════════════════════════════════════════════════════════════
+void UpdateTPGridLines()
+{
+   // ── Auto TP: TP1 line at 1R from avgEntry ──
+   if(g_autoTPEnabled && g_hasPos && g_riskDist > 0)
+   {
+      double avgEntry = GetAvgEntry();
+      if(avgEntry > 0)
+      {
+         double tp1 = g_isBuy ? NormPrice(avgEntry + g_riskDist)
+                              : NormPrice(avgEntry - g_riskDist);
+         if(!g_tp1Hit)
+            SetHLine(OBJ_TP1_LINE, tp1, C'0,200,83',
+                     STYLE_DASH, 1,
+                     StringFormat("TP1 (1R) %." + IntegerToString(_Digits) + "f", tp1));
+         else
+            HideHLine(OBJ_TP1_LINE);  // already taken
+      }
+   }
+   else
+      HideHLine(OBJ_TP1_LINE);
+
+   // ── Grid DCA: show pending DCA levels ──
+   if(g_gridEnabled && g_hasPos && g_gridBaseATR > 0)
+   {
+      double spacing = g_gridBaseATR * g_gridSpacingMult;
+      string dcaNames[] = {OBJ_DCA1_LINE, OBJ_DCA2_LINE, OBJ_DCA3_LINE};
+
+      for(int i = 0; i < g_gridMaxLevel; i++)
+      {
+         int level = i + 1;
+         if(level <= g_gridLevel)
+         {
+            // Already filled — hide
+            HideHLine(dcaNames[i]);
+         }
+         else
+         {
+            double dcaPx = g_isBuy
+               ? NormPrice(g_entryPx - level * spacing)
+               : NormPrice(g_entryPx + level * spacing);
+            SetHLine(dcaNames[i], dcaPx, C'255,152,0',
+                     STYLE_DOT, 1,
+                     StringFormat("DCA #%d %." + IntegerToString(_Digits) + "f",
+                                  level, dcaPx));
+         }
+      }
+
+      // ── Average Entry line (when multiple positions) ──
+      if(g_gridLevel > 0)
+      {
+         double avgEntry = GetAvgEntry();
+         if(avgEntry > 0)
+            SetHLine(OBJ_AVG_ENTRY, avgEntry, C'0,188,212',
+                     STYLE_SOLID, 1,
+                     StringFormat("Avg %." + IntegerToString(_Digits) + "f", avgEntry));
+      }
+      else
+         HideHLine(OBJ_AVG_ENTRY);
+   }
+   else
+   {
+      HideHLine(OBJ_DCA1_LINE);
+      HideHLine(OBJ_DCA2_LINE);
+      HideHLine(OBJ_DCA3_LINE);
+      HideHLine(OBJ_AVG_ENTRY);
    }
 }
 
@@ -545,15 +906,19 @@ void CreatePanel()
               "Trail SL: OFF", C'180,180,200', C'60,60,85', 8);
    y += 30;
 
-   // ── Grid (disabled placeholder) ──
-   MakeButton(OBJ_GRID_BTN, PX + 5, y, IW - 2, 24,
-              "Grid: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   // ── Grid DCA toggle ──
+   MakeButton(OBJ_GRID_BTN, PX + 5, y, IW - 2, 26,
+              "Grid DCA: OFF", C'180,180,200', C'60,60,85', 8);
    y += 28;
 
-   // ── Auto TP (disabled placeholder) ──
-   MakeButton(OBJ_AUTOTP_BTN, PX + 5, y, IW - 2, 24,
-              "Auto TP: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
-   y += 30;
+   // ── Auto TP toggle ──
+   MakeButton(OBJ_AUTOTP_BTN, PX + 5, y, IW - 2, 26,
+              "Auto TP: OFF", C'180,180,200', C'60,60,85', 8);
+   y += 28;
+
+   // ── Grid/TP info line (hidden initially, shown when grid/tp active with position) ──
+   MakeLabel(OBJ_GRID_INFO, IX, y, " ", COL_DIM, 8, FONT_MONO);
+   y += 16;
 
    // ═══════════════════════════════════════
    // SECTION: ENTRY SIGNALS
@@ -567,14 +932,14 @@ void CreatePanel()
               "Candle Counter 3: OFF", C'180,180,200', C'60,60,85', 8);
    y += 30;
 
-   // ── MST Medio (disabled placeholder) ──
-   MakeButton(OBJ_MEDIO_BTN, PX + 5, y, IW - 2, 24,
-              "MST Medio: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   // ── MST Medio toggle ──
+   MakeButton(OBJ_MEDIO_BTN, PX + 5, y, IW - 2, 26,
+              "MST Medio: OFF", C'180,180,200', C'60,60,85', 8);
    y += 28;
 
-   // ── FVG Signal (disabled placeholder) ──
-   MakeButton(OBJ_FVG_BTN, PX + 5, y, IW - 2, 24,
-              "FVG Signal: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   // ── FVG Signal toggle ──
+   MakeButton(OBJ_FVG_BTN, PX + 5, y, IW - 2, 26,
+              "FVG Signal: OFF", C'180,180,200', C'60,60,85', 8);
    y += 30;
 
    // ═══════════════════════════════════════
@@ -628,22 +993,24 @@ void UpdatePanel()
    double distBuy  = MathAbs(ask - slBuy);
    double distSell = MathAbs(bid - slSell);
 
-   // ── Lot sizes ──
-   double lotBuy  = CalcLot(distBuy);
-   double lotSell = CalcLot(distSell);
+   // ── Lot sizes (preview based on NORMAL SL distance, not grid-widened) ──
+   double normalDist = CalcNormalSLDist();
+   double avgLot = (normalDist > 0) ? CalcLot(normalDist)
+                                    : CalcLot((distBuy + distSell) / 2.0);
 
    // ── SL label ──
    string slMode = StringFormat("ATR %.1fx", g_atrMult);
    double avgPts = ((distBuy + distSell) / 2.0) / _Point;
+   double normalPts = normalDist / _Point;
 
-   // ── BUY / SELL button text ──
-   ObjectSetString(0, OBJ_BUY_BTN,  OBJPROP_TEXT, StringFormat("BUY  %.2f", lotBuy));
-   ObjectSetString(0, OBJ_SELL_BTN, OBJPROP_TEXT, StringFormat("SELL  %.2f", lotSell));
+   // ── BUY / SELL button text (clean, no lot) ──
+   ObjectSetString(0, OBJ_BUY_BTN,  OBJPROP_TEXT, "BUY");
+   ObjectSetString(0, OBJ_SELL_BTN, OBJPROP_TEXT, "SELL");
 
-   // ── SL + Spread + Mode (own line) ──
+   // ── SL + Spread + Lot info line ──
    double spread = (ask - bid) / _Point;
    ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TEXT,
-      StringFormat("%s  SL %.0f  Spr %.0f", slMode, avgPts, spread));
+      StringFormat("%s | SL %.0f | Lot %.2f | Spr %.0f", slMode, normalPts, avgLot, spread));
    ObjectSetInteger(0, OBJ_SPRD_LBL, OBJPROP_COLOR, COL_DIM);
 
    // ── Position status (next to Risk) ──
@@ -653,14 +1020,41 @@ void UpdatePanel()
       SyncIfNeeded();
       string dir = g_isBuy ? "LONG" : "SHORT";
       double pnl = GetPositionPnL();
-      ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT,
-         StringFormat("%s $%+.2f", dir, pnl));
+      int nPos = CountOwnPositions();
+      double totalLots = GetTotalLots();
+      string statusTxt;
+      if(nPos > 1)
+         statusTxt = StringFormat("%s %.2f | x%d | $%+.2f", dir, totalLots, nPos, pnl);
+      else
+         statusTxt = StringFormat("%s %.2f | $%+.2f", dir, totalLots, pnl);
+      ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT, statusTxt);
       ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR,
          pnl >= 0 ? COL_PROFIT : COL_LOSS);
+
+      // ── Dynamic button text (info merged into buttons) ──
+      if(g_gridEnabled)
+      {
+         // Calculate actual max risk based on real totalLots & SL distance
+         double avgE = GetAvgEntry();
+         double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+         double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+         double actualRisk = 0;
+         if(tickSz > 0 && tickVal > 0 && g_currentSL > 0)
+            actualRisk = totalLots * (MathAbs(avgE - g_currentSL) / tickSz) * tickVal;
+         ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TEXT,
+            StringFormat("Grid: ON | DCA %d/%d | Max $%.0f",
+                         g_gridLevel, g_gridMaxLevel, actualRisk));
+      }
+      if(g_autoTPEnabled)
+         ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
+            g_tp1Hit ? "Auto TP: ON | TP1 ✓ trailing" : "Auto TP: ON | 50%@1R");
+      // Clear separate info line (info now on buttons)
+      ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
    }
    else
    {
       ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT, " ");
+      ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
 
       // Reset tracking
       g_entryPx  = 0;
@@ -671,6 +1065,9 @@ void UpdatePanel()
 
    // ── Update chart SL lines ──
    UpdateChartLines();
+
+   // ── Update TP/Grid chart lines ──
+   UpdateTPGridLines();
 
    ChartRedraw();
 }
@@ -685,7 +1082,9 @@ bool ExecuteTrade(bool isBuy)
 
    double entry = isBuy ? ask : bid;
    double sl    = CalcSLPrice(isBuy);
-   double dist  = MathAbs(entry - sl);
+   // Lot based on NORMAL SL distance (per-position risk), SL placed at wide distance
+   double normalDist = CalcNormalSLDist();
+   double dist  = (normalDist > 0) ? normalDist : MathAbs(entry - sl);
    double lot   = CalcLot(dist);
 
    // Validate SL
@@ -815,7 +1214,9 @@ bool ExecutePendingTrade(bool isBuy)
       orderType = (pendingPrice > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
 
    double sl   = CalcSLPriceFrom(isBuy, pendingPrice);
-   double dist = MathAbs(pendingPrice - sl);
+   // Lot based on NORMAL SL distance (per-position risk)
+   double normalDist = CalcNormalSLDist();
+   double dist = (normalDist > 0) ? normalDist : MathAbs(pendingPrice - sl);
    double lot  = CalcLot(dist);
 
    if(dist <= 0)                     { Print("[PENDING] Invalid SL distance"); return false; }
@@ -876,6 +1277,9 @@ double CalcSLPriceFrom(bool isBuy, double entryPrice)
          if(CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1)
          {
             double dist = atr[0] * g_atrMult;
+            // When Grid DCA is ON, widen SL beyond all grid levels
+            if(g_gridEnabled)
+               dist = atr[0] * (g_gridMaxLevel * g_gridSpacingMult + g_atrMult);
             double buffer = dist * InpSLBuffer / 100.0;
             sl = isBuy ? NormPrice(entryPrice - dist - buffer)
                        : NormPrice(entryPrice + dist + buffer);
@@ -1026,6 +1430,149 @@ void ManageTrail()
 }
 
 // ════════════════════════════════════════════════════════════════════
+// AUTO TP – Partial Take Profit: 50% @1R → BE → trail remainder
+// ════════════════════════════════════════════════════════════════════
+void ManageAutoTP()
+{
+   if(!g_autoTPEnabled) return;
+   if(!g_hasPos) return;
+   if(g_riskDist <= 0) return;
+
+   // Use average entry for multi-position (grid) scenarios
+   double avgEntry = GetAvgEntry();
+   if(avgEntry <= 0) return;
+
+   double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                        : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+   double moveFromEntry = g_isBuy ? (cur - avgEntry) : (avgEntry - cur);
+   double moveR = moveFromEntry / g_riskDist;
+
+   // TP1: 50% at 1R
+   if(!g_tp1Hit && moveR >= 1.0)
+   {
+      Print(StringFormat("[AUTO TP] TP1 hit at %.1fR | Price=%s AvgEntry=%s",
+            moveR, DoubleToString(cur, _Digits), DoubleToString(avgEntry, _Digits)));
+
+      if(PartialClosePercent(0.50))
+      {
+         g_tp1Hit = true;
+         Print("[AUTO TP] 50% closed at TP1 (1R) → moving SL to breakeven");
+         MoveSLToBreakeven();
+      }
+   }
+   // After TP1: trailing is handled by ManageTrail() if enabled
+   // If trail is NOT enabled, Auto TP enables implicit R-based trail after TP1
+   if(g_tp1Hit && !g_trailEnabled)
+   {
+      // Implicit trail: step SL at 0.5R intervals after 1R
+      if(moveR >= 1.5)
+      {
+         int fullSteps = (int)MathFloor((moveR - 1.0) / 0.5);
+         double trailAmt = fullSteps * 0.5 * g_riskDist;
+         double newSL = g_isBuy ? NormPrice(avgEntry + trailAmt)
+                                : NormPrice(avgEntry - trailAmt);
+
+         bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
+         if(advance)
+         {
+            if(g_isBuy  && newSL >= SymbolInfoDouble(_Symbol, SYMBOL_BID)) return;
+            if(!g_isBuy && newSL <= SymbolInfoDouble(_Symbol, SYMBOL_ASK)) return;
+            ModifySL(newSL);
+            Print(StringFormat("[AUTO TP] Implicit trail SL → %s at %.1fR",
+                  DoubleToString(newSL, _Digits), moveR));
+         }
+      }
+   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// GRID DCA – Add positions when price moves against us
+// ════════════════════════════════════════════════════════════════════
+void ManageGrid()
+{
+   if(!g_gridEnabled) return;
+   if(!g_hasPos) return;
+   if(g_gridLevel >= g_gridMaxLevel) return;  // max DCA reached
+
+   // Need base ATR to calculate spacing
+   if(g_gridBaseATR <= 0)
+   {
+      double atr[1];
+      if(g_atrHandle != INVALID_HANDLE &&
+         CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1)
+         g_gridBaseATR = atr[0];
+      else
+         return;
+   }
+
+   double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                        : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   // Calculate expected DCA level price
+   double spacing = g_gridBaseATR * g_gridSpacingMult;
+   int nextLevel = g_gridLevel + 1;
+   double dcaPrice = g_isBuy
+      ? g_entryPx - nextLevel * spacing
+      : g_entryPx + nextLevel * spacing;
+
+   // Check if price reached DCA level
+   bool triggered = g_isBuy ? (cur <= dcaPrice) : (cur >= dcaPrice);
+   if(!triggered) return;
+
+   // Calculate lot for DCA position (same risk-based lot, using NORMAL SL distance)
+   double sl = CalcSLPrice(g_isBuy);
+   double normalDist = CalcNormalSLDist();
+   double dist = (normalDist > 0) ? normalDist : MathAbs(cur - sl);
+   double lot = CalcLot(dist);
+
+   // Safety: check margin
+   double margin = AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
+   if(margin > 0 && margin < 200)
+   {
+      Print(StringFormat("[GRID] Margin level %.0f%% < 200%% - skip DCA #%d",
+            margin, nextLevel));
+      return;
+   }
+
+   // Execute DCA order
+   MqlTradeRequest req;
+   MqlTradeResult  res;
+   ZeroMemory(req);
+   ZeroMemory(res);
+
+   req.action    = TRADE_ACTION_DEAL;
+   req.symbol    = _Symbol;
+   req.volume    = lot;
+   req.type      = g_isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   req.price     = cur;
+   req.sl        = sl;
+   req.tp        = 0;
+   req.magic     = InpMagic;
+   req.deviation = InpDeviation;
+   req.comment   = StringFormat("DCA #%d", nextLevel);
+
+   if(OrderSend(req, res))
+   {
+      g_gridLevel = nextLevel;
+      double avgEntry = GetAvgEntry();
+      Print(StringFormat("[GRID] DCA #%d %s %.2f @ %s | SL=%s | AvgEntry=%s | Total=%.2f",
+            nextLevel,
+            g_isBuy ? "BUY" : "SELL",
+            lot,
+            DoubleToString(cur, _Digits),
+            DoubleToString(sl, _Digits),
+            DoubleToString(avgEntry, _Digits),
+            GetTotalLots()));
+
+      // Update riskDist for Auto TP R-calculations (from avg entry to worst SL)
+      g_riskDist = MathAbs(avgEntry - sl);
+   }
+   else
+      Print(StringFormat("[GRID] DCA FAIL rc=%d %s", res.retcode, res.comment));
+}
+
+// ════════════════════════════════════════════════════════════════════
 // AUTO CANDLE COUNTER – 3 same-color candles → auto entry
 // ════════════════════════════════════════════════════════════════════
 // Returns +1 (3 green = BUY signal), -1 (3 red = SELL signal), 0 (none)
@@ -1109,6 +1656,491 @@ void CheckAutoEntry()
 
       Print(StringFormat("[SIGNAL] CC3 %s arrow @ bar[1]",
             isBuy ? "BUY" : "SELL"));
+   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MST MEDIO – 2-Step Breakout Confirmation Signal
+// ════════════════════════════════════════════════════════════════════
+// Logic (from TradingView MST Medio v1.4):
+//   1. Detect HH/LL via swing pivots
+//   2. Find W1 Peak = highest high (BUY) / lowest low (SELL) from
+//      break candle until first opposite-color candle
+//   3. Wait for CLOSE beyond W1 Peak → Confirmed signal
+//
+// In MQL5 we draw arrows only (signal-only, no auto-trade).
+
+// Detect pivot high at bar[shift] (confirmed pivot: pivotLen bars on each side)
+double MedioPivotHigh(int shift)
+{
+   int pl = g_medioPivotLen;
+   double mid = iHigh(_Symbol, _Period, shift);
+   for(int i = 1; i <= pl; i++)
+   {
+      if(iHigh(_Symbol, _Period, shift - i) > mid) return 0;
+      if(iHigh(_Symbol, _Period, shift + i) > mid) return 0;
+   }
+   return mid;
+}
+
+double MedioPivotLow(int shift)
+{
+   int pl = g_medioPivotLen;
+   double mid = iLow(_Symbol, _Period, shift);
+   for(int i = 1; i <= pl; i++)
+   {
+      if(iLow(_Symbol, _Period, shift - i) < mid) return 0;
+      if(iLow(_Symbol, _Period, shift + i) < mid) return 0;
+   }
+   return mid;
+}
+
+// Average body of last N bars at position shift
+double MedioAvgBody(int shift, int period = 20)
+{
+   double sum = 0;
+   for(int i = 0; i < period; i++)
+      sum += MathAbs(iClose(_Symbol, _Period, shift + i) - iOpen(_Symbol, _Period, shift + i));
+   return sum / period;
+}
+
+void CheckMSTMedio()
+{
+   if(!g_medioEnabled) return;
+
+   // Only on new bar
+   datetime curBar = iTime(_Symbol, _Period, 0);
+   if(curBar == g_mLastPivotCalc) return;
+   g_mLastPivotCalc = curBar;
+
+   int pl = g_medioPivotLen;
+
+   // Check for confirmed pivot at bar[pivotLen] (needs pivotLen bars to the right)
+   double pivHigh = MedioPivotHigh(pl);
+   double pivLow  = MedioPivotLow(pl);
+
+   // Update swing tracking
+   if(pivLow > 0)
+   {
+      g_mSL0     = g_mSL1;
+      g_mSL0_idx = g_mSL1_idx;
+      g_mSL1     = pivLow;
+      g_mSL1_idx = pl;  // lookback from current bar
+
+      // Track SH before SL
+      g_mSHBeforeSL     = g_mSH1;
+      g_mSHBeforeSL_idx = g_mSH1_idx;
+   }
+   if(pivHigh > 0)
+   {
+      // Track SL before SH
+      g_mSLBeforeSH     = g_mSL1;
+      g_mSLBeforeSH_idx = g_mSL1_idx;
+
+      g_mSH0     = g_mSH1;
+      g_mSH0_idx = g_mSH1_idx;
+      g_mSH1     = pivHigh;
+      g_mSH1_idx = pl;
+   }
+
+   // Detect HH / LL
+   bool isNewHH = (pivHigh > 0 && g_mSH0 > 0 && g_mSH1 > g_mSH0);
+   bool isNewLL = (pivLow > 0  && g_mSL0 > 0 && g_mSL1 < g_mSL0);
+
+   // Impulse body filter
+   if(isNewHH && g_medioImpulseMult > 0)
+   {
+      int scanFrom = g_mSH0_idx;
+      bool found = false;
+      for(int i = scanFrom; i >= pl; i--)
+      {
+         if(iClose(_Symbol, _Period, i) > g_mSH0)
+         {
+            double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
+            found = (body >= g_medioImpulseMult * MedioAvgBody(i));
+            break;
+         }
+      }
+      if(!found) isNewHH = false;
+   }
+   if(isNewLL && g_medioImpulseMult > 0)
+   {
+      int scanFrom = g_mSL0_idx;
+      bool found = false;
+      for(int i = scanFrom; i >= pl; i--)
+      {
+         if(iClose(_Symbol, _Period, i) < g_mSL0)
+         {
+            double body = MathAbs(iClose(_Symbol, _Period, i) - iOpen(_Symbol, _Period, i));
+            found = (body >= g_medioImpulseMult * MedioAvgBody(i));
+            break;
+         }
+      }
+      if(!found) isNewLL = false;
+   }
+
+   // ── New HH → start tracking BUY confirmation ──
+   if(isNewHH && g_mSLBeforeSH > 0)
+   {
+      // Find W1 peak: highest high from break candle until first bearish bar
+      double w1Peak = 0;
+      bool foundBreak = false;
+      int scanStart = g_mSH0_idx;  // lookback to old SH
+      for(int i = scanStart; i >= 0; i--)
+      {
+         double cl = iClose(_Symbol, _Period, i);
+         double op = iOpen(_Symbol, _Period, i);
+         double hi = iHigh(_Symbol, _Period, i);
+         if(!foundBreak)
+         {
+            if(cl > g_mSH0)
+            {
+               foundBreak = true;
+               w1Peak = hi;
+            }
+         }
+         else
+         {
+            if(hi > w1Peak) w1Peak = hi;
+            if(cl < op) break;  // first bearish bar → end W1
+         }
+      }
+      if(w1Peak > 0)
+      {
+         g_medioPending = 1;
+         g_mBreakPoint  = g_mSH0;        // Entry = old SH
+         g_mW1Peak      = w1Peak;
+         g_mPendSL      = g_mSLBeforeSH;  // SL = swing low before SH
+      }
+   }
+
+   // ── New LL → start tracking SELL confirmation ──
+   if(isNewLL && g_mSHBeforeSL > 0)
+   {
+      double w1Trough = 0;
+      bool foundBreak = false;
+      int scanStart = g_mSL0_idx;
+      for(int i = scanStart; i >= 0; i--)
+      {
+         double cl = iClose(_Symbol, _Period, i);
+         double op = iOpen(_Symbol, _Period, i);
+         double lo = iLow(_Symbol, _Period, i);
+         if(!foundBreak)
+         {
+            if(cl < g_mSL0)
+            {
+               foundBreak = true;
+               w1Trough = lo;
+            }
+         }
+         else
+         {
+            if(lo < w1Trough) w1Trough = lo;
+            if(cl > op) break;  // first bullish bar → end W1
+         }
+      }
+      if(w1Trough > 0)
+      {
+         g_medioPending = -1;
+         g_mBreakPoint  = g_mSL0;
+         g_mW1Peak      = w1Trough;
+         g_mPendSL      = g_mSHBeforeSL;
+      }
+   }
+
+   // ── Check pending confirmation on bar[1] ──
+   if(g_medioPending == 1)
+   {
+      double lo1 = iLow(_Symbol, _Period, 1);
+      double cl1 = iClose(_Symbol, _Period, 1);
+
+      // Cancel if SL hit or structure broken
+      if(lo1 <= g_mPendSL || lo1 <= g_mBreakPoint)
+      {
+         g_medioPending = 0;
+      }
+      else if(cl1 > g_mW1Peak)
+      {
+         // Confirmed BUY signal!
+         datetime t1 = iTime(_Symbol, _Period, 1);
+         double arrow_y = iLow(_Symbol, _Period, 1) - 20 * _Point;
+         string arrowName = PREFIX "msig_" + IntegerToString((long)t1);
+
+         if(ObjectFind(0, arrowName) < 0)
+         {
+            ObjectCreate(0, arrowName, OBJ_ARROW, 0, t1, arrow_y);
+            ObjectSetInteger(0, arrowName, OBJPROP_ARROWCODE, 233);  // ▲
+            ObjectSetInteger(0, arrowName, OBJPROP_COLOR, C'33,150,243');  // blue
+            ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, 3);
+            ObjectSetInteger(0, arrowName, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, arrowName, OBJPROP_HIDDEN, true);
+
+            // Draw entry/SL/TP reference lines
+            string entryLine = PREFIX "mentry_" + IntegerToString((long)t1);
+            string slLine    = PREFIX "msl_" + IntegerToString((long)t1);
+            SetHLine(entryLine, g_mBreakPoint, C'33,150,243', STYLE_DOT, 1, "M.Entry");
+            SetHLine(slLine,    g_mPendSL,     C'255,152,0',  STYLE_DOT, 1, "M.SL");
+
+            Print(StringFormat("[SIGNAL] MST Medio BUY | Entry=%.5f SL=%.5f",
+                  g_mBreakPoint, g_mPendSL));
+         }
+         g_medioPending = 0;
+      }
+   }
+   else if(g_medioPending == -1)
+   {
+      double hi1 = iHigh(_Symbol, _Period, 1);
+      double cl1 = iClose(_Symbol, _Period, 1);
+
+      if(hi1 >= g_mPendSL || hi1 >= g_mBreakPoint)
+      {
+         g_medioPending = 0;
+      }
+      else if(cl1 < g_mW1Peak)
+      {
+         // Confirmed SELL signal!
+         datetime t1 = iTime(_Symbol, _Period, 1);
+         double arrow_y = iHigh(_Symbol, _Period, 1) + 20 * _Point;
+         string arrowName = PREFIX "msig_" + IntegerToString((long)t1);
+
+         if(ObjectFind(0, arrowName) < 0)
+         {
+            ObjectCreate(0, arrowName, OBJ_ARROW, 0, t1, arrow_y);
+            ObjectSetInteger(0, arrowName, OBJPROP_ARROWCODE, 234);  // ▼
+            ObjectSetInteger(0, arrowName, OBJPROP_COLOR, C'255,105,180');  // pink
+            ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, 3);
+            ObjectSetInteger(0, arrowName, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, arrowName, OBJPROP_HIDDEN, true);
+
+            string entryLine = PREFIX "mentry_" + IntegerToString((long)t1);
+            string slLine    = PREFIX "msl_" + IntegerToString((long)t1);
+            SetHLine(entryLine, g_mBreakPoint, C'255,105,180', STYLE_DOT, 1, "M.Entry");
+            SetHLine(slLine,    g_mPendSL,     C'255,152,0',   STYLE_DOT, 1, "M.SL");
+
+            Print(StringFormat("[SIGNAL] MST Medio SELL | Entry=%.5f SL=%.5f",
+                  g_mBreakPoint, g_mPendSL));
+         }
+         g_medioPending = 0;
+      }
+   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FVG SIGNAL – Impulse Zone IN/OUT Pattern
+// ════════════════════════════════════════════════════════════════════
+// Logic (from TradingView M15 Impulse FVG Entry):
+//   1. Detect impulse candle on higher TF (range >= atrMult × ATR, body >= 55%)
+//   2. On chart TF, wait for IN candle (fully inside impulse zone)
+//   3. Wait for OUT candle (close outside zone + clean break)
+//   4. Draw signal arrow
+
+// Auto-map current chart TF to impulse (higher) TF
+ENUM_TIMEFRAMES FVG_GetImpulseTF()
+{
+   ENUM_TIMEFRAMES curTF = _Period;
+   switch(curTF)
+   {
+      case PERIOD_M1:   return PERIOD_M5;
+      case PERIOD_M2:   return PERIOD_M15;
+      case PERIOD_M3:   return PERIOD_M15;
+      case PERIOD_M4:   return PERIOD_M15;
+      case PERIOD_M5:   return PERIOD_M15;
+      case PERIOD_M6:   return PERIOD_M30;
+      case PERIOD_M10:  return PERIOD_M30;
+      case PERIOD_M12:  return PERIOD_H1;
+      case PERIOD_M15:  return PERIOD_H1;
+      case PERIOD_M20:  return PERIOD_H1;
+      case PERIOD_M30:  return PERIOD_H2;
+      case PERIOD_H1:   return PERIOD_H4;
+      case PERIOD_H2:   return PERIOD_H4;
+      case PERIOD_H3:   return PERIOD_H8;
+      case PERIOD_H4:   return PERIOD_D1;
+      case PERIOD_H6:   return PERIOD_D1;
+      case PERIOD_H8:   return PERIOD_D1;
+      case PERIOD_H12:  return PERIOD_D1;
+      case PERIOD_D1:   return PERIOD_W1;
+      case PERIOD_W1:   return PERIOD_MN1;
+      default:          return PERIOD_H1;
+   }
+}
+
+string FVG_TFLabel(ENUM_TIMEFRAMES tf)
+{
+   switch(tf)
+   {
+      case PERIOD_M1:  return "M1";
+      case PERIOD_M5:  return "M5";
+      case PERIOD_M15: return "M15";
+      case PERIOD_M30: return "M30";
+      case PERIOD_H1:  return "H1";
+      case PERIOD_H2:  return "H2";
+      case PERIOD_H4:  return "H4";
+      case PERIOD_H8:  return "H8";
+      case PERIOD_D1:  return "D1";
+      case PERIOD_W1:  return "W1";
+      case PERIOD_MN1: return "MN";
+      default:         return "??";
+   }
+}
+
+void FVG_Init()
+{
+   g_fvgImpulseTF = FVG_GetImpulseTF();
+   if(g_fvgImpulseATR != INVALID_HANDLE)
+   {
+      IndicatorRelease(g_fvgImpulseATR);
+      g_fvgImpulseATR = INVALID_HANDLE;
+   }
+   g_fvgImpulseATR = iATR(_Symbol, g_fvgImpulseTF, g_fvgATRLen);
+   if(g_fvgImpulseATR == INVALID_HANDLE)
+      Print("[FVG] Warning: ATR handle failed for ", FVG_TFLabel(g_fvgImpulseTF));
+   else
+      Print("[FVG] Impulse TF = ", FVG_TFLabel(g_fvgImpulseTF),
+            " (chart = ", FVG_TFLabel(_Period), ")");
+
+   // Reset state
+   g_fvgHasContext  = false;
+   g_fvgWaitingIN   = false;
+   g_fvgWaitingOUT  = false;
+   g_fvgZoneH       = 0;
+   g_fvgZoneL       = 0;
+}
+
+void FVG_Deinit()
+{
+   if(g_fvgImpulseATR != INVALID_HANDLE)
+   {
+      IndicatorRelease(g_fvgImpulseATR);
+      g_fvgImpulseATR = INVALID_HANDLE;
+   }
+}
+
+void CheckFVG()
+{
+   if(!g_fvgEnabled) return;
+
+   // Only on new bar
+   datetime curBar = iTime(_Symbol, _Period, 0);
+   if(curBar == g_fvgLastCheck) return;
+   g_fvgLastCheck = curBar;
+
+   // ── Step 1: Check impulse on higher TF ──
+   datetime impTime = iTime(_Symbol, g_fvgImpulseTF, 0);
+   if(impTime != g_fvgLastImpulse)
+   {
+      g_fvgLastImpulse = impTime;
+      // Check bar[1] on impulse TF (confirmed bar)
+      double hi  = iHigh (_Symbol, g_fvgImpulseTF, 1);
+      double lo  = iLow  (_Symbol, g_fvgImpulseTF, 1);
+      double cl  = iClose(_Symbol, g_fvgImpulseTF, 1);
+      double op  = iOpen (_Symbol, g_fvgImpulseTF, 1);
+      double rng = hi - lo;
+
+      double atr[1];
+      bool atrOK = (g_fvgImpulseATR != INVALID_HANDLE &&
+                    CopyBuffer(g_fvgImpulseATR, 0, 1, 1, atr) == 1);
+
+      if(atrOK && rng > 0)
+      {
+         double bodyRatio = MathAbs(cl - op) / rng;
+         bool isImpulse = (rng >= g_fvgATRMult * atr[0]) &&
+                          (bodyRatio >= g_fvgBodyRatio);
+
+         if(isImpulse)
+         {
+            g_fvgZoneH      = hi;
+            g_fvgZoneL      = lo;
+            g_fvgZoneTime   = iTime(_Symbol, g_fvgImpulseTF, 1);
+            g_fvgHasContext = true;
+            g_fvgWaitingIN  = true;
+            g_fvgWaitingOUT = false;
+            g_fvgInHigh     = 0;
+            g_fvgInLow      = 0;
+            g_fvgMinLow     = 0;
+            g_fvgMaxHigh    = 0;
+
+            Print(StringFormat("[FVG] Impulse detected on %s | Zone %.5f – %.5f",
+                  FVG_TFLabel(g_fvgImpulseTF), g_fvgZoneL, g_fvgZoneH));
+
+            // Draw zone lines
+            string zhLine = PREFIX "fvgs_zh";
+            string zlLine = PREFIX "fvgs_zl";
+            SetHLine(zhLine, g_fvgZoneH, C'128,0,255', STYLE_SOLID, 1, "FVG Zone H");
+            SetHLine(zlLine, g_fvgZoneL, C'128,0,255', STYLE_SOLID, 1, "FVG Zone L");
+         }
+      }
+   }
+
+   if(!g_fvgHasContext) return;
+
+   // ── Step 2: Check for IN candle on chart TF (bar[1]) ──
+   if(g_fvgWaitingIN && g_fvgZoneH > 0 && g_fvgZoneL > 0)
+   {
+      double hi1 = iHigh(_Symbol, _Period, 1);
+      double lo1 = iLow(_Symbol, _Period, 1);
+
+      // Candle fully inside zone
+      if(hi1 < g_fvgZoneH && lo1 > g_fvgZoneL)
+      {
+         g_fvgInHigh    = hi1;
+         g_fvgInLow     = lo1;
+         g_fvgInTime    = iTime(_Symbol, _Period, 1);
+         g_fvgMinLow    = lo1;
+         g_fvgMaxHigh   = hi1;
+         g_fvgWaitingIN  = false;
+         g_fvgWaitingOUT = true;
+         Print("[FVG] IN candle detected");
+      }
+   }
+
+   // ── Step 3: Check for OUT candle (bar[1]) ──
+   if(g_fvgWaitingOUT)
+   {
+      double hi1 = iHigh (_Symbol, _Period, 1);
+      double lo1 = iLow  (_Symbol, _Period, 1);
+      double cl1 = iClose(_Symbol, _Period, 1);
+      double cl2 = iClose(_Symbol, _Period, 2);
+
+      // Track extremes since IN
+      if(lo1 < g_fvgMinLow)  g_fvgMinLow  = lo1;
+      if(hi1 > g_fvgMaxHigh) g_fvgMaxHigh = hi1;
+
+      // OUT BUY: close > zoneH, low > zoneH, prev close > zoneH, no reversal below inLow
+      bool prevUp  = (cl2 > g_fvgZoneH);
+      bool outBuy  = (cl1 > g_fvgZoneH) && (lo1 > g_fvgZoneH) &&
+                     prevUp && (lo1 > g_fvgInHigh) &&
+                     (g_fvgMinLow >= g_fvgInLow);
+
+      // OUT SELL: close < zoneL, high < zoneL, prev close < zoneL, no reversal above inHigh
+      bool prevDown = (cl2 < g_fvgZoneL);
+      bool outSell  = (cl1 < g_fvgZoneL) && (hi1 < g_fvgZoneL) &&
+                      prevDown && (hi1 < g_fvgInLow) &&
+                      (g_fvgMaxHigh <= g_fvgInHigh);
+
+      if(outBuy || outSell)
+      {
+         datetime t1 = iTime(_Symbol, _Period, 1);
+         string arrowName = PREFIX "fvgs_" + IntegerToString((long)t1);
+
+         if(ObjectFind(0, arrowName) < 0)
+         {
+            double arrowY = outBuy ? lo1 - 20 * _Point : hi1 + 20 * _Point;
+            ObjectCreate(0, arrowName, OBJ_ARROW, 0, t1, arrowY);
+            ObjectSetInteger(0, arrowName, OBJPROP_ARROWCODE, outBuy ? 233 : 234);
+            ObjectSetInteger(0, arrowName, OBJPROP_COLOR,
+                             outBuy ? C'76,175,80' : C'244,67,54');  // green / red
+            ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, 3);
+            ObjectSetInteger(0, arrowName, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, arrowName, OBJPROP_HIDDEN, true);
+
+            Print(StringFormat("[FVG] %s signal | %s impulse",
+                  outBuy ? "BUY" : "SELL", FVG_TFLabel(g_fvgImpulseTF)));
+         }
+
+         // Reset state
+         g_fvgWaitingOUT = false;
+         g_fvgHasContext = false;
+      }
    }
 }
 
@@ -1274,7 +2306,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.17 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.25 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -1286,6 +2318,7 @@ void OnDeinit(const int reason)
 {
    DestroyPanel();
    EventKillTimer();
+   FVG_Deinit();
 
    if(g_atrHandle != INVALID_HANDLE)
    {
@@ -1304,13 +2337,28 @@ void OnTick()
       g_origSL    = 0;
       g_currentSL = 0;
       g_riskDist  = 0;
+      g_tp1Hit    = false;
+      g_gridLevel = 0;
+      g_gridBaseATR = 0;
    }
 
    // Auto trailing
    ManageTrail();
 
+   // Auto TP (partial close at 1R)
+   ManageAutoTP();
+
+   // Grid DCA (add positions on adverse move)
+   ManageGrid();
+
    // Auto Candle Counter (before bar tracking update)
    CheckAutoEntry();
+
+   // MST Medio signal detection
+   CheckMSTMedio();
+
+   // FVG Impulse Zone signal detection
+   CheckFVG();
 
    // Track bar changes (AFTER trail + auto, so candle logic works on 1st tick)
    datetime curBar = iTime(_Symbol, _Period, 0);
@@ -1362,6 +2410,30 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_CLOSE_BTN, OBJPROP_STATE, false);
          CloseAllPositions();
+
+         // Reset Auto TP state
+         g_tp1Hit = false;
+         if(g_autoTPEnabled)
+            ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1R");
+
+         // Reset Grid DCA state
+         g_gridLevel   = 0;
+         g_gridBaseATR = 0;
+         if(g_gridEnabled)
+         {
+            double maxRisk = g_riskMoney * (g_gridMaxLevel + 1);
+            ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TEXT,
+               StringFormat("Grid: ON | DCA 0/%d | Max $%.0f",
+                            g_gridMaxLevel, maxRisk));
+         }
+
+         // Clear chart lines
+         HideHLine(OBJ_TP1_LINE);
+         HideHLine(OBJ_DCA1_LINE);
+         HideHLine(OBJ_DCA2_LINE);
+         HideHLine(OBJ_DCA3_LINE);
+         HideHLine(OBJ_AVG_ENTRY);
+         ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
       }
       // ── BUY PENDING (2-click: create line → confirm) ──
       else if(sparam == OBJ_BUY_PND)
@@ -1492,12 +2564,169 @@ void OnChartEvent(const int id,
             Print("[SIGNAL] Candle Counter signal arrows DISABLED");
          }
       }
-      // ── Disabled placeholder buttons (ignore clicks) ──
-      else if(sparam == OBJ_GRID_BTN || sparam == OBJ_AUTOTP_BTN ||
-              sparam == OBJ_MEDIO_BTN || sparam == OBJ_FVG_BTN)
+      // ── MST Medio toggle ──
+      else if(sparam == OBJ_MEDIO_BTN)
       {
-         ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
-         // TODO: future features
+         g_medioEnabled = !g_medioEnabled;
+         ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_STATE, false);
+         if(g_medioEnabled)
+         {
+            ObjectSetString (0, OBJ_MEDIO_BTN, OBJPROP_TEXT, "MST Medio: ON");
+            ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_BGCOLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_COLOR, COL_WHITE);
+            Print("[SIGNAL] MST Medio signal arrows ENABLED");
+         }
+         else
+         {
+            ObjectSetString (0, OBJ_MEDIO_BTN, OBJPROP_TEXT, "MST Medio: OFF");
+            ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_MEDIO_BTN, OBJPROP_COLOR, C'180,180,200');
+            // Clean up signal arrows and reference lines
+            ObjectsDeleteAll(0, PREFIX + "msig_");
+            ObjectsDeleteAll(0, PREFIX + "mentry_");
+            ObjectsDeleteAll(0, PREFIX + "msl_");
+            g_medioPending = 0;
+            Print("[SIGNAL] MST Medio signal arrows DISABLED");
+         }
+      }
+      // ── FVG Signal toggle ──
+      else if(sparam == OBJ_FVG_BTN)
+      {
+         g_fvgEnabled = !g_fvgEnabled;
+         ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_STATE, false);
+         if(g_fvgEnabled)
+         {
+            FVG_Init();
+            ObjectSetString (0, OBJ_FVG_BTN, OBJPROP_TEXT, "FVG Signal: ON");
+            ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_BGCOLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_COLOR, COL_WHITE);
+            Print("[SIGNAL] FVG Signal ENABLED");
+         }
+         else
+         {
+            FVG_Deinit();
+            ObjectSetString (0, OBJ_FVG_BTN, OBJPROP_TEXT, "FVG Signal: OFF");
+            ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_FVG_BTN, OBJPROP_COLOR, C'180,180,200');
+            // Cleanup signal objects (not the button)
+            ObjectsDeleteAll(0, PREFIX + "fvgs_");
+            g_fvgHasContext  = false;
+            g_fvgWaitingIN   = false;
+            g_fvgWaitingOUT  = false;
+            Print("[SIGNAL] FVG Signal DISABLED");
+         }
+      }
+      // ── Grid DCA toggle ──
+      else if(sparam == OBJ_GRID_BTN)
+      {
+         g_gridEnabled = !g_gridEnabled;
+         ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_STATE, false);
+         if(g_gridEnabled)
+         {
+            // Capture current ATR for consistent grid spacing
+            double atr[1];
+            if(g_atrHandle != INVALID_HANDLE &&
+               CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1)
+               g_gridBaseATR = atr[0];
+            g_gridLevel = 0;
+
+            double maxRisk = g_riskMoney * (g_gridMaxLevel + 1);
+            ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT,
+               StringFormat("Grid: ON | DCA 0/%d | Max $%.0f",
+                            g_gridMaxLevel, maxRisk));
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, COL_WHITE);
+
+            // Warning about total risk
+            Print(StringFormat("[GRID] ⚠ WARNING: Max total risk = $%.0f (Risk $%.0f × %d positions)",
+                  maxRisk, g_riskMoney, g_gridMaxLevel + 1));
+            Print(StringFormat("[GRID] ENABLED | Max=%d Spacing=%.1fxATR | SL widened to %.1fxATR",
+                  g_gridMaxLevel, g_gridSpacingMult,
+                  g_gridMaxLevel * g_gridSpacingMult + g_atrMult));
+
+            // Widen SL on existing positions to accommodate grid levels
+            if(g_hasPos)
+            {
+               double newSL = CalcSLPrice(g_isBuy);
+               for(int i = PositionsTotal() - 1; i >= 0; i--)
+               {
+                  ulong ticket = PositionGetTicket(i);
+                  if(ticket == 0) continue;
+                  if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+                  if(PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+                  double curSL = PositionGetDouble(POSITION_SL);
+                  // Only widen, never tighten
+                  bool shouldUpdate = g_isBuy ? (newSL < curSL || curSL == 0)
+                                              : (newSL > curSL || curSL == 0);
+                  if(shouldUpdate)
+                  {
+                     MqlTradeRequest mreq;
+                     MqlTradeResult  mres;
+                     ZeroMemory(mreq);
+                     ZeroMemory(mres);
+                     mreq.action   = TRADE_ACTION_SLTP;
+                     mreq.position = ticket;
+                     mreq.symbol   = _Symbol;
+                     mreq.sl       = newSL;
+                     mreq.tp       = PositionGetDouble(POSITION_TP);
+                     if(OrderSend(mreq, mres))
+                        Print(StringFormat("[GRID] SL widened ticket #%d → %s",
+                              ticket, DoubleToString(newSL, _Digits)));
+                     else
+                        Print(StringFormat("[GRID] SL modify FAIL ticket #%d rc=%d",
+                              ticket, mres.retcode));
+                  }
+               }
+               g_origSL    = newSL;
+               g_currentSL = newSL;
+               g_riskDist  = MathAbs(g_entryPx - newSL);
+            }
+         }
+         else
+         {
+            ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF");
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+            g_gridLevel   = 0;
+            g_gridBaseATR = 0;
+            // Clean up DCA lines
+            HideHLine(OBJ_DCA1_LINE);
+            HideHLine(OBJ_DCA2_LINE);
+            HideHLine(OBJ_DCA3_LINE);
+            HideHLine(OBJ_AVG_ENTRY);
+            ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
+            Print("[GRID] DISABLED");
+         }
+      }
+      // ── Auto TP toggle ──
+      else if(sparam == OBJ_AUTOTP_BTN)
+      {
+         g_autoTPEnabled = !g_autoTPEnabled;
+         ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_STATE, false);
+         if(g_autoTPEnabled)
+         {
+            g_tp1Hit = false;
+            ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1R");
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
+            Print("[AUTO TP] ENABLED | 50% @1R → BE → trail");
+         }
+         else
+         {
+            ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: OFF");
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, C'180,180,200');
+            g_tp1Hit = false;
+            Print("[AUTO TP] DISABLED");
+         }
       }
       // ── Theme buttons ──
       else if(sparam == OBJ_THEME_DARK || sparam == OBJ_THEME_LIGHT ||
