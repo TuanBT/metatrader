@@ -7,7 +7,7 @@
 //|  • Auto SL: ATR / Last-N-bars / Fixed pips                       |
 //|  • One-click BUY / SELL                                          |
 //|  • Auto trailing SL: Candle-based or R-based                     |
-//|  • Break-even + 50% partial close                                |
+//|  • Dark/Light/Zen chart themes                                  |
 //|  • Dark chart theme (auto-apply on init)                         |
 //|                                                                  |
 //| Usage:                                                           |
@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.00"
+#property version   "1.17"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -94,14 +94,18 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define COL_EDIT_BD   C'60,60,80'
 
 // Colors – Buttons
-#define COL_BUY       C'0,137,82'
-#define COL_BUY_HI    C'0,160,95'
+#define COL_BUY       C'8,153,129'
+#define COL_BUY_HI    C'0,180,150'
 #define COL_SELL      C'220,50,47'
 #define COL_SELL_HI   C'245,65,60'
 #define COL_BTN       C'55,55,72'
 #define COL_BTN_TXT   C'200,200,220'
-#define COL_CLOSE     C'160,40,40'
+#define COL_CLOSE     C'140,35,35'
 #define COL_WHITE     C'255,255,255'
+
+// Colors – Disabled/Placeholder
+#define COL_DIS_BG    C'38,38,50'
+#define COL_DIS_TXT   C'97,97,120'
 
 // Colors – Status
 #define COL_PROFIT    C'0,180,100'
@@ -118,14 +122,39 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BUY_BTN    PREFIX "buy_btn"
 #define OBJ_SELL_BTN   PREFIX "sell_btn"
 #define OBJ_CLOSE_BTN  PREFIX "close_btn"
+#define OBJ_BUY_PND    PREFIX "buy_pnd"
+#define OBJ_SELL_PND   PREFIX "sell_pnd"
+#define OBJ_ATR_1      PREFIX "atr_1"
+#define OBJ_ATR_15     PREFIX "atr_15"
+#define OBJ_ATR_2      PREFIX "atr_2"
+#define OBJ_ATR_25     PREFIX "atr_25"
+
 #define OBJ_SEP1       PREFIX "sep1"
 #define OBJ_SEP2       PREFIX "sep2"
+#define OBJ_SEP3       PREFIX "sep3"
+#define OBJ_SEP4       PREFIX "sep4"
+#define OBJ_SEP5       PREFIX "sep5"
+#define OBJ_SEC_INFO   PREFIX "sec_info"
+#define OBJ_SEC_TRADE  PREFIX "sec_trade"
+#define OBJ_SEC_ORDER  PREFIX "sec_order"
+#define OBJ_SEC_SIGNAL PREFIX "sec_signal"
+
+// ORDER MANAGEMENT buttons
+#define OBJ_TRAIL_BTN  PREFIX "trail_btn"
+#define OBJ_GRID_BTN   PREFIX "grid_btn"
+#define OBJ_AUTOTP_BTN PREFIX "autotp_btn"
+
+// ENTRY SIGNALS buttons
+#define OBJ_MEDIO_BTN  PREFIX "medio_btn"
+#define OBJ_FVG_BTN    PREFIX "fvg_btn"
 
 // Chart lines (SL levels)
 #define OBJ_SL_BUY_LINE   PREFIX "sl_buy_line"
 #define OBJ_SL_SELL_LINE  PREFIX "sl_sell_line"
 #define OBJ_SL_ACTIVE     PREFIX "sl_active"
 #define OBJ_ENTRY_LINE    PREFIX "entry_line"
+#define OBJ_PENDING_LINE  PREFIX "pending_line"
+
 #define OBJ_AUTO_BTN      PREFIX "auto_btn"
 
 
@@ -156,6 +185,9 @@ int      g_theme      = 0;       // 0=Dark, 1=Light, 2=Zen
 
 // Live ATR multiplier (changeable from panel)
 double   g_atrMult    = 0;
+int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
+bool     g_trailEnabled = false;
+ENUM_SL_MODE g_slMode = SL_ATR;
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -190,7 +222,7 @@ double CalcSLPrice(bool isBuy)
                         : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double sl = 0;
 
-   switch(InpSLMode)
+   switch(g_slMode)
    {
       case SL_ATR:
       {
@@ -445,42 +477,114 @@ void CreatePanel()
    }
    y += 32;
 
+   // ═══════════════════════════════════════
+   // SECTION: INFO
+   // ═══════════════════════════════════════
+   MakeRect(OBJ_SEP1, IX, y, IW, 1, COL_BORDER, COL_BORDER);
+   MakeLabel(OBJ_SEC_INFO, IX + 2, y - 5, " INFO ", C'100,110,140', 7, FONT_MAIN);
+   y += 8;
+
    // ── Max Risk + Position PnL (same row) ──
-   MakeLabel(OBJ_RISK_LBL, IX, y + 3, "Max Risk $", COL_DIM, 9);
-   MakeEdit(OBJ_RISK_EDT, IX + 76, y, 40, 22,
+   MakeLabel(OBJ_RISK_LBL, IX, y + 3, "Risk $", COL_DIM, 9);
+   MakeEdit(OBJ_RISK_EDT, IX + 48, y, 40, 22,
             IntegerToString((int)InpDefaultRisk),
             COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
-   MakeLabel(OBJ_STATUS_LBL, IX + 122, y + 4, " ", COL_DIM, 11);
+   MakeLabel(OBJ_STATUS_LBL, IX + 96, y + 4, " ", COL_DIM, 11);
    y += 26;
 
    // ── SL + Spread info ──
    MakeLabel(OBJ_SPRD_LBL, IX, y, "", COL_DIM, 8, FONT_MONO);
-   y += 18;
+   y += 20;
 
-   // ── Separator ──
-   MakeRect(OBJ_SEP1, IX, y, IW, 1, COL_BORDER, COL_BORDER);
-   y += 6;
-
-   // ── BUY / SELL buttons ──
-   MakeButton(OBJ_BUY_BTN,  PX + 5,          y, bw, 52,
-              "BUY", COL_WHITE, COL_BUY, 14);
-   MakeButton(OBJ_SELL_BTN, PX + 5 + bw + 8, y, bw, 52,
-              "SELL", COL_WHITE, COL_SELL, 14);
-   y += 58;
-
-   // ── Separator ──
+   // ═══════════════════════════════════════
+   // SECTION: TRADE
+   // ═══════════════════════════════════════
    MakeRect(OBJ_SEP2, IX, y, IW, 1, COL_BORDER, COL_BORDER);
-   y += 6;
+   MakeLabel(OBJ_SEC_TRADE, IX + 2, y - 5, " TRADE ", C'100,110,140', 7, FONT_MAIN);
+   y += 8;
 
-   // ── Candle Counter + CLOSE ALL (2 buttons, 1 row) ──
+   // ── BUY / SELL buttons (40px height) ──
+   MakeButton(OBJ_BUY_BTN,  PX + 5,          y, bw, 40,
+              "BUY", COL_WHITE, COL_BUY, 11);
+   MakeButton(OBJ_SELL_BTN, PX + 5 + bw + 8, y, bw, 40,
+              "SELL", COL_WHITE, COL_SELL, 11);
+   y += 44;
+
+   // ── Pending Order buttons (2 buttons, no Show Line) ──
    {
-      int bw2 = (PW - 18 - 4) / 2;  // 2 buttons, 1 gap of 4px
-      MakeButton(OBJ_AUTO_BTN,  PX + 5,             y, bw2, 28,
-                 "Candle Counter 3: OFF", C'180,180,200', C'60,60,85', 8);
-      MakeButton(OBJ_CLOSE_BTN, PX + 5 + bw2 + 4,   y, bw2, 28,
-                 "CLOSE ALL", C'255,200,200', C'120,30,30', 9);
+      int pw2 = (IW - 8) / 2;
+      MakeButton(OBJ_BUY_PND,  PX + 5,             y, pw2, 26,
+                 "BUY PENDING", COL_WHITE, C'0,100,65', 8);
+      MakeButton(OBJ_SELL_PND, PX + 5 + pw2 + 4,   y, pw2, 26,
+                 "SELL PENDING", COL_WHITE, C'170,40,40', 8);
    }
-   y += 34;
+   y += 32;
+
+   // ═══════════════════════════════════════
+   // SECTION: ORDER MANAGEMENT
+   // ═══════════════════════════════════════
+   MakeRect(OBJ_SEP3, IX, y, IW, 1, COL_BORDER, COL_BORDER);
+   MakeLabel(OBJ_SEC_ORDER, IX + 2, y - 5, " ORDER MANAGEMENT ", C'100,110,140', 7, FONT_MAIN);
+   y += 8;
+
+   // ── ATR multiplier buttons ──
+   {
+      MakeLabel(PREFIX "atr_lbl", IX, y + 4, "ATR", COL_DIM, 8);
+      int ax = IX + 32;
+      int aw = 60;
+      int ag = 4;
+      MakeButton(OBJ_ATR_1,  ax,                y, aw, 22, "1x",   COL_BTN_TXT, C'40,40,55', 8, FONT_MAIN);
+      MakeButton(OBJ_ATR_15, ax + (aw + ag),    y, aw, 22, "1.5x", COL_BTN_TXT, C'40,40,55', 8, FONT_MAIN);
+      MakeButton(OBJ_ATR_2,  ax + 2*(aw + ag),  y, aw, 22, "2x",   COL_BTN_TXT, C'40,40,55', 8, FONT_MAIN);
+      MakeButton(OBJ_ATR_25, ax + 3*(aw + ag),  y, aw, 22, "2.5x", COL_BTN_TXT, C'40,40,55', 8, FONT_MAIN);
+   }
+   y += 26;
+
+   // ── Trail SL toggle ──
+   MakeButton(OBJ_TRAIL_BTN, PX + 5, y, IW - 2, 26,
+              "Trail SL: OFF", C'180,180,200', C'60,60,85', 8);
+   y += 30;
+
+   // ── Grid (disabled placeholder) ──
+   MakeButton(OBJ_GRID_BTN, PX + 5, y, IW - 2, 24,
+              "Grid: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   y += 28;
+
+   // ── Auto TP (disabled placeholder) ──
+   MakeButton(OBJ_AUTOTP_BTN, PX + 5, y, IW - 2, 24,
+              "Auto TP: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   y += 30;
+
+   // ═══════════════════════════════════════
+   // SECTION: ENTRY SIGNALS
+   // ═══════════════════════════════════════
+   MakeRect(OBJ_SEP4, IX, y, IW, 1, COL_BORDER, COL_BORDER);
+   MakeLabel(OBJ_SEC_SIGNAL, IX + 2, y - 5, " ENTRY SIGNALS ", C'100,110,140', 7, FONT_MAIN);
+   y += 8;
+
+   // ── Candle Counter toggle ──
+   MakeButton(OBJ_AUTO_BTN, PX + 5, y, IW - 2, 26,
+              "Candle Counter 3: OFF", C'180,180,200', C'60,60,85', 8);
+   y += 30;
+
+   // ── MST Medio (disabled placeholder) ──
+   MakeButton(OBJ_MEDIO_BTN, PX + 5, y, IW - 2, 24,
+              "MST Medio: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   y += 28;
+
+   // ── FVG Signal (disabled placeholder) ──
+   MakeButton(OBJ_FVG_BTN, PX + 5, y, IW - 2, 24,
+              "FVG Signal: TODO", COL_DIS_TXT, COL_DIS_BG, 8, FONT_MAIN);
+   y += 30;
+
+   // ═══════════════════════════════════════
+   // CLOSE ALL (standalone at bottom)
+   // ═══════════════════════════════════════
+   MakeRect(OBJ_SEP5, IX, y, IW, 1, COL_BORDER, COL_BORDER);
+   y += 6;
+   MakeButton(OBJ_CLOSE_BTN, PX + 5, y, IW - 2, 30,
+              "CLOSE ALL", C'255,200,200', COL_CLOSE, 9);
+   y += 36;
 
    // Adjust panel background height
    ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, y - PY + 5);
@@ -494,8 +598,21 @@ void DestroyPanel()
    ChartRedraw();
 }
 
+void UpdateATRButtons()
+{
+   color active   = C'55,90,160';   // blue accent
+   color inactive = C'40,40,55';    // dim default
+   ObjectSetInteger(0, OBJ_ATR_1,  OBJPROP_BGCOLOR, (g_atrMult == 1.0)  ? active : inactive);
+   ObjectSetInteger(0, OBJ_ATR_15, OBJPROP_BGCOLOR, (g_atrMult == 1.5)  ? active : inactive);
+   ObjectSetInteger(0, OBJ_ATR_2,  OBJPROP_BGCOLOR, (g_atrMult == 2.0)  ? active : inactive);
+   ObjectSetInteger(0, OBJ_ATR_25, OBJPROP_BGCOLOR, (g_atrMult == 2.5)  ? active : inactive);
+}
+
 void UpdatePanel()
 {
+   // ── Highlight active buttons ──
+   UpdateATRButtons();
+
    // ── Read risk from edit ──
    string riskStr = ObjectGetString(0, OBJ_RISK_EDT, OBJPROP_TEXT);
    double parsed  = StringToDouble(riskStr);
@@ -516,23 +633,17 @@ void UpdatePanel()
    double lotSell = CalcLot(distSell);
 
    // ── SL label ──
-   string slMode = "";
-   switch(InpSLMode)
-   {
-      case SL_ATR:      slMode = StringFormat("ATR %.1fx", g_atrMult); break;
-      case SL_LOOKBACK: slMode = StringFormat("LB %d bars",  InpSLLookback); break;
-      case SL_FIXED:    slMode = StringFormat("Fix %.0f pip", InpFixedSLPips); break;
-   }
+   string slMode = StringFormat("ATR %.1fx", g_atrMult);
    double avgPts = ((distBuy + distSell) / 2.0) / _Point;
 
    // ── BUY / SELL button text ──
    ObjectSetString(0, OBJ_BUY_BTN,  OBJPROP_TEXT, StringFormat("BUY  %.2f", lotBuy));
    ObjectSetString(0, OBJ_SELL_BTN, OBJPROP_TEXT, StringFormat("SELL  %.2f", lotSell));
 
-   // ── SL + Spread (own line) ──
+   // ── SL + Spread + Mode (own line) ──
    double spread = (ask - bid) / _Point;
    ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TEXT,
-      StringFormat("SL %.0f | Spread %.0f", avgPts, spread));
+      StringFormat("%s  SL %.0f  Spr %.0f", slMode, avgPts, spread));
    ObjectSetInteger(0, OBJ_SPRD_LBL, OBJPROP_COLOR, COL_DIM);
 
    // ── Position status (next to Risk) ──
@@ -662,6 +773,147 @@ void CloseAllPositions()
 }
 
 // ════════════════════════════════════════════════════════════════════
+// PENDING ORDERS
+// ════════════════════════════════════════════════════════════════════
+void CreatePendingLine()
+{
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double offset = 100 * _Point;
+   double linePrice = bid + offset;
+   if(ObjectFind(0, OBJ_PENDING_LINE) < 0)
+      ObjectCreate(0, OBJ_PENDING_LINE, OBJ_HLINE, 0, 0, linePrice);
+   ObjectSetDouble (0, OBJ_PENDING_LINE, OBJPROP_PRICE, linePrice);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_COLOR, clrOrange);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_WIDTH, 3);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_SELECTED,   true);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_HIDDEN,     false);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_BACK,       false);
+   ObjectSetString (0, OBJ_PENDING_LINE, OBJPROP_TEXT, "Pending Entry");
+   ObjectSetString (0, OBJ_PENDING_LINE, OBJPROP_TOOLTIP, "Drag to desired entry price");
+   ChartRedraw();
+}
+
+bool ExecutePendingTrade(bool isBuy)
+{
+   double pendingPrice = ObjectGetDouble(0, OBJ_PENDING_LINE, OBJPROP_PRICE);
+   if(pendingPrice <= 0)
+   {
+      Print("[PENDING] No pending line price found");
+      return false;
+   }
+   pendingPrice = NormPrice(pendingPrice);
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   ENUM_ORDER_TYPE orderType;
+   if(isBuy)
+      orderType = (pendingPrice < ask) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_BUY_STOP;
+   else
+      orderType = (pendingPrice > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
+
+   double sl   = CalcSLPriceFrom(isBuy, pendingPrice);
+   double dist = MathAbs(pendingPrice - sl);
+   double lot  = CalcLot(dist);
+
+   if(dist <= 0)                     { Print("[PENDING] Invalid SL distance"); return false; }
+   if(isBuy  && sl >= pendingPrice)  { Print("[PENDING] Buy SL >= entry");     return false; }
+   if(!isBuy && sl <= pendingPrice)  { Print("[PENDING] Sell SL <= entry");    return false; }
+
+   MqlTradeRequest req;
+   MqlTradeResult  res;
+   ZeroMemory(req);
+   ZeroMemory(res);
+
+   req.action       = TRADE_ACTION_PENDING;
+   req.symbol       = _Symbol;
+   req.volume       = lot;
+   req.type         = orderType;
+   req.price        = pendingPrice;
+   req.sl           = sl;
+   req.tp           = 0;
+   req.magic        = InpMagic;
+   req.type_filling = ORDER_FILLING_IOC;
+   req.comment      = "Bot Pending";
+
+   string typeStr;
+   switch(orderType)
+   {
+      case ORDER_TYPE_BUY_LIMIT:  typeStr = "BUY LIMIT";  break;
+      case ORDER_TYPE_BUY_STOP:   typeStr = "BUY STOP";   break;
+      case ORDER_TYPE_SELL_LIMIT: typeStr = "SELL LIMIT";  break;
+      case ORDER_TYPE_SELL_STOP:  typeStr = "SELL STOP";   break;
+      default:                   typeStr = "UNKNOWN";      break;
+   }
+
+   if(OrderSend(req, res))
+   {
+      Print(StringFormat("[PENDING] %s %.2f lot @ %s  SL=%s  Risk=$%.2f",
+         typeStr, lot,
+         DoubleToString(pendingPrice, _Digits),
+         DoubleToString(sl, _Digits),
+         g_riskMoney));
+      return true;
+   }
+   else
+   {
+      Print(StringFormat("[PENDING] OrderSend FAILED  rc=%d  %s",
+         res.retcode, res.comment));
+      return false;
+   }
+}
+
+double CalcSLPriceFrom(bool isBuy, double entryPrice)
+{
+   double sl = 0;
+   switch(g_slMode)
+   {
+      case SL_ATR:
+      {
+         double atr[];
+         if(CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1)
+         {
+            double dist = atr[0] * g_atrMult;
+            double buffer = dist * InpSLBuffer / 100.0;
+            sl = isBuy ? NormPrice(entryPrice - dist - buffer)
+                       : NormPrice(entryPrice + dist + buffer);
+         }
+         break;
+      }
+      case SL_LOOKBACK:
+      {
+         int bars = MathMax(InpSLLookback, 3);
+         if(isBuy)
+         {
+            double low = iLow(_Symbol, _Period, 1);
+            for(int i = 2; i <= bars; i++)
+               low = MathMin(low, iLow(_Symbol, _Period, i));
+            double buffer = MathAbs(entryPrice - low) * InpSLBuffer / 100.0;
+            sl = NormPrice(low - buffer);
+         }
+         else
+         {
+            double high = iHigh(_Symbol, _Period, 1);
+            for(int i = 2; i <= bars; i++)
+               high = MathMax(high, iHigh(_Symbol, _Period, i));
+            double buffer = MathAbs(high - entryPrice) * InpSLBuffer / 100.0;
+            sl = NormPrice(high + buffer);
+         }
+         break;
+      }
+      case SL_FIXED:
+      {
+         double dist = InpFixedSLPips * PipSize();
+         sl = isBuy ? NormPrice(entryPrice - dist) : NormPrice(entryPrice + dist);
+         break;
+      }
+   }
+   return sl;
+}
+
+// ════════════════════════════════════════════════════════════════════
 // TRAILING STOP
 // ════════════════════════════════════════════════════════════════════
 void ModifySL(double newSL)
@@ -764,6 +1016,7 @@ void TrailRBased()
 void ManageTrail()
 {
    if(!g_hasPos) return;
+   if(!g_trailEnabled) return;
    switch(InpTrailMode)
    {
       case TRAIL_CANDLE: TrailCandle(); break;
@@ -825,7 +1078,6 @@ int DetectThreeCandles()
 void CheckAutoEntry()
 {
    if(!g_autoMode) return;
-   if(g_hasPos) return;     // already in position
 
    // Only on new bar
    datetime curBar = iTime(_Symbol, _Period, 0);
@@ -834,9 +1086,30 @@ void CheckAutoEntry()
    int sig = DetectThreeCandles();
    if(sig == 0) return;
 
+   // Signal-only: draw arrow on chart (no auto execution)
    bool isBuy = (sig == 1);
-   Print(StringFormat("[AUTO] 3-candle signal: %s", isBuy ? "BUY" : "SELL"));
-   ExecuteTrade(isBuy);
+   datetime t1 = iTime(_Symbol, _Period, 1);
+   double   p1 = isBuy ? iLow(_Symbol, _Period, 1) : iHigh(_Symbol, _Period, 1);
+   double   offset = 10 * _Point;
+
+   string arrowName = PREFIX "sig_" + IntegerToString((long)t1);
+
+   if(ObjectFind(0, arrowName) < 0)
+   {
+      ObjectCreate(0, arrowName, OBJ_ARROW, 0, t1,
+                   isBuy ? p1 - offset : p1 + offset);
+      ObjectSetInteger(0, arrowName, OBJPROP_ARROWCODE,
+                       isBuy ? 233 : 234);  // ▲ up / ▼ down
+      ObjectSetInteger(0, arrowName, OBJPROP_COLOR,
+                       isBuy ? C'38,166,154' : C'239,83,80');
+      ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, 2);
+      ObjectSetInteger(0, arrowName, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, arrowName, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, arrowName, OBJPROP_BACK, false);
+
+      Print(StringFormat("[SIGNAL] CC3 %s arrow @ bar[1]",
+            isBuy ? "BUY" : "SELL"));
+   }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -986,6 +1259,7 @@ int OnInit()
 
    g_riskMoney = InpDefaultRisk;
    g_atrMult   = InpATRMult;
+   g_slMode    = SL_ATR;  // Always ATR mode
 
    // Recover if EA restarted with open position
    SyncPositionState();
@@ -1000,10 +1274,9 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.00 | %s | Risk=$%.2f | SL=%s | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.17 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
-      EnumToString(InpSLMode),
       EnumToString(InpTrailMode)));
 
    return INIT_SUCCEEDED;
@@ -1090,7 +1363,112 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_CLOSE_BTN, OBJPROP_STATE, false);
          CloseAllPositions();
       }
-      // ── AUTO toggle ──
+      // ── BUY PENDING (2-click: create line → confirm) ──
+      else if(sparam == OBJ_BUY_PND)
+      {
+         ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_STATE, false);
+         if(g_pendingMode == 1)
+         {
+            // Click 2: confirm buy pending
+            ExecutePendingTrade(true);
+            ObjectDelete(0, OBJ_PENDING_LINE);
+            g_pendingMode = 0;
+            ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "BUY PENDING");
+            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
+            Print("[PENDING] Buy pending confirmed");
+         }
+         else
+         {
+            // Click 1: create line, enter buy-ready mode
+            g_pendingMode = 1;
+            CreatePendingLine();
+            ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "✓ CONFIRM BUY");
+            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'55,90,160');
+            // Reset sell button if it was in confirm mode
+            ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "SELL PENDING");
+            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'170,40,40');
+            Print("[PENDING] Line created – drag to price, click BUY PENDING again to confirm");
+         }
+      }
+      // ── SELL PENDING (2-click: create line → confirm) ──
+      else if(sparam == OBJ_SELL_PND)
+      {
+         ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_STATE, false);
+         if(g_pendingMode == 2)
+         {
+            // Click 2: confirm sell pending
+            ExecutePendingTrade(false);
+            ObjectDelete(0, OBJ_PENDING_LINE);
+            g_pendingMode = 0;
+            ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "SELL PENDING");
+            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'170,40,40');
+            Print("[PENDING] Sell pending confirmed");
+         }
+         else
+         {
+            // Click 1: create line, enter sell-ready mode
+            g_pendingMode = 2;
+            CreatePendingLine();
+            ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "✓ CONFIRM SELL");
+            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'55,90,160');
+            // Reset buy button if it was in confirm mode
+            ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "BUY PENDING");
+            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
+            Print("[PENDING] Line created – drag to price, click SELL PENDING again to confirm");
+         }
+      }
+      // ── ATR multiplier buttons ──
+      else if(sparam == OBJ_ATR_1)
+      {
+         ObjectSetInteger(0, OBJ_ATR_1, OBJPROP_STATE, false);
+         g_atrMult = 1.0;
+         UpdateATRButtons();
+         UpdatePanel();
+      }
+      else if(sparam == OBJ_ATR_15)
+      {
+         ObjectSetInteger(0, OBJ_ATR_15, OBJPROP_STATE, false);
+         g_atrMult = 1.5;
+         UpdateATRButtons();
+         UpdatePanel();
+      }
+      else if(sparam == OBJ_ATR_2)
+      {
+         ObjectSetInteger(0, OBJ_ATR_2, OBJPROP_STATE, false);
+         g_atrMult = 2.0;
+         UpdateATRButtons();
+         UpdatePanel();
+      }
+      else if(sparam == OBJ_ATR_25)
+      {
+         ObjectSetInteger(0, OBJ_ATR_25, OBJPROP_STATE, false);
+         g_atrMult = 2.5;
+         UpdateATRButtons();
+         UpdatePanel();
+      }
+      // ── Trail SL toggle ──
+      else if(sparam == OBJ_TRAIL_BTN)
+      {
+         g_trailEnabled = !g_trailEnabled;
+         ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_STATE, false);
+         if(g_trailEnabled)
+         {
+            ObjectSetString (0, OBJ_TRAIL_BTN, OBJPROP_TEXT, "Trail SL: ON");
+            ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, COL_WHITE);
+            Print("[PANEL] Trail SL ENABLED");
+         }
+         else
+         {
+            ObjectSetString (0, OBJ_TRAIL_BTN, OBJPROP_TEXT, "Trail SL: OFF");
+            ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, C'180,180,200');
+            Print("[PANEL] Trail SL DISABLED");
+         }
+      }
+      // ── Candle Counter toggle (signal arrows only) ──
       else if(sparam == OBJ_AUTO_BTN)
       {
          g_autoMode = !g_autoMode;
@@ -1101,16 +1479,25 @@ void OnChartEvent(const int id,
             ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_BGCOLOR, C'0,100,60');
             ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
             ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_COLOR, COL_WHITE);
-            Print("[AUTO] Candle Counter auto-trade ENABLED");
+            Print("[SIGNAL] Candle Counter signal arrows ENABLED");
          }
          else
          {
             ObjectSetString (0, OBJ_AUTO_BTN, OBJPROP_TEXT, "Candle Counter 3: OFF");
-            ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_BGCOLOR, COL_BTN);
-            ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_BORDER_COLOR, COL_BTN);
-            ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_COLOR, COL_BTN_TXT);
-            Print("[AUTO] Candle Counter auto-trade DISABLED");
+            ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_AUTO_BTN, OBJPROP_COLOR, C'180,180,200');
+            // Clean up signal arrows
+            ObjectsDeleteAll(0, PREFIX + "sig_");
+            Print("[SIGNAL] Candle Counter signal arrows DISABLED");
          }
+      }
+      // ── Disabled placeholder buttons (ignore clicks) ──
+      else if(sparam == OBJ_GRID_BTN || sparam == OBJ_AUTOTP_BTN ||
+              sparam == OBJ_MEDIO_BTN || sparam == OBJ_FVG_BTN)
+      {
+         ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+         // TODO: future features
       }
       // ── Theme buttons ──
       else if(sparam == OBJ_THEME_DARK || sparam == OBJ_THEME_LIGHT ||
