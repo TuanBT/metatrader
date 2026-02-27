@@ -1948,8 +1948,8 @@ void ManageGrid()
    if(!triggered) return;
 
    // Calculate lot for DCA position – based on ACTUAL distance from DCA entry to SL
-   // Each DCA position risks exactly $RiskMoney
-   double sl = CalcSLPrice(g_isBuy);
+   // SL anchored to ORIGINAL entry, not current price – prevents SL from drifting further
+   double sl = CalcSLPriceFrom(g_isBuy, g_entryPx);
    double dist = MathAbs(cur - sl);
    double lot = CalcLot(dist);
 
@@ -2568,7 +2568,7 @@ void OnChartEvent(const int id,
             // Widen SL on existing positions to accommodate grid levels
             if(g_hasPos)
             {
-               double newSL = CalcSLPrice(g_isBuy);
+               double newSL = CalcSLPriceFrom(g_isBuy, g_entryPx);
                for(int i = PositionsTotal() - 1; i >= 0; i--)
                {
                   ulong ticket = PositionGetTicket(i);
@@ -2618,7 +2618,7 @@ void OnChartEvent(const int id,
             // Narrow SL back to normal on existing positions
             if(g_hasPos)
             {
-               double newSL = CalcSLPrice(g_isBuy);  // now uses non-grid formula
+               double newSL = CalcSLPriceFrom(g_isBuy, g_entryPx);  // normal dist from original entry
                for(int i = PositionsTotal() - 1; i >= 0; i--)
                {
                   ulong ticket = PositionGetTicket(i);
