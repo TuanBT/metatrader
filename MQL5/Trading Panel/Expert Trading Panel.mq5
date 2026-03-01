@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.55"
+#property version   "1.56"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1384,14 +1384,17 @@ void SyncButtonAppearance()
 
       switch(g_trailRef)
       {
-         case TRAIL_PRICE:
          case TRAIL_CLOSE:
-         case TRAIL_SWING:
             trailActive = (move >= g_cachedATR * 0.5);  // profit gate passed
             break;
          case TRAIL_STEP:
-            trailActive = (g_stepLevel > 0);  // at least 1 step reached
+         {
+            // Check real-time: has price moved 1R+ from entry?
+            double stepSz = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
+            if(stepSz <= 0) stepSz = g_riskDist;
+            trailActive = (g_stepLevel > 0) || (stepSz > 0 && move >= stepSz);
             break;
+         }
          case TRAIL_BE:
             trailActive = g_beReached || (move >= g_cachedATR * 0.5);  // gate or BE done
             break;
