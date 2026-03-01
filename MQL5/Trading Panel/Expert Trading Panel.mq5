@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.48"
+#property version   "1.53"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -38,7 +38,9 @@ enum ENUM_TRAIL_MODE
    TRAIL_PRICE  = 0,  // ATR/2 from live price
    TRAIL_CLOSE  = 1,  // ATR/2 from bar[1] close
    TRAIL_SWING  = 2,  // ATR/2 from swing extreme (N bars)
-   TRAIL_NONE   = 3,  // No auto trail
+   TRAIL_STEP   = 3,  // Ratchet: SL steps up by 1R increments
+   TRAIL_BE     = 4,  // Breakeven first, then trail from close
+   TRAIL_NONE   = 5,  // No auto trail
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -119,10 +121,13 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BG         PREFIX "bg"
 #define OBJ_TITLE_BG   PREFIX "title_bg"
 #define OBJ_TITLE      PREFIX "title"
+#define OBJ_TITLE_INFO PREFIX "title_info"
 #define OBJ_RISK_LBL   PREFIX "risk_lbl"
 #define OBJ_RISK_EDT   PREFIX "risk_edt"
 #define OBJ_SPRD_LBL   PREFIX "sprd_lbl"
 #define OBJ_STATUS_LBL PREFIX "status_lbl"
+#define OBJ_LOCK_LBL   PREFIX "lock_lbl"
+#define OBJ_LOCK_VAL   PREFIX "lock_val"
 #define OBJ_BUY_BTN    PREFIX "buy_btn"
 #define OBJ_SELL_BTN   PREFIX "sell_btn"
 #define OBJ_CLOSE_BTN  PREFIX "close_btn"
@@ -141,6 +146,8 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_TM_PRICE   PREFIX "tm_price"
 #define OBJ_TM_CLOSE   PREFIX "tm_close"
 #define OBJ_TM_SWING   PREFIX "tm_swing"
+#define OBJ_TM_STEP    PREFIX "tm_step"
+#define OBJ_TM_BE      PREFIX "tm_be"
 #define OBJ_GRID_BTN   PREFIX "grid_btn"
 #define OBJ_GRID_LVL   PREFIX "grid_lvl"
 #define OBJ_AUTOTP_BTN PREFIX "autotp_btn"
@@ -158,6 +165,8 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_DCA1_LINE     PREFIX "dca1_line"
 #define OBJ_DCA2_LINE     PREFIX "dca2_line"
 #define OBJ_DCA3_LINE     PREFIX "dca3_line"
+#define OBJ_DCA4_LINE     PREFIX "dca4_line"
+#define OBJ_DCA5_LINE     PREFIX "dca5_line"
 #define OBJ_GRID_INFO     PREFIX "grid_info"
 
 
@@ -221,6 +230,9 @@ double   g_cachedATR  = 0;        // ATR cached per bar (refreshed on new bar)
 int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
 bool     g_trailEnabled = false;
 ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail mode (changeable from panel)
+int      g_stepLevel    = 0;       // Step trail: current ratchet level (0=entry, 1=+1R, 2=+2R...)
+double   g_stepSize     = 0;       // Step trail: locked step size (normal SL dist at entry)
+bool     g_beReached    = false;   // BE trail: whether SL has been moved to breakeven
 bool     g_panelCollapsed = false;
 bool     g_linesHidden    = false;
 bool     g_settingsExpanded = true;
@@ -275,13 +287,16 @@ double CalcSLPrice(bool isBuy)
    {
       case SL_ATR:
       {
-         if(g_cachedATR > 0)
+         // Use locked grid ATR/mult if available, fallback to live values
+         double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
+         double mult   = (g_gridBaseMult > 0) ? g_gridBaseMult : g_atrMult;
+         if(atrVal > 0)
          {
-            double dist = g_cachedATR * g_atrMult;
+            double dist = atrVal * mult;
             // When Grid DCA is ON, widen SL to accommodate all grid levels
             // SL = (maxDCA + 1) × atrMult × ATR  (3 DCA + 1 buffer)
             if(g_gridEnabled)
-               dist = g_cachedATR * (g_gridMaxLevel + 1) * g_atrMult;
+               dist = atrVal * (g_gridMaxLevel + 1) * mult;
             if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
             sl = isBuy ? entry - dist : entry + dist;
          }
@@ -342,10 +357,20 @@ double CalcNormalSLDist()
          double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          double mid = (ask + bid) / 2.0;
-         double low = iLow(_Symbol, _Period, 1);
-         for(int i = 2; i <= lb; i++)
-            low = MathMin(low, iLow(_Symbol, _Period, i));
-         double dist = MathAbs(mid - low);
+         double extreme;
+         if(g_isBuy)
+         {
+            extreme = iLow(_Symbol, _Period, 1);
+            for(int i = 2; i <= lb; i++)
+               extreme = MathMin(extreme, iLow(_Symbol, _Period, i));
+         }
+         else
+         {
+            extreme = iHigh(_Symbol, _Period, 1);
+            for(int i = 2; i <= lb; i++)
+               extreme = MathMax(extreme, iHigh(_Symbol, _Period, i));
+         }
+         double dist = MathAbs(mid - extreme);
          if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
          return dist;
       }
@@ -501,6 +526,36 @@ double GetAvgEntry()
       sumL  += lot;
    }
    return (sumL > 0) ? sumLE / sumL : 0;
+}
+
+// Locked profit at SL: what P&L would be if price reaches current SL
+double GetLockedPnL()
+{
+   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   if(tickSz == 0 || tickVal == 0) return 0;
+
+   double lockedPnL = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t == 0) continue;
+      if(!PositionSelectByTicket(t)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      double lot   = PositionGetDouble(POSITION_VOLUME);
+      double entry = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl    = PositionGetDouble(POSITION_SL);
+      double swap  = PositionGetDouble(POSITION_SWAP);
+      long   type  = PositionGetInteger(POSITION_TYPE);
+
+      if(sl == 0) continue;  // no SL set → skip
+
+      double dist = (type == POSITION_TYPE_BUY) ? (sl - entry) : (entry - sl);
+      lockedPnL += lot * (dist / tickSz) * tickVal + swap;
+   }
+   return lockedPnL;
 }
 
 // Total lots across all positions
@@ -744,7 +799,7 @@ void UpdateTPGridLines()
    if(g_gridEnabled && g_hasPos && g_gridBaseATR > 0)
    {
       double spacing = g_gridBaseATR * g_gridBaseMult;
-      string dcaNames[] = {OBJ_DCA1_LINE, OBJ_DCA2_LINE, OBJ_DCA3_LINE};
+      string dcaNames[] = {OBJ_DCA1_LINE, OBJ_DCA2_LINE, OBJ_DCA3_LINE, OBJ_DCA4_LINE, OBJ_DCA5_LINE};
 
       for(int i = 0; i < g_gridMaxLevel; i++)
       {
@@ -783,6 +838,8 @@ void UpdateTPGridLines()
       HideHLine(OBJ_DCA1_LINE);
       HideHLine(OBJ_DCA2_LINE);
       HideHLine(OBJ_DCA3_LINE);
+      HideHLine(OBJ_DCA4_LINE);
+      HideHLine(OBJ_DCA5_LINE);
       HideHLine(OBJ_AVG_ENTRY);
    }
 }
@@ -890,6 +947,7 @@ void TogglePanelCollapse()
       
       // Keep title bar elements always visible
       if(name == OBJ_BG || name == OBJ_TITLE_BG || name == OBJ_TITLE ||
+         name == OBJ_TITLE_INFO ||
          name == OBJ_COLLAPSE_BTN || name == OBJ_LINES_BTN ||
          name == OBJ_SETTINGS_BTN ||
          name == OBJ_THEME_BTN)
@@ -904,9 +962,13 @@ void TogglePanelCollapse()
    
    // Resize background
    if(g_panelCollapsed)
-      ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, 32);  // title bar height only
+      ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, 56);  // title bar + info row
    else
       ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, g_panelFullHeight);
+
+   // Show/hide collapsed info row
+   ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_TIMEFRAMES,
+      g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    
    ChartRedraw();
 }
@@ -960,6 +1022,11 @@ void CreatePanel()
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
    MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel", C'170,180,215', 10, FONT_BOLD);
+
+   // ── Collapsed info row (below title bar, visible only when collapsed) ──
+   MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
+   ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_TIMEFRAMES,
+      g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
 
    // Theme + utility buttons (right side of title bar)
    // Layout: [Set][Dark][Lines][▼]
@@ -1020,20 +1087,6 @@ void CreatePanel()
                COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
       MakeButton(OBJ_SET_ATR_MINUS, IX + 112, y, 28, 22, "-", COL_BTN_TXT, C'80,40,40', 10, FONT_BOLD);
       MakeButton(OBJ_SET_ATR_PLUS,  IX + 143, y, 28, 22, "+", COL_BTN_TXT, C'40,80,40', 10, FONT_BOLD);
-      y += 26;
-
-      // ── ATR quick-select buttons ──
-      {
-         int abw = (IW - 2 - 5 * 3) / 6;
-         int ax = PX + 5;
-         int ag = 3;
-         MakeButton(OBJ_SET_A05, ax + 0 * (abw + ag), y, abw, 22, "0.5", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_A10, ax + 1 * (abw + ag), y, abw, 22, "1.0", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_A15, ax + 2 * (abw + ag), y, abw, 22, "1.5", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_A20, ax + 3 * (abw + ag), y, abw, 22, "2.0", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_A25, ax + 4 * (abw + ag), y, abw, 22, "2.5", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_A30, ax + 5 * (abw + ag), y, abw, 22, "3.0", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-      }
       y += 28;
    }
 
@@ -1049,6 +1102,12 @@ void CreatePanel()
    MakeLabel(OBJ_RISK_LBL, IX + IW - 5, y + 1, " ", COL_DIM, 11, FONT_BOLD);
    ObjectSetInteger(0, OBJ_RISK_LBL, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
    y += 22;
+
+   // ── Row 1b: Locked Profit at SL (left label + right value) ──
+   MakeLabel(OBJ_LOCK_LBL, IX, y, "SL Lock", COL_DIM, 8, FONT_MONO);
+   MakeLabel(OBJ_LOCK_VAL, IX + IW - 5, y, " ", COL_DIM, 9, FONT_BOLD);
+   ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
+   y += 16;
 
    // ── Row 2: Risk | ATR | Spread info ──
    MakeLabel(OBJ_SPRD_LBL, IX, y, "", COL_DIM, 8, FONT_MONO);
@@ -1085,23 +1144,30 @@ void CreatePanel()
    MakeLabel(OBJ_SEC_ORDER, IX + 2, y - 5, " ORDER MANAGEMENT ", C'100,110,140', 7, FONT_MAIN);
    y += 8;
 
-   // ── Trail SL toggle + mode buttons ──
+   // ── Trail SL toggle + mode buttons (1 row) ──
+   //   Group: ATR continuous (Price, Close, Swing) | Discrete (Step, BE)
    {
       int bx = PX + 5;
-      int tw = 82;   // trail toggle width
+      int tw = 78;   // trail toggle width
       int gp = 2;    // gap between buttons
-      int mw = (IW - 2 - tw - 4 * gp) / 3;  // mode button width
+      int mw = (IW - 2 - tw - 6 * gp) / 5;  // mode button width (5 modes)
       MakeButton(OBJ_TRAIL_BTN, bx, y, tw, 26,
                  "Trail: OFF", C'180,180,200', C'60,60,85', 8);
       bx += tw + gp;
       MakeButton(OBJ_TM_PRICE, bx, y, mw, 26,
-                 "Price", C'140,140,160', C'50,50,70', 8);
+                 "Price", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
-                 "Close", C'140,140,160', C'50,50,70', 8);
+                 "Close", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_SWING, bx, y, mw, 26,
-                 "Swing", C'140,140,160', C'50,50,70', 8);
+                 "Swing", C'140,140,160', C'50,50,70', 7);
+      bx += mw + gp;
+      MakeButton(OBJ_TM_STEP, bx, y, mw, 26,
+                 "Step", C'140,140,160', C'50,50,70', 7);
+      bx += mw + gp;
+      MakeButton(OBJ_TM_BE, bx, y, mw, 26,
+                 "BE", C'140,140,160', C'50,50,70', 7);
    }
    y += 30;
 
@@ -1124,21 +1190,20 @@ void CreatePanel()
    y += 16;
 
    // ═══════════════════════════════════════
-   // CLOSE SECTION
+   // CLOSE SECTION (single row: 50% | 75% | ALL)
    // ═══════════════════════════════════════
    MakeRect(OBJ_SEP5, IX, y, IW, 1, COL_BORDER, COL_BORDER);
    y += 6;
    {
-      int cw = (IW - 2 - 4) / 2;  // 2 buttons with 4px gap
-      MakeButton(OBJ_CLOSE50_BTN, PX + 5, y, cw, 26,
+      int cw3 = (IW - 2 - 8) / 3;  // 3 buttons with 4px gaps
+      MakeButton(OBJ_CLOSE50_BTN, PX + 5, y, cw3, 28,
                  "Close 50%", C'220,180,180', C'120,50,50', 8);
-      MakeButton(OBJ_CLOSE75_BTN, PX + 5 + cw + 4, y, cw, 26,
+      MakeButton(OBJ_CLOSE75_BTN, PX + 5 + cw3 + 4, y, cw3, 28,
                  "Close 75%", C'220,180,180', C'120,50,50', 8);
+      MakeButton(OBJ_CLOSE_BTN, PX + 5 + 2*(cw3 + 4), y, cw3, 28,
+                 "Close 100%", C'255,200,200', COL_CLOSE, 8);
    }
-   y += 30;
-   MakeButton(OBJ_CLOSE_BTN, PX + 5, y, IW - 2, 30,
-              "CLOSE ALL", C'255,200,200', COL_CLOSE, 9);
-   y += 36;
+   y += 34;
 
    // ═══════════════════════════════════════
    // TOOLTIPS (tiếng Việt)
@@ -1157,6 +1222,10 @@ void CreatePanel()
       "Thông tin: Risk, lot, hướng lệnh, lãi/lỗ hiện tại.");
    ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TOOLTIP,
       "Lãi/Lỗ hiện tại (P&L) của tất cả lệnh đang mở.");
+   ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TOOLTIP,
+      "Lợi nhuận Lock (SL Lock): Lãi/Lỗ tính tại mức SL hiện tại.\nCho biết lợi nhuận tối thiểu (hoặc lỗ tối đa) nếu SL bị chạm.\nKhi kéo SL bằng tay, con số này tự cập nhật.");
+   ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TOOLTIP,
+      "Lợi nhuận Lock (SL Lock): Lãi/Lỗ tính tại mức SL hiện tại.\nCho biết lợi nhuận tối thiểu (hoặc lỗ tối đa) nếu SL bị chạm.\nKhi kéo SL bằng tay, con số này tự cập nhật.");
    ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TOOLTIP,
       "Lot size và hướng lệnh (LONG/SHORT).\nKhi chưa có lệnh: lot dự kiến theo Risk hiện tại.");
    ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TOOLTIP,
@@ -1197,14 +1266,8 @@ void CreatePanel()
    ObjectSetString(0, OBJ_SET_R100, OBJPROP_TOOLTIP, "Risk = 100% số dư tài khoản");
 
    // Settings: ATR
-   ObjectSetString(0, OBJ_SET_ATR_MINUS, OBJPROP_TOOLTIP, "Giảm ATR ×0.5");
-   ObjectSetString(0, OBJ_SET_ATR_PLUS,  OBJPROP_TOOLTIP, "Tăng ATR ×0.5");
-   ObjectSetString(0, OBJ_SET_A05, OBJPROP_TOOLTIP, "Hệ số ATR = 0.5 (SL hẹp, biến động thấp)");
-   ObjectSetString(0, OBJ_SET_A10, OBJPROP_TOOLTIP, "Hệ số ATR = 1.0 (SL trung bình)");
-   ObjectSetString(0, OBJ_SET_A15, OBJPROP_TOOLTIP, "Hệ số ATR = 1.5 (SL tiêu chuẩn)");
-   ObjectSetString(0, OBJ_SET_A20, OBJPROP_TOOLTIP, "Hệ số ATR = 2.0 (SL rộng)");
-   ObjectSetString(0, OBJ_SET_A25, OBJPROP_TOOLTIP, "Hệ số ATR = 2.5 (SL rất rộng)");
-   ObjectSetString(0, OBJ_SET_A30, OBJPROP_TOOLTIP, "Hệ số ATR = 3.0 (SL cực rộng, swing)");
+   ObjectSetString(0, OBJ_SET_ATR_MINUS, OBJPROP_TOOLTIP, "Giảm ATR ×0.5 (snap đến bước 0.5 gần nhất)");
+   ObjectSetString(0, OBJ_SET_ATR_PLUS,  OBJPROP_TOOLTIP, "Tăng ATR ×0.5 (snap đến bước 0.5 gần nhất)");
 
    // Trade buttons
    ObjectSetString(0, OBJ_BUY_BTN,  OBJPROP_TOOLTIP,
@@ -1219,21 +1282,39 @@ void CreatePanel()
    // Trail SL
    ObjectSetString(0, OBJ_TRAIL_BTN, OBJPROP_TOOLTIP,
       "Trailing Stop Loss — Bật/Tắt\n"
-      "Tự động dời SL theo hướng có lợi khi nến đóng.\n"
-      "Kích hoạt khi giá đã đi được >= 0.5 ATR từ entry.\n"
-      "Khoảng cách trail = ATR × 0.5");
+      "Tự động dời SL theo hướng có lợi.\n"
+      "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
 
    ObjectSetString(0, OBJ_TM_PRICE, OBJPROP_TOOLTIP,
-      "PRICE — Dời SL theo giá Bid/Ask hiện tại.\n"
-      "Khoá lợi nhuận nhanh nhất.\n");
+      "PRICE — Theo giá Bid/Ask (~3 giây/lần)\n"
+      "SL = giá hiện tại − ATR×0.5\n"
+      "Khoá lời nhanh nhất, cập nhật liên tục.\n"
+      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
 
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
-      "CLOSE — Dời SL theo giá đóng cửa nến trước.\n"
-      "Lọc nhiễu bóng nến, cân bằng nhất.\n");
+      "CLOSE — Theo giá đóng nến (mỗi nến mới)\n"
+      "SL = Close[1] − ATR×0.5\n"
+      "Lọc nhiễu bóng nến, ổn định nhất.\n"
+      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "SWING — Dời SL theo đỉnh/đáy " + IntegerToString(InpTrailLookback) + " nến.\n"
-      "BUY: HH (Highest High), SELL: LL (Lowest Low).\n");
+      "SWING — Theo đỉnh/đáy " + IntegerToString(InpTrailLookback) + " nến (mỗi nến mới)\n"
+      "BUY: SL = HH − ATR×0.5\n"
+      "SELL: SL = LL + ATR×0.5\n"
+      "Rộng nhất, cho trend dài chạy.\n"
+      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
+
+   ObjectSetString(0, OBJ_TM_STEP, OBJPROP_TOOLTIP,
+      "STEP — Nhảy bậc 1R (~3 giây/lần)\n"
+      "+1R → SL về entry (hòa vốn)\n"
+      "+2R → SL lên +1R, +3R → +2R...\n"
+      "Khoá lời từng bậc. Không cần profit gate.");
+
+   ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
+      "BE — Breakeven + Trail\n"
+      "B1: Giá đi +0.5ATR → SL về entry (~3s/lần)\n"
+      "B2: Sau đó trail theo Close (mỗi nến mới)\n"
+      "Bảo vệ vốn sớm, rồi để trend chạy.");
 
    // Grid DCA
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,
@@ -1295,16 +1376,56 @@ void SyncButtonAppearance()
    }
 
    // ── Trail mode buttons (radio-style highlight) ──
-   string modeObjs[] = {OBJ_TM_PRICE, OBJ_TM_CLOSE, OBJ_TM_SWING};
-   ENUM_TRAIL_MODE modes[] = {TRAIL_PRICE, TRAIL_CLOSE, TRAIL_SWING};
-   for(int i = 0; i < 3; i++)
+   // Blue = selected but waiting for activation
+   // Green = selected AND actively trailing
+   // Gray = not selected
+   string modeObjs[] = {OBJ_TM_PRICE, OBJ_TM_CLOSE, OBJ_TM_SWING, OBJ_TM_STEP, OBJ_TM_BE};
+   ENUM_TRAIL_MODE modes[] = {TRAIL_PRICE, TRAIL_CLOSE, TRAIL_SWING, TRAIL_STEP, TRAIL_BE};
+
+   // Determine if trail is actively tracking (conditions met)
+   bool trailActive = false;
+   if(g_hasPos && g_trailEnabled && g_trailRef != TRAIL_NONE)
+   {
+      double refEntry = (g_gridEnabled && g_gridLevel > 0) ? GetAvgEntry() : g_entryPx;
+      if(refEntry <= 0) refEntry = g_entryPx;
+      double cur2 = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                            : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double move = g_isBuy ? (cur2 - refEntry) : (refEntry - cur2);
+
+      switch(g_trailRef)
+      {
+         case TRAIL_PRICE:
+         case TRAIL_CLOSE:
+         case TRAIL_SWING:
+            trailActive = (move >= g_cachedATR * 0.5);  // profit gate passed
+            break;
+         case TRAIL_STEP:
+            trailActive = (g_stepLevel > 0);  // at least 1 step reached
+            break;
+         case TRAIL_BE:
+            trailActive = g_beReached || (move >= g_cachedATR * 0.5);  // gate or BE done
+            break;
+      }
+   }
+
+   for(int i = 0; i < 5; i++)
    {
       if(g_trailRef == modes[i])
       {
-         // Active mode: bright highlight
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'30,80,140');
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'50,120,200');
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
+         if(trailActive)
+         {
+            // Active: green — trail is live
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'0,100,60');
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'0,140,80');
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
+         }
+         else
+         {
+            // Selected but not yet active: blue
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'30,80,140');
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'50,120,200');
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
+         }
       }
       else
       {
@@ -1423,6 +1544,15 @@ void UpdatePanel()
       ObjectSetInteger(0, OBJ_RISK_LBL, OBJPROP_COLOR,
          pnl >= 0 ? COL_PROFIT : COL_LOSS);
 
+      // ── Locked Profit at SL ──
+      double lockedPnL = GetLockedPnL();
+      ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT, "SL Lock");
+      ObjectSetInteger(0, OBJ_LOCK_LBL, OBJPROP_COLOR, COL_DIM);
+      ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT,
+         StringFormat("$%+.2f", lockedPnL));
+      ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR,
+         lockedPnL >= 0 ? COL_PROFIT : COL_LOSS);
+
       // ── Dynamic button text (info merged into buttons) ──
       if(g_gridEnabled)
       {
@@ -1456,6 +1586,8 @@ void UpdatePanel()
          StringFormat("Lot %.2f", avgLot));
       ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, COL_DIM);
       ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TEXT, " ");
+      ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT, " ");
+      ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT, " ");
       ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
 
       // Refresh Grid DCA projected risk (risk$ may have changed)
@@ -1482,6 +1614,42 @@ void UpdatePanel()
    UpdateTPGridLines();
 
    // ── Sync button visual state with actual enabled flags ──
+   SyncButtonAppearance();
+
+   // ── Title bar: show position info when collapsed ──
+   if(g_panelCollapsed)
+   {
+      if(g_hasPos)
+      {
+         double pnl2 = GetPositionPnL();
+         double lock2 = GetLockedPnL();
+         double lots2 = GetTotalLots();
+         string dir2 = g_isBuy ? "LONG" : "SHORT";
+         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
+         ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
+         // Info row: lot + direction + P&L + locked profit
+         ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
+            StringFormat("%.2f %s  $%+.2f  Lock $%+.2f", lots2, dir2, pnl2, lock2));
+         ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_COLOR,
+            pnl2 >= 0 ? COL_PROFIT : COL_LOSS);
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
+         ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
+         ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
+            StringFormat("Lot %.2f", avgLot));
+         ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_COLOR, COL_DIM);
+      }
+   }
+   else
+   {
+      ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
+      ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
+      ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT, " ");
+   }
+
+   // Sync button colors (trail active indicator, etc.)
    SyncButtonAppearance();
 
    ChartRedraw();
@@ -1530,6 +1698,7 @@ bool ExecuteTrade(bool isBuy)
       g_currentSL = sl;
       g_riskDist  = dist;
       g_tpDist    = CalcNormalSLDist();  // normal ATR for TP calcs
+      g_stepSize  = g_tpDist;            // lock step size for TRAIL_STEP
       
       // Lock grid ATR/mult if grid enabled at trade entry
       if(g_gridEnabled && g_gridBaseATR <= 0)
@@ -1696,12 +1865,15 @@ double CalcSLPriceFrom(bool isBuy, double entryPrice)
    {
       case SL_ATR:
       {
-         if(g_cachedATR > 0)
+         // Use locked grid ATR/mult if available, fallback to live values
+         double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
+         double mult   = (g_gridBaseMult > 0) ? g_gridBaseMult : g_atrMult;
+         if(atrVal > 0)
          {
-            double dist = g_cachedATR * g_atrMult;
+            double dist = atrVal * mult;
             // When Grid DCA is ON, widen SL beyond all grid levels
             if(g_gridEnabled)
-               dist = g_cachedATR * (g_gridMaxLevel + 1) * g_atrMult;
+               dist = atrVal * (g_gridMaxLevel + 1) * mult;
             double buffer = dist * InpSLBuffer / 100.0;
             sl = isBuy ? NormPrice(entryPrice - dist - buffer)
                        : NormPrice(entryPrice + dist + buffer);
@@ -1732,6 +1904,7 @@ double CalcSLPriceFrom(bool isBuy, double entryPrice)
       case SL_FIXED:
       {
          double dist = InpFixedSLPips * PipSize();
+         if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
          sl = isBuy ? NormPrice(entryPrice - dist) : NormPrice(entryPrice + dist);
          break;
       }
@@ -1771,38 +1944,188 @@ void ModifySL(double newSL)
       else
          Print("[TRAIL] Modify FAILED rc=", rs.retcode);
    }
+
+   // Check if trail SL has overridden remaining Grid DCA levels
+   CheckTrailOverridesGrid();
+}
+
+// Check if trailing SL has moved past all remaining Grid DCA levels.
+// If so, auto-disable Grid DCA since those levels are unreachable.
+void CheckTrailOverridesGrid()
+{
+   if(!g_gridEnabled) return;
+   if(!g_hasPos) return;
+   if(g_gridLevel >= g_gridMaxLevel) return;  // all DCA already executed
+   if(g_gridBaseATR <= 0 || g_gridBaseMult <= 0) return;
+
+   double spacing = g_gridBaseATR * g_gridBaseMult;
+   // Next unexecuted DCA level
+   int nextLevel = g_gridLevel + 1;
+   double nextDCA = g_isBuy
+      ? g_entryPx - nextLevel * spacing
+      : g_entryPx + nextLevel * spacing;
+
+   // Has trail SL passed the next DCA level?
+   bool overridden = g_isBuy ? (g_currentSL > nextDCA)
+                             : (g_currentSL < nextDCA);
+   if(!overridden) return;
+
+   // Trail SL has passed DCA level(s) — auto-disable Grid
+   g_gridEnabled  = false;
+   g_gridLevel    = 0;
+   g_gridBaseATR  = 0;
+   g_gridBaseMult = 0;
+
+   ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF (Trail)");
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+
+   Print(StringFormat("[GRID] Auto-disabled — Trail SL (%s) đã vượt DCA #%d (%s)",
+         DoubleToString(g_currentSL, _Digits),
+         nextLevel,
+         DoubleToString(nextDCA, _Digits)));
 }
 
 // Trail SL: dispatches based on g_trailRef (runtime-selectable)
+// Price/Step/BE-Phase1: per-tick (throttled ~3s) — react to live price
+// Close/Swing/BE-Phase2: per-bar — reference only changes on new candle
 void ManageTrail()
 {
    if(!g_hasPos) return;
    if(!g_trailEnabled) return;
    if(g_trailRef == TRAIL_NONE) return;
 
-   // All modes: only on new bar
-   datetime curBar = iTime(_Symbol, _Period, 0);
-   if(curBar == g_lastBar) return;
-
-   // ── Minimum profit gate: don't trail until price moved >= 0.5 ATR from entry ──
-   if(g_cachedATR > 0)
-   {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double cur = g_isBuy ? bid : ask;
-      double refEntry = (g_gridEnabled && g_gridLevel > 0) ? GetAvgEntry() : g_entryPx;
-      if(refEntry <= 0) refEntry = g_entryPx;
-      double moveFromEntry = g_isBuy ? (cur - refEntry) : (refEntry - cur);
-      if(moveFromEntry < g_cachedATR * 0.5)
-         return;   // Not enough profit yet – don't trail
-   }
-
    if(g_cachedATR <= 0) return;
-   double trailDist = g_cachedATR * InpTrailATRFactor;
-   if(trailDist <= 0) return;
+
+   // Is this a new bar?
+   datetime curBar = iTime(_Symbol, _Period, 0);
+   bool isNewBar = (curBar != g_lastBar);
+
+   // Per-tick throttle: limit OrderModify to once per ~3 seconds
+   static uint s_lastTrailMs = 0;
+   uint nowMs = GetTickCount();
+   bool tickAllowed = (nowMs - s_lastTrailMs >= 3000);
 
    double bid2 = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask2 = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double cur  = g_isBuy ? bid2 : ask2;
+   double refEntry = (g_gridEnabled && g_gridLevel > 0) ? GetAvgEntry() : g_entryPx;
+   if(refEntry <= 0) refEntry = g_entryPx;
+   double moveFromEntry = g_isBuy ? (cur - refEntry) : (refEntry - cur);
+
+   // ═══════════════════════════════════════
+   // TRAIL_STEP: Ratchet SL in 1R steps (per-tick)
+   // Entry → +1R → +2R → +3R...
+   // ═══════════════════════════════════════
+   if(g_trailRef == TRAIL_STEP)
+   {
+      if(!tickAllowed) return;  // throttle per-tick
+
+      // Use locked step size (normal SL distance from trade entry)
+      double stepSize = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
+      if(stepSize <= 0) stepSize = g_riskDist;  // fallback
+      if(stepSize <= 0) return;
+
+      // Calculate which step level price has reached
+      int reachedLevel = (int)MathFloor(moveFromEntry / stepSize);
+      if(reachedLevel <= g_stepLevel) return;  // Not a new step
+
+      // Advance to new step level
+      g_stepLevel = reachedLevel;
+      double newSL = g_isBuy
+         ? NormPrice(refEntry + (g_stepLevel - 1) * stepSize)
+         : NormPrice(refEntry - (g_stepLevel - 1) * stepSize);
+
+      // Step 1 = breakeven (entry), Step 2 = +1R, Step 3 = +2R...
+      // So SL = entry + (level-1) × R
+
+      // Safety checks
+      bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
+      if(!advance) return;
+      if(g_isBuy  && newSL >= bid2) return;
+      if(!g_isBuy && newSL <= ask2) return;
+
+      s_lastTrailMs = nowMs;
+      Print(StringFormat("[TRAIL-STEP] Level %d → SL=%s (+%dR from entry)",
+            g_stepLevel, DoubleToString(newSL, _Digits), g_stepLevel - 1));
+      ModifySL(newSL);
+      return;
+   }
+
+   // ═══════════════════════════════════════
+   // TRAIL_BE: Breakeven first, then trail from Close
+   // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5 ATR
+   // Phase 2 (per-bar):  Trail from bar close with ATR/2 distance
+   // ═══════════════════════════════════════
+   if(g_trailRef == TRAIL_BE)
+   {
+      // Phase 1: Move to breakeven (per-tick — react immediately)
+      if(!g_beReached)
+      {
+         if(!tickAllowed) return;  // throttle per-tick
+         if(moveFromEntry >= g_cachedATR * 0.5)
+         {
+            // Move SL to entry (breakeven)
+            double beSL = NormPrice(refEntry);
+            bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
+            if(advance)
+            {
+               if(g_isBuy  && beSL >= bid2) return;
+               if(!g_isBuy && beSL <= ask2) return;
+               g_beReached = true;
+               s_lastTrailMs = nowMs;
+               Print(StringFormat("[TRAIL-BE] Phase 1: SL moved to breakeven %s",
+                     DoubleToString(beSL, _Digits)));
+               ModifySL(beSL);
+            }
+            else
+            {
+               // SL is already at or past breakeven — skip to Phase 2
+               g_beReached = true;
+               Print("[TRAIL-BE] SL already past breakeven — entering Phase 2");
+            }
+         }
+         return;  // Don't trail yet in Phase 1
+      }
+
+      // Phase 2: Trail from Close (per-bar — only when candle closes)
+      if(!isNewBar) return;
+
+      double trailDist = g_cachedATR * InpTrailATRFactor;
+      if(trailDist <= 0) return;
+
+      double refPrice = iClose(_Symbol, _Period, 1);
+      if(refPrice <= 0) return;
+
+      double newSL = g_isBuy ? NormPrice(refPrice - trailDist)
+                             : NormPrice(refPrice + trailDist);
+
+      bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
+      if(!advance) return;
+      if(g_isBuy  && newSL >= bid2) return;
+      if(!g_isBuy && newSL <= ask2) return;
+
+      ModifySL(newSL);
+      return;
+   }
+
+   // ═══════════════════════════════════════
+   // TRAIL_PRICE (per-tick) / TRAIL_CLOSE (per-bar) / TRAIL_SWING (per-bar)
+   // Continuous trail with 0.5 ATR profit gate
+   // ═══════════════════════════════════════
+
+   // TRAIL_PRICE: per-tick (throttled ~3s)
+   // TRAIL_CLOSE / TRAIL_SWING: per-bar only
+   if(g_trailRef == TRAIL_PRICE && !tickAllowed) return;
+   if((g_trailRef == TRAIL_CLOSE || g_trailRef == TRAIL_SWING) && !isNewBar) return;
+
+   // Minimum profit gate: don't trail until price moved >= 0.5 ATR from entry
+   if(moveFromEntry < g_cachedATR * 0.5)
+      return;
+
+   double trailDist = g_cachedATR * InpTrailATRFactor;
+   if(trailDist <= 0) return;
 
    double refPrice = 0;
 
@@ -1810,19 +2133,16 @@ void ManageTrail()
    {
       case TRAIL_PRICE:
       {
-         // Reference = live bid/ask
          refPrice = g_isBuy ? bid2 : ask2;
          break;
       }
       case TRAIL_CLOSE:
       {
-         // Reference = bar[1] close (completed candle)
          refPrice = iClose(_Symbol, _Period, 1);
          break;
       }
       case TRAIL_SWING:
       {
-         // Reference = highest high / lowest low of last N bars
          int N = InpTrailLookback;
          if(N < 1) N = 5;
          if(g_isBuy)
@@ -1846,19 +2166,18 @@ void ManageTrail()
 
    if(refPrice <= 0) return;
 
-   // newSL = reference price minus trail distance (in trade direction)
    double newSL = g_isBuy ? NormPrice(refPrice - trailDist)
                           : NormPrice(refPrice + trailDist);
 
-   // Only advance, never retreat
    bool advance = g_isBuy ? (newSL > g_currentSL)
                            : (newSL < g_currentSL);
    if(!advance) return;
 
-   // Safety: SL must stay off-side of current price
    if(g_isBuy  && newSL >= bid2) return;
    if(!g_isBuy && newSL <= ask2) return;
 
+   if(g_trailRef == TRAIL_PRICE)
+      s_lastTrailMs = nowMs;
    ModifySL(newSL);
 }
 
@@ -1931,7 +2250,11 @@ void ManageGrid()
          g_gridBaseATR = g_cachedATR;
       else
          return;
+      g_gridBaseMult = g_atrMult;  // Also lock multiplier
    }
+   // Safety: if ATR locked but mult wasn't (edge case)
+   if(g_gridBaseMult <= 0)
+      g_gridBaseMult = g_atrMult;
 
    double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                         : SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -1982,6 +2305,8 @@ void ManageGrid()
    if(OrderSend(req, res))
    {
       g_gridLevel = nextLevel;
+      g_stepLevel = 0;  // Reset step trail — avgEntry shifted, recalculate from scratch
+      g_beReached = false;  // Reset BE trail — new DCA changes reference entry
       double avgEntry = GetAvgEntry();
       Print(StringFormat("[GRID] DCA #%d %s %.2f @ %s | SL=%s | AvgEntry=%s | Total=%.2f",
             nextLevel,
@@ -2063,6 +2388,19 @@ void SyncPositionState()
    g_riskDist  = MathAbs(g_entryPx - g_currentSL);
    if(g_tpDist <= 0)
       g_tpDist = CalcNormalSLDist();
+
+   // Lock step size for TRAIL_STEP (if not already locked)
+   if(g_stepSize <= 0)
+      g_stepSize = CalcNormalSLDist();
+
+   // Lock grid ATR/mult if grid enabled but not yet locked
+   // (covers pending order fill scenario where ExecuteTrade was never called)
+   if(g_gridEnabled && g_gridBaseATR <= 0)
+   {
+      if(g_cachedATR > 0)
+         g_gridBaseATR = g_cachedATR;
+      g_gridBaseMult = g_atrMult;
+   }
 
    Print(StringFormat("[PANEL] Synced position: %s @ %s  SL=%s  (earliest of %d)",
       g_isBuy ? "BUY" : "SELL",
@@ -2188,7 +2526,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.32 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.52 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -2230,6 +2568,9 @@ void OnTick()
       g_gridLevel = 0;
       g_gridBaseATR = 0;
       g_gridBaseMult = 0;
+      g_stepLevel = 0;
+      g_stepSize  = 0;
+      g_beReached = false;
    }
 
    // Auto trailing
@@ -2278,6 +2619,7 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_COLLAPSE_BTN, OBJPROP_STATE, false);
          TogglePanelCollapse();
+         UpdatePanel();  // Immediately refresh title bar text
          return;
       }
       if(sparam == OBJ_LINES_BTN)
@@ -2332,11 +2674,12 @@ void OnChartEvent(const int id,
          UpdatePanel();
          return;
       }
-      // ── Settings: ATR ±0.5 ──
+      // ── Settings: ATR ±0.5 (snap to nearest 0.5 step) ──
       if(sparam == OBJ_SET_ATR_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_ATR_PLUS, OBJPROP_STATE, false);
-         g_atrMult = MathMin(5.0, g_atrMult + 0.5);
+         // Snap up: 1.0→1.5, 1.1→1.5, 1.5→2.0
+         g_atrMult = MathMin(5.0, MathCeil(g_atrMult * 2.0 + 0.001) / 2.0);
          ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
          UpdatePanel();
          return;
@@ -2344,23 +2687,8 @@ void OnChartEvent(const int id,
       if(sparam == OBJ_SET_ATR_MINUS)
       {
          ObjectSetInteger(0, OBJ_SET_ATR_MINUS, OBJPROP_STATE, false);
-         g_atrMult = MathMax(0.1, g_atrMult - 0.5);
-         ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
-         UpdatePanel();
-         return;
-      }
-      // ── Settings: ATR quick-select ──
-      if(sparam == OBJ_SET_A05 || sparam == OBJ_SET_A10 ||
-         sparam == OBJ_SET_A15 || sparam == OBJ_SET_A20 ||
-         sparam == OBJ_SET_A25 || sparam == OBJ_SET_A30)
-      {
-         ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
-         if(sparam == OBJ_SET_A05) g_atrMult = 0.5;
-         if(sparam == OBJ_SET_A10) g_atrMult = 1.0;
-         if(sparam == OBJ_SET_A15) g_atrMult = 1.5;
-         if(sparam == OBJ_SET_A20) g_atrMult = 2.0;
-         if(sparam == OBJ_SET_A25) g_atrMult = 2.5;
-         if(sparam == OBJ_SET_A30) g_atrMult = 3.0;
+         // Snap down: 1.0→0.5, 1.1→1.0, 1.5→1.0
+         g_atrMult = MathMax(0.5, MathFloor(g_atrMult * 2.0 - 0.001) / 2.0);
          ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
          UpdatePanel();
          return;
@@ -2422,6 +2750,11 @@ void OnChartEvent(const int id,
          g_gridLevel   = 0;
          g_gridBaseATR = 0;
          g_gridBaseMult = 0;
+
+         // Reset Trail state
+         g_stepLevel = 0;
+         g_stepSize  = 0;
+         g_beReached = false;
          if(g_gridEnabled)
          {
             double maxRisk = CalcProjectedMaxRisk();
@@ -2435,6 +2768,8 @@ void OnChartEvent(const int id,
          HideHLine(OBJ_DCA1_LINE);
          HideHLine(OBJ_DCA2_LINE);
          HideHLine(OBJ_DCA3_LINE);
+         HideHLine(OBJ_DCA4_LINE);
+         HideHLine(OBJ_DCA5_LINE);
          HideHLine(OBJ_AVG_ENTRY);
          ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
       }
@@ -2527,6 +2862,24 @@ void OnChartEvent(const int id,
                InpTrailLookback));
          SyncButtonAppearance();
       }
+      // ── Trail mode: Step ──
+      else if(sparam == OBJ_TM_STEP)
+      {
+         ObjectSetInteger(0, OBJ_TM_STEP, OBJPROP_STATE, false);
+         g_trailRef = TRAIL_STEP;
+         g_stepLevel = 0;  // Reset step level on mode change
+         Print("[TRAIL] Mode → Step (SL ratchets up by 1R increments)");
+         SyncButtonAppearance();
+      }
+      // ── Trail mode: BE ──
+      else if(sparam == OBJ_TM_BE)
+      {
+         ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_STATE, false);
+         g_trailRef = TRAIL_BE;
+         g_beReached = false;  // Reset BE state on mode change
+         Print("[TRAIL] Mode → BE (breakeven first, then trail from close)");
+         SyncButtonAppearance();
+      }
       // ── Grid DCA toggle ──
       else if(sparam == OBJ_GRID_BTN)
       {
@@ -2534,10 +2887,14 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_STATE, false);
          if(g_gridEnabled)
          {
-            // Capture current ATR for consistent grid spacing
-            if(g_cachedATR > 0)
-               g_gridBaseATR = g_cachedATR;
-            g_gridBaseMult = g_atrMult;  // Lock ATR multiplier for grid
+            // Lock grid ATR/mult only if we have an open position
+            // (no position = values locked later in ExecuteTrade)
+            if(g_hasPos)
+            {
+               if(g_cachedATR > 0)
+                  g_gridBaseATR = g_cachedATR;
+               g_gridBaseMult = g_atrMult;
+            }
             
             // If already in position, count existing DCA positions
             if(g_hasPos)
@@ -2649,6 +3006,8 @@ void OnChartEvent(const int id,
             HideHLine(OBJ_DCA1_LINE);
             HideHLine(OBJ_DCA2_LINE);
             HideHLine(OBJ_DCA3_LINE);
+            HideHLine(OBJ_DCA4_LINE);
+            HideHLine(OBJ_DCA5_LINE);
             HideHLine(OBJ_AVG_ENTRY);
             ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
             Print("[GRID] DISABLED");
