@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.59"
+#property version   "1.60"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -72,143 +72,10 @@ input ulong           InpManageMagic    = 0;         // Manage Magic (0 = same a
 input int             InpDeviation      = 20;        // Max slippage (points)
 
 // ════════════════════════════════════════════════════════════════════
-// CONSTANTS
+// UI CONFIG (colors, fonts, layout, object names)
+// Edit PanelUI.mqh to customize the panel appearance.
 // ════════════════════════════════════════════════════════════════════
-#define PREFIX       "Bot_"
-
-// Layout
-#define PX           15
-#define PY           25
-#define PW           320
-#define MARGIN       12
-#define IX           (PX + MARGIN)
-#define IW           (PW - 2 * MARGIN)
-
-// Fonts
-#define FONT_MAIN    "Segoe UI"
-#define FONT_BOLD    "Segoe UI Semibold"
-#define FONT_MONO    "Consolas"
-
-// Colors – Panel
-#define COL_BG        C'25,25,35'
-#define COL_TITLE_BG  C'35,40,60'
-#define COL_TEXT      C'210,210,220'
-#define COL_DIM       C'130,130,150'
-#define COL_BORDER    C'50,50,65'
-
-// Colors – Inputs
-#define COL_EDIT_BG   C'35,35,50'
-#define COL_EDIT_BD   C'60,60,80'
-
-// Colors – Buttons
-#define COL_BUY       C'8,153,129'
-#define COL_BUY_HI    C'0,180,150'
-#define COL_SELL      C'220,50,47'
-#define COL_SELL_HI   C'245,65,60'
-#define COL_BTN       C'55,55,72'
-#define COL_BTN_TXT   C'200,200,220'
-#define COL_CLOSE     C'140,35,35'
-#define COL_WHITE     C'255,255,255'
-
-// Colors – Disabled/Placeholder
-#define COL_DIS_BG    C'38,38,50'
-#define COL_DIS_TXT   C'97,97,120'
-
-// Colors – Status
-#define COL_PROFIT    C'0,180,100'
-#define COL_LOSS      C'230,60,60'
-#define COL_LOCK_UP   C'0,130,75'
-#define COL_LOCK_DN   C'170,55,55'
-
-// Object names
-#define OBJ_BG         PREFIX "bg"
-#define OBJ_TITLE_BG   PREFIX "title_bg"
-#define OBJ_TITLE      PREFIX "title"
-#define OBJ_TITLE_INFO PREFIX "title_info"
-#define OBJ_TITLE_LOCK PREFIX "title_lock"
-#define OBJ_RISK_LBL   PREFIX "risk_lbl"
-#define OBJ_RISK_EDT   PREFIX "risk_edt"
-#define OBJ_SPRD_LBL   PREFIX "sprd_lbl"
-#define OBJ_STATUS_LBL PREFIX "status_lbl"
-#define OBJ_LOCK_LBL   PREFIX "lock_lbl"
-#define OBJ_LOCK_VAL   PREFIX "lock_val"
-#define OBJ_BUY_BTN    PREFIX "buy_btn"
-#define OBJ_SELL_BTN   PREFIX "sell_btn"
-#define OBJ_CLOSE_BTN  PREFIX "close_btn"
-#define OBJ_BUY_PND    PREFIX "buy_pnd"
-#define OBJ_SELL_PND   PREFIX "sell_pnd"
-
-#define OBJ_SEP1       PREFIX "sep1"
-#define OBJ_SEP2       PREFIX "sep2"
-#define OBJ_SEP3       PREFIX "sep3"
-#define OBJ_SEP5       PREFIX "sep5"
-#define OBJ_SEC_INFO   PREFIX "sec_info"
-#define OBJ_SEC_TRADE  PREFIX "sec_trade"
-#define OBJ_SEC_ORDER  PREFIX "sec_order"
-// ORDER MANAGEMENT buttons
-#define OBJ_TRAIL_BTN  PREFIX "trail_btn"
-#define OBJ_TM_PRICE   PREFIX "tm_price"
-#define OBJ_TM_CLOSE   PREFIX "tm_close"
-#define OBJ_TM_SWING   PREFIX "tm_swing"
-#define OBJ_TM_STEP    PREFIX "tm_step"
-#define OBJ_TM_BE      PREFIX "tm_be"
-#define OBJ_GRID_BTN   PREFIX "grid_btn"
-#define OBJ_GRID_LVL   PREFIX "grid_lvl"
-#define OBJ_AUTOTP_BTN PREFIX "autotp_btn"
-
-// Chart lines (SL levels)
-#define OBJ_SL_BUY_LINE   PREFIX "sl_buy_line"
-#define OBJ_SL_SELL_LINE  PREFIX "sl_sell_line"
-#define OBJ_SL_ACTIVE     PREFIX "sl_active"
-#define OBJ_ENTRY_LINE    PREFIX "entry_line"
-#define OBJ_PENDING_LINE  PREFIX "pending_line"
-
-// Chart lines (Auto TP / Grid DCA)
-#define OBJ_TP1_LINE      PREFIX "tp1_line"
-#define OBJ_AVG_ENTRY     PREFIX "avg_entry"
-#define OBJ_DCA1_LINE     PREFIX "dca1_line"
-#define OBJ_DCA2_LINE     PREFIX "dca2_line"
-#define OBJ_DCA3_LINE     PREFIX "dca3_line"
-#define OBJ_DCA4_LINE     PREFIX "dca4_line"
-#define OBJ_DCA5_LINE     PREFIX "dca5_line"
-#define OBJ_GRID_INFO     PREFIX "grid_info"
-
-
-// Theme toggle button
-#define OBJ_THEME_BTN     PREFIX "theme_btn"
-
-// Collapse button
-#define OBJ_COLLAPSE_BTN  PREFIX "collapse_btn"
-#define OBJ_LINES_BTN     PREFIX "lines_btn"
-#define OBJ_CLOSE50_BTN   PREFIX "close50_btn"
-#define OBJ_CLOSE75_BTN   PREFIX "close75_btn"
-
-// Settings panel
-#define OBJ_SETTINGS_BTN  PREFIX "settings_btn"
-#define OBJ_SET_SEP       PREFIX "set_sep"
-#define OBJ_SET_SEC       PREFIX "set_sec"
-#define OBJ_SET_RISK_LBL  PREFIX "set_risk_lbl"
-#define OBJ_SET_RISK_EDT  PREFIX "set_risk_edt"
-#define OBJ_SET_RISK_PLUS PREFIX "set_rplus"
-#define OBJ_SET_RISK_MINUS PREFIX "set_rminus"
-#define OBJ_SET_R1        PREFIX "set_r1"
-#define OBJ_SET_R2        PREFIX "set_r2"
-#define OBJ_SET_R5        PREFIX "set_r5"
-#define OBJ_SET_R10       PREFIX "set_r10"
-#define OBJ_SET_R25       PREFIX "set_r25"
-#define OBJ_SET_R50       PREFIX "set_r50"
-#define OBJ_SET_R75       PREFIX "set_r75"
-#define OBJ_SET_R100      PREFIX "set_r100"
-#define OBJ_SET_ATR_LBL   PREFIX "set_atr_lbl"
-#define OBJ_SET_ATR_EDT   PREFIX "set_atr_edt"
-#define OBJ_SET_ATR_PLUS  PREFIX "set_aplus"
-#define OBJ_SET_ATR_MINUS PREFIX "set_aminus"
-#define OBJ_SET_A05       PREFIX "set_a05"
-#define OBJ_SET_A10       PREFIX "set_a10"
-#define OBJ_SET_A15       PREFIX "set_a15"
-#define OBJ_SET_A20       PREFIX "set_a20"
-#define OBJ_SET_A25       PREFIX "set_a25"
-#define OBJ_SET_A30       PREFIX "set_a30"
+#include "PanelUI.mqh"
 
 // ════════════════════════════════════════════════════════════════════
 // GLOBALS
@@ -753,10 +620,10 @@ void UpdateChartLines()
       HideHLine(OBJ_SL_SELL_LINE);
 
       if(g_currentSL > 0)
-         SetHLine(OBJ_SL_ACTIVE, g_currentSL, C'255,200,0',
+         SetHLine(OBJ_SL_ACTIVE, g_currentSL, COL_LINE_SL,
                   STYLE_SOLID, 2, "SL");
       if(g_entryPx > 0)
-         SetHLine(OBJ_ENTRY_LINE, g_entryPx, C'100,150,255',
+         SetHLine(OBJ_ENTRY_LINE, g_entryPx, COL_LINE_ENTRY,
                   STYLE_DOT, 1, "Entry");
    }
    else
@@ -769,10 +636,10 @@ void UpdateChartLines()
       double slSell = CalcSLPrice(false);
 
       if(slBuy > 0)
-         SetHLine(OBJ_SL_BUY_LINE, slBuy, C'38,166,154',
+         SetHLine(OBJ_SL_BUY_LINE, slBuy, COL_LINE_SL_BUY,
                   STYLE_DASH, 1, StringFormat("BUY SL  %." + IntegerToString(_Digits) + "f", slBuy));
       if(slSell > 0)
-         SetHLine(OBJ_SL_SELL_LINE, slSell, C'239,83,80',
+         SetHLine(OBJ_SL_SELL_LINE, slSell, COL_LINE_SL_SELL,
                   STYLE_DASH, 1, StringFormat("SELL SL  %." + IntegerToString(_Digits) + "f", slSell));
    }
 }
@@ -791,7 +658,7 @@ void UpdateTPGridLines()
          double tp1 = g_isBuy ? NormPrice(avgEntry + g_tpDist)
                               : NormPrice(avgEntry - g_tpDist);
          if(!g_tp1Hit)
-            SetHLine(OBJ_TP1_LINE, tp1, C'0,200,83',
+            SetHLine(OBJ_TP1_LINE, tp1, COL_LINE_TP,
                      STYLE_DASH, 1,
                      StringFormat("TP1 (1R) %." + IntegerToString(_Digits) + "f", tp1));
          else
@@ -820,7 +687,7 @@ void UpdateTPGridLines()
             double dcaPx = g_isBuy
                ? NormPrice(g_entryPx - level * spacing)
                : NormPrice(g_entryPx + level * spacing);
-            SetHLine(dcaNames[i], dcaPx, C'255,152,0',
+            SetHLine(dcaNames[i], dcaPx, COL_LINE_DCA,
                      STYLE_DOT, 1,
                      StringFormat("DCA #%d %." + IntegerToString(_Digits) + "f",
                                   level, dcaPx));
@@ -832,7 +699,7 @@ void UpdateTPGridLines()
       {
          double avgEntry = GetAvgEntry();
          if(avgEntry > 0)
-            SetHLine(OBJ_AVG_ENTRY, avgEntry, C'0,188,212',
+            SetHLine(OBJ_AVG_ENTRY, avgEntry, COL_LINE_AVG,
                      STYLE_SOLID, 1,
                      StringFormat("Avg %." + IntegerToString(_Digits) + "f", avgEntry));
       }
@@ -989,9 +856,9 @@ void ToggleChartLines()
    ObjectSetString(0, OBJ_LINES_BTN, OBJPROP_TEXT,
                    g_linesHidden ? "Lines" : "Lines");
    ObjectSetInteger(0, OBJ_LINES_BTN, OBJPROP_BGCOLOR,
-                    g_linesHidden ? C'100,40,40' : C'40,40,55');
+                    g_linesHidden ? COL_LINES_OFF : COL_HDR_BTN);
    ObjectSetInteger(0, OBJ_LINES_BTN, OBJPROP_BORDER_COLOR,
-                    g_linesHidden ? C'100,40,40' : C'40,40,55');
+                    g_linesHidden ? COL_LINES_OFF : COL_HDR_BTN);
    
    long showFlag = g_linesHidden ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
    
@@ -1029,7 +896,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel", COL_TITLE_TXT, 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1046,10 +913,10 @@ void CreatePanel()
       int bw2 = 38;   // width for each header button
       int gap = 2;
       int rx = PX + PW - 4 * (bw2 + gap) - 4;  // start X for 4 buttons
-      MakeButton(OBJ_SETTINGS_BTN, rx,                          y + 3, bw2, 20, "Set",    COL_BTN_TXT, C'40,40,55', 7, FONT_MAIN);
-      MakeButton(OBJ_THEME_BTN,    rx + (bw2 + gap),            y + 3, bw2, 20, "Dark",   COL_BTN_TXT, C'40,40,55', 7, FONT_MAIN);
-      MakeButton(OBJ_LINES_BTN,    rx + 2 * (bw2 + gap),        y + 3, bw2, 20, "Lines",  COL_BTN_TXT, C'40,40,55', 7, FONT_MAIN);
-      MakeButton(OBJ_COLLAPSE_BTN, rx + 3 * (bw2 + gap),        y + 3, bw2, 20, "\x25BC", COL_BTN_TXT, C'40,40,55', 8, FONT_MAIN);
+      MakeButton(OBJ_SETTINGS_BTN, rx,                          y + 3, bw2, 20, "Set",    COL_BTN_TXT, COL_HDR_BTN, 7, FONT_MAIN);
+      MakeButton(OBJ_THEME_BTN,    rx + (bw2 + gap),            y + 3, bw2, 20, "Dark",   COL_BTN_TXT, COL_HDR_BTN, 7, FONT_MAIN);
+      MakeButton(OBJ_LINES_BTN,    rx + 2 * (bw2 + gap),        y + 3, bw2, 20, "Lines",  COL_BTN_TXT, COL_HDR_BTN, 7, FONT_MAIN);
+      MakeButton(OBJ_COLLAPSE_BTN, rx + 3 * (bw2 + gap),        y + 3, bw2, 20, "\x25BC", COL_BTN_TXT, COL_HDR_BTN, 8, FONT_MAIN);
    }
    y += 32;
 
@@ -1059,12 +926,12 @@ void CreatePanel()
    if(g_settingsExpanded)
    {
       // Highlight [Set] button when expanded
-      ObjectSetInteger(0, OBJ_SETTINGS_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-      ObjectSetInteger(0, OBJ_SETTINGS_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+      ObjectSetInteger(0, OBJ_SETTINGS_BTN, OBJPROP_BGCOLOR, COL_ON_BG);
+      ObjectSetInteger(0, OBJ_SETTINGS_BTN, OBJPROP_BORDER_COLOR, COL_ON_BG);
       ObjectSetInteger(0, OBJ_SETTINGS_BTN, OBJPROP_COLOR, COL_WHITE);
 
       MakeRect(OBJ_SET_SEP, IX, y, IW, 1, COL_BORDER, COL_BORDER);
-      MakeLabel(OBJ_SET_SEC, IX + 2, y - 5, " SETTINGS ", C'100,110,140', 7, FONT_MAIN);
+      MakeLabel(OBJ_SET_SEC, IX + 2, y - 5, " SETTINGS ", COL_SEC_HDR, 7, FONT_MAIN);
       y += 8;
 
       // ── Risk row: label + edit + [−] [+] ──
@@ -1072,8 +939,8 @@ void CreatePanel()
       MakeEdit(OBJ_SET_RISK_EDT, IX + 48, y, 60, 22,
                IntegerToString((int)g_riskMoney),
                COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
-      MakeButton(OBJ_SET_RISK_MINUS, IX + 112, y, 28, 22, "-", COL_BTN_TXT, C'80,40,40', 10, FONT_BOLD);
-      MakeButton(OBJ_SET_RISK_PLUS,  IX + 143, y, 28, 22, "+", COL_BTN_TXT, C'40,80,40', 10, FONT_BOLD);
+      MakeButton(OBJ_SET_RISK_MINUS, IX + 112, y, 28, 22, "-", COL_BTN_TXT, COL_MINUS_BG, 10, FONT_BOLD);
+      MakeButton(OBJ_SET_RISK_PLUS,  IX + 143, y, 28, 22, "+", COL_BTN_TXT, COL_PLUS_BG, 10, FONT_BOLD);
       y += 26;
 
       // ── Risk $ quick-select buttons ──
@@ -1081,14 +948,14 @@ void CreatePanel()
          int rbw = (IW - 2 - 7 * 2) / 8;  // ~35px each, 8 buttons
          int rx = PX + 5;
          int rg = 2;
-         MakeButton(OBJ_SET_R1,   rx + 0 * (rbw + rg), y, rbw, 22, "1%",   COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R2,   rx + 1 * (rbw + rg), y, rbw, 22, "2%",   COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R5,   rx + 2 * (rbw + rg), y, rbw, 22, "5%",   COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R10,  rx + 3 * (rbw + rg), y, rbw, 22, "10%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R25,  rx + 4 * (rbw + rg), y, rbw, 22, "25%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R50,  rx + 5 * (rbw + rg), y, rbw, 22, "50%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R75,  rx + 6 * (rbw + rg), y, rbw, 22, "75%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R100, rx + 7 * (rbw + rg), y, rbw, 22, "100%", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R1,   rx + 0 * (rbw + rg), y, rbw, 22, "1%",   COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R2,   rx + 1 * (rbw + rg), y, rbw, 22, "2%",   COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R5,   rx + 2 * (rbw + rg), y, rbw, 22, "5%",   COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R10,  rx + 3 * (rbw + rg), y, rbw, 22, "10%",  COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R25,  rx + 4 * (rbw + rg), y, rbw, 22, "25%",  COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R50,  rx + 5 * (rbw + rg), y, rbw, 22, "50%",  COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R75,  rx + 6 * (rbw + rg), y, rbw, 22, "75%",  COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
+         MakeButton(OBJ_SET_R100, rx + 7 * (rbw + rg), y, rbw, 22, "100%", COL_BTN_TXT, COL_PRESET_BG, 7, FONT_MAIN);
       }
       y += 28;
 
@@ -1097,8 +964,8 @@ void CreatePanel()
       MakeEdit(OBJ_SET_ATR_EDT, IX + 48, y, 60, 22,
                StringFormat("%.1f", g_atrMult),
                COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
-      MakeButton(OBJ_SET_ATR_MINUS, IX + 112, y, 28, 22, "-", COL_BTN_TXT, C'80,40,40', 10, FONT_BOLD);
-      MakeButton(OBJ_SET_ATR_PLUS,  IX + 143, y, 28, 22, "+", COL_BTN_TXT, C'40,80,40', 10, FONT_BOLD);
+      MakeButton(OBJ_SET_ATR_MINUS, IX + 112, y, 28, 22, "-", COL_BTN_TXT, COL_MINUS_BG, 10, FONT_BOLD);
+      MakeButton(OBJ_SET_ATR_PLUS,  IX + 143, y, 28, 22, "+", COL_BTN_TXT, COL_PLUS_BG, 10, FONT_BOLD);
       y += 28;
    }
 
@@ -1106,7 +973,7 @@ void CreatePanel()
    // SECTION: INFO
    // ═══════════════════════════════════════
    MakeRect(OBJ_SEP1, IX, y, IW, 1, COL_BORDER, COL_BORDER);
-   MakeLabel(OBJ_SEC_INFO, IX + 2, y - 5, " INFO ", C'100,110,140', 7, FONT_MAIN);
+   MakeLabel(OBJ_SEC_INFO, IX + 2, y - 5, " INFO ", COL_SEC_HDR, 7, FONT_MAIN);
    y += 8;
 
    // ── Row 1: Status (left) + P&L (right) ──
@@ -1129,7 +996,7 @@ void CreatePanel()
    // SECTION: TRADE
    // ═══════════════════════════════════════
    MakeRect(OBJ_SEP2, IX, y, IW, 1, COL_BORDER, COL_BORDER);
-   MakeLabel(OBJ_SEC_TRADE, IX + 2, y - 5, " TRADE ", C'100,110,140', 7, FONT_MAIN);
+   MakeLabel(OBJ_SEC_TRADE, IX + 2, y - 5, " TRADE ", COL_SEC_HDR, 7, FONT_MAIN);
    y += 8;
 
    // ── BUY / SELL buttons (40px height) ──
@@ -1143,9 +1010,9 @@ void CreatePanel()
    {
       int pw2 = (IW - 8) / 2;
       MakeButton(OBJ_BUY_PND,  PX + 5,             y, pw2, 26,
-                 "BUY PENDING", COL_WHITE, C'0,100,65', 8);
+                 "BUY PENDING", COL_WHITE, COL_BUY_PND, 8);
       MakeButton(OBJ_SELL_PND, PX + 5 + pw2 + 4,   y, pw2, 26,
-                 "SELL PENDING", COL_WHITE, C'170,40,40', 8);
+                 "SELL PENDING", COL_WHITE, COL_SELL_PND, 8);
    }
    y += 32;
 
@@ -1153,7 +1020,7 @@ void CreatePanel()
    // SECTION: ORDER MANAGEMENT
    // ═══════════════════════════════════════
    MakeRect(OBJ_SEP3, IX, y, IW, 1, COL_BORDER, COL_BORDER);
-   MakeLabel(OBJ_SEC_ORDER, IX + 2, y - 5, " ORDER MANAGEMENT ", C'100,110,140', 7, FONT_MAIN);
+   MakeLabel(OBJ_SEC_ORDER, IX + 2, y - 5, " ORDER MANAGEMENT ", COL_SEC_HDR, 7, FONT_MAIN);
    y += 8;
 
    // ── Trail SL toggle + mode buttons (1 row) ──
@@ -1164,16 +1031,16 @@ void CreatePanel()
       int gp = 2;    // gap between buttons
       int mw = (IW - 2 - tw - 4 * gp) / 3;  // mode button width (3 modes)
       MakeButton(OBJ_TRAIL_BTN, bx, y, tw, 26,
-                 "Trail: OFF", C'180,180,200', C'60,60,85', 8);
+                 "Trail: OFF", COL_OFF_TXT, COL_OFF_BG, 8);
       bx += tw + gp;
       MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
-                 "Close", C'140,140,160', C'50,50,70', 7);
+                 "Close", COL_MODE_DIM_TXT, COL_MODE_DIM_BG, 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_STEP, bx, y, mw, 26,
-                 "Step", C'140,140,160', C'50,50,70', 7);
+                 "Step", COL_MODE_DIM_TXT, COL_MODE_DIM_BG, 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_BE, bx, y, mw, 26,
-                 "BE", C'140,140,160', C'50,50,70', 7);
+                 "BE", COL_MODE_DIM_TXT, COL_MODE_DIM_BG, 7);
    }
    y += 30;
 
@@ -1181,14 +1048,14 @@ void CreatePanel()
    int gridLvlW = 36;  // width of level cycle button
    int gridBtnW = IW - 2 - gridLvlW - 2;  // main grid button width
    MakeButton(OBJ_GRID_BTN, PX + 5, y, gridBtnW, 26,
-              "Grid DCA: OFF", C'180,180,200', C'60,60,85', 8);
+              "Grid DCA: OFF", COL_OFF_TXT, COL_OFF_BG, 8);
    MakeButton(OBJ_GRID_LVL, PX + 5 + gridBtnW + 2, y, gridLvlW, 26,
-              StringFormat("x%d", g_gridMaxLevel), C'180,200,255', C'40,50,80', 8);
+              StringFormat("x%d", g_gridMaxLevel), COL_GRID_LVL_TXT, COL_GRID_LVL_BG, 8);
    y += 28;
 
    // ── Auto TP toggle ──
    MakeButton(OBJ_AUTOTP_BTN, PX + 5, y, IW - 2, 26,
-              "Auto TP: OFF", C'180,180,200', C'60,60,85', 8);
+              "Auto TP: OFF", COL_OFF_TXT, COL_OFF_BG, 8);
    y += 28;
 
    // ── Grid/TP info line (hidden initially, shown when grid/tp active with position) ──
@@ -1203,11 +1070,11 @@ void CreatePanel()
    {
       int cw3 = (IW - 2 - 8) / 3;  // 3 buttons with 4px gaps
       MakeButton(OBJ_CLOSE50_BTN, PX + 5, y, cw3, 28,
-                 "Close 50%", C'220,180,180', C'120,50,50', 8);
+                 "Close 50%", COL_CLOSE_PART_TXT, COL_CLOSE_PART_BG, 8);
       MakeButton(OBJ_CLOSE75_BTN, PX + 5 + cw3 + 4, y, cw3, 28,
-                 "Close 75%", C'220,180,180', C'120,50,50', 8);
+                 "Close 75%", COL_CLOSE_PART_TXT, COL_CLOSE_PART_BG, 8);
       MakeButton(OBJ_CLOSE_BTN, PX + 5 + 2*(cw3 + 4), y, cw3, 28,
-                 "Close 100%", C'255,200,200', COL_CLOSE, 8);
+                 "Close 100%", COL_CLOSE_ALL_TXT, COL_CLOSE, 8);
    }
    y += 34;
 
@@ -1356,16 +1223,16 @@ void SyncButtonAppearance()
    if(g_trailEnabled)
    {
       ObjectSetString (0, OBJ_TRAIL_BTN, OBJPROP_TEXT, "Trail SL: ON");
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, COL_ON_BG);
+      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, COL_ON_BG);
       ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, COL_WHITE);
    }
    else
    {
       ObjectSetString (0, OBJ_TRAIL_BTN, OBJPROP_TEXT, "Trail SL: OFF");
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, C'180,180,200');
+      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, COL_OFF_BG);
+      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, COL_OFF_BG);
+      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, COL_OFF_TXT);
    }
 
    // ── Trail mode buttons (radio-style highlight) ──
@@ -1411,24 +1278,24 @@ void SyncButtonAppearance()
          if(trailActive)
          {
             // Active: green — trail is live
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'0,100,60');
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'0,140,80');
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, COL_ON_BG);
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, COL_TRAIL_ACTIVE_BD);
             ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
          }
          else
          {
             // Selected but not yet active: blue
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'30,80,140');
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'50,120,200');
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, COL_MODE_WAIT_BG);
+            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, COL_MODE_WAIT_BD);
             ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
          }
       }
       else
       {
          // Inactive mode: dim
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'50,50,70');
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'50,50,70');
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, C'140,140,160');
+         ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, COL_MODE_DIM_BG);
+         ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, COL_MODE_DIM_BG);
+         ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_MODE_DIM_TXT);
       }
    }
 
@@ -1443,16 +1310,16 @@ void SyncButtonAppearance()
             StringFormat("Grid DCA: ON | DCA %d/%d | Max $%.0f",
                          g_gridLevel, g_gridMaxLevel, maxRisk));
       }
-      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, COL_ON_BG);
+      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, COL_ON_BG);
       ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, COL_WHITE);
    }
    else
    {
       ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF");
-      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, COL_OFF_BG);
+      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, COL_OFF_BG);
+      ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, COL_OFF_TXT);
    }
    // Grid level button always shows current level
    ObjectSetString(0, OBJ_GRID_LVL, OBJPROP_TEXT,
@@ -1464,16 +1331,16 @@ void SyncButtonAppearance()
       if(StringFind(ObjectGetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT), "OFF") >= 0)
          ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
             g_tp1Hit ? "Auto TP: ON | TP1 \x2713" : "Auto TP: ON | 50%@1R");
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, COL_ON_BG);
+      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, COL_ON_BG);
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
    }
    else
    {
       ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: OFF");
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, C'180,180,200');
+      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, COL_OFF_BG);
+      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, COL_OFF_BG);
+      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_OFF_TXT);
    }
 }
 
@@ -1535,7 +1402,7 @@ void UpdatePanel()
          statusTxt = StringFormat("%.2f %s", totalLots, dir);
       ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT, statusTxt);
       ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR,
-         g_isBuy ? C'0,180,100' : C'220,80,80');
+         g_isBuy ? COL_LONG : COL_SHORT);
 
       // Right: P&L (big, colored)
       ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TEXT,
@@ -1625,7 +1492,7 @@ void UpdatePanel()
          double lots2 = GetTotalLots();
          string dir2 = g_isBuy ? "LONG" : "SHORT";
          ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
-         ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
+         ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, COL_TITLE_TXT);
          // Info row left: lot + direction + P&L
          ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
             StringFormat("%.2f %s  $%+.2f", lots2, dir2, pnl2));
@@ -1640,7 +1507,7 @@ void UpdatePanel()
       else
       {
          ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
-         ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
+         ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, COL_TITLE_TXT);
          ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
             StringFormat("Lot %.2f", avgLot));
          ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_COLOR, COL_DIM);
@@ -1650,7 +1517,7 @@ void UpdatePanel()
    else
    {
       ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
-      ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
+      ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, COL_TITLE_TXT);
       ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT, " ");
       ObjectSetString(0, OBJ_TITLE_LOCK, OBJPROP_TEXT, " ");
    }
@@ -1781,7 +1648,7 @@ void CreatePendingLine()
    if(ObjectFind(0, OBJ_PENDING_LINE) < 0)
       ObjectCreate(0, OBJ_PENDING_LINE, OBJ_HLINE, 0, 0, linePrice);
    ObjectSetDouble (0, OBJ_PENDING_LINE, OBJPROP_PRICE, linePrice);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_COLOR, clrOrange);
+   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_COLOR, COL_LINE_PENDING);
    ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_STYLE, STYLE_SOLID);
    ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_WIDTH, 3);
    ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_SELECTABLE, true);
@@ -1984,9 +1851,9 @@ void CheckTrailOverridesGrid()
    g_gridBaseMult = 0;
 
    ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF (Trail)");
-   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, COL_OFF_BG);
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, COL_OFF_BG);
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, COL_OFF_TXT);
 
    Print(StringFormat("[GRID] Auto-disabled — Trail SL (%s) đã vượt DCA #%d (%s)",
          DoubleToString(g_currentSL, _Digits),
@@ -2443,16 +2310,16 @@ void HighlightActiveTheme()
    if(g_theme == 0) // Dark
    {
       ObjectSetString (0, OBJ_THEME_BTN, OBJPROP_TEXT, "Dark");
-      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BGCOLOR, C'40,40,55');
-      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BORDER_COLOR, C'40,40,55');
+      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BGCOLOR, COL_HDR_BTN);
+      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BORDER_COLOR, COL_HDR_BTN);
       ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_COLOR, COL_BTN_TXT);
    }
    else // Light
    {
       ObjectSetString (0, OBJ_THEME_BTN, OBJPROP_TEXT, "Light");
-      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BGCOLOR, C'200,200,210');
-      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BORDER_COLOR, C'200,200,210');
-      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_COLOR, C'30,30,40');
+      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BGCOLOR, COL_LIGHT_BTN_BG);
+      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_BORDER_COLOR, COL_LIGHT_BTN_BG);
+      ObjectSetInteger(0, OBJ_THEME_BTN, OBJPROP_COLOR, COL_LIGHT_BTN_TXT);
    }
 }
 
@@ -2460,19 +2327,19 @@ void ApplyDarkTheme()
 {
    long id = ChartID();
    g_theme = 0;
-   ChartSetInteger(id, CHART_COLOR_BACKGROUND,  C'19,23,34');    // #131722 TradingView bg
-   ChartSetInteger(id, CHART_COLOR_FOREGROUND,  C'200,200,210');
-   ChartSetInteger(id, CHART_COLOR_CHART_UP,    C'38,166,154');   // #26a69a
-   ChartSetInteger(id, CHART_COLOR_CHART_DOWN,  C'239,83,80');    // #ef5350
-   ChartSetInteger(id, CHART_COLOR_CANDLE_BULL, C'38,166,154');
-   ChartSetInteger(id, CHART_COLOR_CANDLE_BEAR, C'239,83,80');
-   ChartSetInteger(id, CHART_COLOR_CHART_LINE,  C'200,200,210');
-   ChartSetInteger(id, CHART_COLOR_GRID,        C'30,34,45');
-   ChartSetInteger(id, CHART_COLOR_VOLUME,      C'60,63,80');
-   ChartSetInteger(id, CHART_COLOR_BID,         C'33,150,243');
-   ChartSetInteger(id, CHART_COLOR_ASK,         C'255,152,0');
-   ChartSetInteger(id, CHART_COLOR_LAST,        C'200,200,210');
-   ChartSetInteger(id, CHART_COLOR_STOP_LEVEL,  C'255,50,50');
+   ChartSetInteger(id, CHART_COLOR_BACKGROUND,  DARK_BG);    // #131722 TradingView bg
+   ChartSetInteger(id, CHART_COLOR_FOREGROUND,  DARK_FG);
+   ChartSetInteger(id, CHART_COLOR_CHART_UP,    DARK_BULL);   // #26a69a
+   ChartSetInteger(id, CHART_COLOR_CHART_DOWN,  DARK_BEAR);    // #ef5350
+   ChartSetInteger(id, CHART_COLOR_CANDLE_BULL, DARK_BULL);
+   ChartSetInteger(id, CHART_COLOR_CANDLE_BEAR, DARK_BEAR);
+   ChartSetInteger(id, CHART_COLOR_CHART_LINE,  DARK_FG);
+   ChartSetInteger(id, CHART_COLOR_GRID,        DARK_GRID);
+   ChartSetInteger(id, CHART_COLOR_VOLUME,      DARK_VOLUME);
+   ChartSetInteger(id, CHART_COLOR_BID,         DARK_BID);
+   ChartSetInteger(id, CHART_COLOR_ASK,         DARK_ASK);
+   ChartSetInteger(id, CHART_COLOR_LAST,        DARK_FG);
+   ChartSetInteger(id, CHART_COLOR_STOP_LEVEL,  DARK_STOP);
    ChartSetInteger(id, CHART_SHOW_GRID,         false);
    ApplyThemeCommon();
    HighlightActiveTheme();
@@ -2484,19 +2351,19 @@ void ApplyLightTheme()
 {
    long id = ChartID();
    g_theme = 1;
-   ChartSetInteger(id, CHART_COLOR_BACKGROUND,  C'255,255,255'); // white
-   ChartSetInteger(id, CHART_COLOR_FOREGROUND,  C'60,60,60');
-   ChartSetInteger(id, CHART_COLOR_CHART_UP,    C'8,153,129');    // #089981
-   ChartSetInteger(id, CHART_COLOR_CHART_DOWN,  C'242,54,69');    // #F23645
-   ChartSetInteger(id, CHART_COLOR_CANDLE_BULL, C'8,153,129');
-   ChartSetInteger(id, CHART_COLOR_CANDLE_BEAR, C'242,54,69');
-   ChartSetInteger(id, CHART_COLOR_CHART_LINE,  C'60,60,60');
-   ChartSetInteger(id, CHART_COLOR_GRID,        C'230,230,230');
-   ChartSetInteger(id, CHART_COLOR_VOLUME,      C'180,180,180');
-   ChartSetInteger(id, CHART_COLOR_BID,         C'33,150,243');
-   ChartSetInteger(id, CHART_COLOR_ASK,         C'255,152,0');
-   ChartSetInteger(id, CHART_COLOR_LAST,        C'60,60,60');
-   ChartSetInteger(id, CHART_COLOR_STOP_LEVEL,  C'255,50,50');
+   ChartSetInteger(id, CHART_COLOR_BACKGROUND,  LIGHT_BG); // white
+   ChartSetInteger(id, CHART_COLOR_FOREGROUND,  LIGHT_FG);
+   ChartSetInteger(id, CHART_COLOR_CHART_UP,    LIGHT_BULL);    // #089981
+   ChartSetInteger(id, CHART_COLOR_CHART_DOWN,  LIGHT_BEAR);    // #F23645
+   ChartSetInteger(id, CHART_COLOR_CANDLE_BULL, LIGHT_BULL);
+   ChartSetInteger(id, CHART_COLOR_CANDLE_BEAR, LIGHT_BEAR);
+   ChartSetInteger(id, CHART_COLOR_CHART_LINE,  LIGHT_FG);
+   ChartSetInteger(id, CHART_COLOR_GRID,        LIGHT_GRID);
+   ChartSetInteger(id, CHART_COLOR_VOLUME,      LIGHT_VOLUME);
+   ChartSetInteger(id, CHART_COLOR_BID,         LIGHT_BID);
+   ChartSetInteger(id, CHART_COLOR_ASK,         LIGHT_ASK);
+   ChartSetInteger(id, CHART_COLOR_LAST,        LIGHT_FG);
+   ChartSetInteger(id, CHART_COLOR_STOP_LEVEL,  LIGHT_STOP);
    ChartSetInteger(id, CHART_SHOW_GRID,         true);
    ApplyThemeCommon();
    HighlightActiveTheme();
@@ -2794,7 +2661,7 @@ void OnChartEvent(const int id,
             ObjectDelete(0, OBJ_PENDING_LINE);
             g_pendingMode = 0;
             ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "BUY PENDING");
-            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
+            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, COL_BUY_PND);
             Print("[PENDING] Buy pending confirmed");
          }
          else
@@ -2803,10 +2670,10 @@ void OnChartEvent(const int id,
             g_pendingMode = 1;
             CreatePendingLine();
             ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "✓ CONFIRM BUY");
-            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'55,90,160');
+            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, COL_CONFIRM);
             // Reset sell button if it was in confirm mode
             ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "SELL PENDING");
-            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'170,40,40');
+            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, COL_SELL_PND);
             Print("[PENDING] Line created – drag to price, click BUY PENDING again to confirm");
          }
       }
@@ -2821,7 +2688,7 @@ void OnChartEvent(const int id,
             ObjectDelete(0, OBJ_PENDING_LINE);
             g_pendingMode = 0;
             ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "SELL PENDING");
-            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'170,40,40');
+            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, COL_SELL_PND);
             Print("[PENDING] Sell pending confirmed");
          }
          else
@@ -2830,10 +2697,10 @@ void OnChartEvent(const int id,
             g_pendingMode = 2;
             CreatePendingLine();
             ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "✓ CONFIRM SELL");
-            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'55,90,160');
+            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, COL_CONFIRM);
             // Reset buy button if it was in confirm mode
             ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "BUY PENDING");
-            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
+            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, COL_BUY_PND);
             Print("[PENDING] Line created – drag to price, click SELL PENDING again to confirm");
          }
       }
@@ -2905,8 +2772,8 @@ void OnChartEvent(const int id,
             ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT,
                StringFormat("Grid DCA: ON | DCA 0/%d | Max $%.0f",
                             g_gridMaxLevel, maxRisk));
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, COL_ON_BG);
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, COL_ON_BG);
             ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, COL_WHITE);
 
             // Warning about total risk
@@ -2960,9 +2827,9 @@ void OnChartEvent(const int id,
          else
          {
             ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF");
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, COL_OFF_BG);
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, COL_OFF_BG);
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, COL_OFF_TXT);
             g_gridLevel   = 0;
             g_gridBaseATR = 0;
             g_gridBaseMult = 0;
@@ -3043,17 +2910,17 @@ void OnChartEvent(const int id,
             g_tp1Hit = false;  // Reset — let ManageAutoTP detect 1R fresh
             
             ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1R");
-            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, COL_ON_BG);
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, COL_ON_BG);
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
             Print("[AUTO TP] ENABLED | 50% @1R (SL managed by Trail SL separately)");
          }
          else
          {
             ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: OFF");
-            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, C'180,180,200');
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, COL_OFF_BG);
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, COL_OFF_BG);
+            ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_OFF_TXT);
             g_tp1Hit = false;
             Print("[AUTO TP] DISABLED");
          }
