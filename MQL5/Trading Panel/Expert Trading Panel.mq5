@@ -18,8 +18,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.59"
-#property version   "1.59"
+#property copyright "Tuan v1.60"
+#property version   "1.60"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -2392,6 +2392,37 @@ void SyncPositionState()
    g_entryPx   = PositionGetDouble(POSITION_PRICE_OPEN);
    g_currentSL = PositionGetDouble(POSITION_SL);
    g_origSL    = g_currentSL;
+
+   // ── Auto-set SL if position has no SL (e.g. opened by Bot) ──
+   if(g_currentSL == 0 && g_cachedATR > 0)
+   {
+      double autoSL = CalcSLPriceFrom(g_isBuy, g_entryPx);
+      if(autoSL > 0)
+      {
+         MqlTradeRequest slReq = {};
+         MqlTradeResult  slRes = {};
+         slReq.action   = TRADE_ACTION_SLTP;
+         slReq.position = earliestTicket;
+         slReq.symbol   = _Symbol;
+         slReq.sl       = autoSL;
+         slReq.tp       = 0;
+         if(OrderSend(slReq, slRes))
+         {
+            g_currentSL = autoSL;
+            g_origSL    = autoSL;
+            Print(StringFormat("[PANEL] Auto-SL set: %s @ %s  SL=%s",
+               g_isBuy ? "BUY" : "SELL",
+               DoubleToString(g_entryPx, _Digits),
+               DoubleToString(autoSL, _Digits)));
+         }
+         else
+         {
+            Print(StringFormat("[PANEL] Auto-SL FAILED: %d - %s",
+               slRes.retcode, slRes.comment));
+         }
+      }
+   }
+
    g_riskDist  = MathAbs(g_entryPx - g_currentSL);
    if(g_tpDist <= 0)
       g_tpDist = CalcNormalSLDist();
