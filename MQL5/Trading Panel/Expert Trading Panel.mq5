@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.56"
+#property version   "1.57"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -68,6 +68,7 @@ input int             InpGridMaxLevel   = 3;          // Grid DCA max levels (2-
 
 input group           "══ General ══"
 input ulong           InpMagic          = 99999;     // Magic Number
+input ulong           InpManageMagic    = 0;         // Manage Magic (0 = same as Magic)
 input int             InpDeviation      = 20;        // Max slippage (points)
 
 // ════════════════════════════════════════════════════════════════════
@@ -241,6 +242,7 @@ bool     g_linesHidden    = false;
 bool     g_settingsExpanded = true;
 int      g_panelFullHeight = 460;
 ENUM_SL_MODE g_slMode = SL_ATR;
+ulong    g_manageMagic  = 0;        // Effective magic for position monitoring
 
 // Auto TP (Partial Take Profit) state
 bool     g_autoTPEnabled  = false;
@@ -433,7 +435,7 @@ double CalcProjectedMaxRisk()
          if(t == 0) continue;
          if(!PositionSelectByTicket(t)) continue;
          if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-         if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+         if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
          double posLot = PositionGetDouble(POSITION_VOLUME);
          double posSL  = PositionGetDouble(POSITION_SL);
          double posEntry = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -475,7 +477,7 @@ bool HasOwnPosition()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL)        == _Symbol &&
-         (ulong)PositionGetInteger(POSITION_MAGIC)  == InpMagic)
+         (ulong)PositionGetInteger(POSITION_MAGIC)  == g_manageMagic)
          return true;
    }
    return false;
@@ -490,7 +492,7 @@ double GetPositionPnL()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL)        != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)  != g_manageMagic) continue;
       pnl += PositionGetDouble(POSITION_PROFIT)
            + PositionGetDouble(POSITION_SWAP);
    }
@@ -507,7 +509,7 @@ int CountOwnPositions()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
       count++;
    }
    return count;
@@ -523,7 +525,7 @@ double GetAvgEntry()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
       double lot = PositionGetDouble(POSITION_VOLUME);
       sumLE += lot * PositionGetDouble(POSITION_PRICE_OPEN);
       sumL  += lot;
@@ -545,7 +547,7 @@ double GetLockedPnL()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
 
       double lot   = PositionGetDouble(POSITION_VOLUME);
       double entry = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -571,7 +573,7 @@ double GetTotalLots()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
       total += PositionGetDouble(POSITION_VOLUME);
    }
    return total;
@@ -590,7 +592,7 @@ bool PartialClosePercent(double pct)
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
 
       ArrayResize(tickets, n + 1);
       ArrayResize(lots,    n + 1);
@@ -677,7 +679,7 @@ void MoveSLToBreakeven()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
 
       double curSL = PositionGetDouble(POSITION_SL);
       bool advance = g_isBuy ? (beSL > curSL) : (beSL < curSL);
@@ -1731,7 +1733,7 @@ void CloseAllPositions()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL)        != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)  != g_manageMagic) continue;
 
       MqlTradeRequest req;
       MqlTradeResult  res;
@@ -1923,7 +1925,7 @@ void ModifySL(double newSL)
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL)        != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)  != g_manageMagic) continue;
 
       MqlTradeRequest rq;
       MqlTradeResult  rs;
@@ -2212,7 +2214,7 @@ void ManageAutoTP()
          if(pt == 0) continue;
          if(!PositionSelectByTicket(pt)) continue;
          if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-         if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+         if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
          totalLot += PositionGetDouble(POSITION_VOLUME);
       }
       if(totalLot <= minLot)
@@ -2327,7 +2329,7 @@ void ManageGrid()
          if(t2 == 0) continue;
          if(!PositionSelectByTicket(t2)) continue;
          if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-         if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+         if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
          if(t2 == res.order) continue;  // skip the one we just opened
          
          double curSL = PositionGetDouble(POSITION_SL);
@@ -2366,7 +2368,7 @@ void SyncPositionState()
       if(t == 0) continue;
       if(!PositionSelectByTicket(t)) continue;
       if(PositionGetString(POSITION_SYMBOL)        != _Symbol) continue;
-      if((ulong)PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC)  != g_manageMagic) continue;
       
       datetime openTime = (datetime)PositionGetInteger(POSITION_TIME);
       if(openTime < earliest)
@@ -2510,6 +2512,7 @@ int OnInit()
    g_riskMoney = InpDefaultRisk;
    g_atrMult   = InpATRMult;
    g_slMode    = SL_ATR;  // Always ATR mode
+   g_manageMagic = (InpManageMagic > 0) ? InpManageMagic : InpMagic;
    g_trailRef  = InpTrailMode;  // Initialize trail mode from input
    g_gridMaxLevel = MathMax(2, MathMin(5, InpGridMaxLevel));  // Clamp 2-5
 
@@ -2914,7 +2917,7 @@ void OnChartEvent(const int id,
                   ulong ticket = PositionGetTicket(i);
                   if(ticket == 0) continue;
                   if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-                  if(PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+                  if(PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
                   double curSL = PositionGetDouble(POSITION_SL);
                   // Only widen, never tighten
                   bool shouldUpdate = g_isBuy ? (newSL < curSL || curSL == 0)
@@ -2965,7 +2968,7 @@ void OnChartEvent(const int id,
                   if(ticket == 0) continue;
                   if(!PositionSelectByTicket(ticket)) continue;
                   if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-                  if((ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+                  if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
                   
                   MqlTradeRequest mreq;
                   MqlTradeResult  mres;
