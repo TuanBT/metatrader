@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.57"
+#property version   "1.58"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -250,6 +250,7 @@ bool     g_tp1Hit         = false;    // TP1 (50% @1R) taken
 
 // Grid DCA state
 bool     g_gridEnabled    = false;
+bool     g_gridUserEnabled = false;  // User's intended state (before trail override)
 int      g_gridLevel      = 0;       // 0=initial only, 1-3=DCA additions
 int      g_gridMaxLevel   = 3;       // max DCA positions — runtime changeable
 double   g_gridBaseATR    = 0;       // ATR value when grid started
@@ -1973,6 +1974,7 @@ void CheckTrailOverridesGrid()
    if(!overridden) return;
 
    // Trail SL has passed DCA level(s) — auto-disable Grid
+   // (preserve user intent for next trade)
    g_gridEnabled  = false;
    g_gridLevel    = 0;
    g_gridBaseATR  = 0;
@@ -2571,6 +2573,8 @@ void OnTick()
       g_gridLevel = 0;
       g_gridBaseATR = 0;
       g_gridBaseMult = 0;
+      // Restore grid to user's intended state
+      g_gridEnabled = g_gridUserEnabled;
       g_stepLevel = 0;
       g_stepSize  = 0;
       g_beReached = false;
@@ -2870,6 +2874,7 @@ void OnChartEvent(const int id,
       else if(sparam == OBJ_GRID_BTN)
       {
          g_gridEnabled = !g_gridEnabled;
+         g_gridUserEnabled = g_gridEnabled;  // Track user's manual intent
          ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_STATE, false);
          if(g_gridEnabled)
          {
