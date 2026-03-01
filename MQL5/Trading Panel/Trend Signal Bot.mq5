@@ -5,8 +5,8 @@
 //| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
 //| v1.06: Multi-TF display — all TFs from entry to W1, color-coded |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.06"
-#property version   "1.06"
+#property copyright "Tuan v1.07"
+#property version   "1.07"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -56,7 +56,7 @@ input ulong           InpMagic          = 99999;      // Magic Number
 #define BOT_PX      15
 #define BOT_PY      25
 #define BOT_W       180
-#define BOT_H       160
+#define BOT_H       175
 #define BOT_ROW     22
 #define BOT_PAD     6
 
@@ -274,18 +274,24 @@ void CreatePanel()
               "Bot: ON", COL_BTN_ON, COL_WHITE, 9);
    row += 26;
 
-   // Row 3: Multi-TF signal labels (W1..entry, each individually colored)
+   // Row 3-4: Multi-TF signal labels in 2 rows (4 per row, W1..entry)
+   int halfCount = (g_numDisp + 1) / 2;  // Top row gets ceil(n/2)
    int sigX = x + BOT_PAD;
    for(int i = 0; i < g_numDisp; i++)
    {
+      if(i == halfCount)  // Start second row
+      {
+         row += 14;  // Smaller row gap for tight layout
+         sigX = x + BOT_PAD;
+      }
       string objName = BOT_PREFIX + "Sig" + IntegerToString(i);
       string initText;
       if(i == g_entryIdx)
-         initText = "\x00AB" + g_dispName[i] + " -\x00BB";  // «M5 -»
+         initText = "[" + g_dispName[i] + " -]";
       else
          initText = g_dispName[i] + " -";
       MakeLabel(objName, sigX, row, initText, COL_DIM, 8, "Consolas");
-      sigX += (int)(5.2 * (StringLen(initText) + 1));  // Consolas 8pt ~5.2px/char
+      sigX += (int)(5.2 * (StringLen(initText) + 1));
    }
    row += BOT_ROW;
 
@@ -332,7 +338,7 @@ void UpdatePanel()
       string arrow = g_dispUp[i] ? "\x25B2" : (g_dispDown[i] ? "\x25BC" : "-");
       string text;
       if(i == g_entryIdx)
-         text = "\x00AB" + g_dispName[i] + arrow + "\x00BB";
+         text = "[" + g_dispName[i] + arrow + "]";
       else
          text = g_dispName[i] + arrow;
       ObjectSetString(0, objName, OBJPROP_TEXT, text);
