@@ -3,9 +3,10 @@
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
 //| Entry: EMA 20/50 cross on M5                                      |
 //| Filter: M15 + H1 EMA alignment                                    |
+//| v1.02: Signal-only mode - reads lot from Panel GV, no SL/TP      |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.01"
+#property version   "1.02"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -19,10 +20,10 @@ input ENUM_TIMEFRAMES InpTFMid          = PERIOD_M15; // Mid filter timeframe
 input ENUM_TIMEFRAMES InpTFHigh         = PERIOD_H1;  // High filter timeframe
 
 input group           "══ Risk ══"
-input double          InpRiskMoney      = 10.0;       // Risk per trade ($)
-input double          InpATRMult        = 1.5;        // ATR multiplier for SL
+input bool            InpUsePanelLot    = true;       // Use lot from Trading Panel
+input double          InpRiskMoney      = 10.0;       // Fallback risk per trade ($)
+input double          InpATRMult        = 1.5;        // ATR multiplier (fallback SL calc)
 input int             InpATRPeriod      = 14;         // ATR period
-input double          InpRRRatio        = 2.0;        // Risk:Reward ratio for TP
 input int             InpDeviation      = 20;         // Max slippage (points)
 
 input group           "══ General ══"
@@ -110,10 +111,10 @@ int OnInit()
 
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s | Risk=$%.0f",
+   Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s | PanelLot=%s | Fallback=$%.0f",
          _Symbol, InpMagic, InpEMAFast, InpEMASlow,
          EnumToString(InpTFEntry), EnumToString(InpTFMid), EnumToString(InpTFHigh),
-         InpRiskMoney));
+         InpUsePanelLot ? "ON" : "OFF", InpRiskMoney));
 
    return INIT_SUCCEEDED;
 }
@@ -407,16 +408,36 @@ void OpenTrade(bool isBuy, double atrValue)
 {
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
 
-   double slDist = atrValue * InpATRMult;
-   double tpDist = slDist * InpRRRatio;
-
-   // Calculate lot from risk
+   // ── Determine lot size ──
    double lot = 0;
-   if(tickSz > 0 && tickVal > 0 && slDist > 0)
-      lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
+   string lotSource = "";
+
+   if(InpUsePanelLot)
+   {
+      // Read lot from Trading Panel's GlobalVariable
+      string gvName = "TP_Lot_" + _Symbol;
+      if(GlobalVariableCheck(gvName))
+      {
+         lot = GlobalVariableGet(gvName);
+         lotSource = "Panel";
+      }
+      else
+      {
+         Print("[TREND BOT] WARNING: Panel GV not found, using fallback risk calc");
+      }
+   }
+
+   // Fallback: calculate from InpRiskMoney + ATR
+   if(lot <= 0)
+   {
+      double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double slDist  = atrValue * InpATRMult;
+      if(tickSz > 0 && tickVal > 0 && slDist > 0)
+         lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
+      lotSource = StringFormat("Risk$%.0f", InpRiskMoney);
+   }
 
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
@@ -425,22 +446,19 @@ void OpenTrade(bool isBuy, double atrValue)
       lot = MathFloor(lot / lotStep) * lotStep;
    lot = MathMax(minLot, MathMin(maxLot, lot));
 
-   double price, sl, tp;
+   // ── No SL/TP: Panel will manage ──
+   double price;
    ENUM_ORDER_TYPE orderType;
 
    if(isBuy)
    {
       orderType = ORDER_TYPE_BUY;
       price = ask;
-      sl = NormalizeDouble(price - slDist, _Digits);
-      tp = NormalizeDouble(price + tpDist, _Digits);
    }
    else
    {
       orderType = ORDER_TYPE_SELL;
       price = bid;
-      sl = NormalizeDouble(price + slDist, _Digits);
-      tp = NormalizeDouble(price - tpDist, _Digits);
    }
 
    MqlTradeRequest req = {};
@@ -451,19 +469,17 @@ void OpenTrade(bool isBuy, double atrValue)
    req.volume    = lot;
    req.type      = orderType;
    req.price     = price;
-   req.sl        = sl;
-   req.tp        = tp;
+   req.sl        = 0;  // Panel manages SL
+   req.tp        = 0;  // Panel manages TP
    req.deviation = InpDeviation;
    req.magic     = InpMagic;
    req.comment   = "TrendBot";
 
    if(OrderSend(req, res))
    {
-      Print(StringFormat("[TREND BOT] %s %.2f @ %s | SL=%s (%.1f ATR) | TP=%s (%.1f:1)",
+      Print(StringFormat("[TREND BOT] %s %.2f @ %s | Lot=%s | No SL/TP (Panel manages)",
             isBuy ? "BUY" : "SELL", lot,
-            DoubleToString(price, _Digits),
-            DoubleToString(sl, _Digits), InpATRMult,
-            DoubleToString(tp, _Digits), InpRRRatio));
+            DoubleToString(price, _Digits), lotSource));
    }
    else
    {

@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.58"
+#property version   "1.59"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1503,6 +1503,9 @@ void UpdatePanel()
    // ── Lot sizes (preview based on ACTUAL SL distance) ──
    double avgDist = (distBuy + distSell) / 2.0;
    double avgLot = CalcLot(avgDist);
+
+   // ── Publish lot to GlobalVariable for external bots ──
+   GlobalVariableSet("TP_Lot_" + _Symbol, avgLot);
 
    // ── BUY / SELL button text (clean, no lot) ──
    ObjectSetString(0, OBJ_BUY_BTN,  OBJPROP_TEXT, "BUY");
