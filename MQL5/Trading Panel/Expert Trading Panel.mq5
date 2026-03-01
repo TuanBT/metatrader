@@ -18,8 +18,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.60"
-#property version   "1.60"
+#property copyright "Tuan v1.61"
+#property version   "1.61"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -2566,7 +2566,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.60 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.61 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
