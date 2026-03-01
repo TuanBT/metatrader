@@ -5,8 +5,8 @@
 //| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
 //| v1.04: Auto TF mapping — entry=chart TF, filters auto-scale      |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.04"
-#property version   "1.04"
+#property copyright "Tuan v1.05"
+#property version   "1.05"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -37,6 +37,9 @@ input ulong           InpMagic          = 99999;      // Magic Number
 #define OBJ_STATUS   BOT_PREFIX "Status"
 #define OBJ_START    BOT_PREFIX "Start"
 #define OBJ_SIGNAL   BOT_PREFIX "Signal"
+#define OBJ_SIG_HIGH BOT_PREFIX "SigHigh"
+#define OBJ_SIG_MID  BOT_PREFIX "SigMid"
+#define OBJ_SIG_ENT  BOT_PREFIX "SigEnt"
 #define OBJ_FORCE_BUY  BOT_PREFIX "ForceBuy"
 #define OBJ_FORCE_SELL BOT_PREFIX "ForceSell"
 #define OBJ_POS_INFO BOT_PREFIX "PosInfo"
@@ -233,9 +236,20 @@ void CreatePanel()
               "Bot: ON", COL_BTN_ON, COL_WHITE, 9);
    row += 26;
 
-   // Row 3: Signal status (High up | Mid up | Entry up)
-   string initSig = StringFormat("%s - | %s - | %s -", g_tfHighName, g_tfMidName, g_tfEntryName);
-   MakeLabel(OBJ_SIGNAL, x + BOT_PAD, row, initSig, COL_DIM, 8, "Consolas");
+   // Row 3: Signal status — 3 separate labels for individual coloring
+   int sigX = x + BOT_PAD;
+   string h1Init  = g_tfHighName  + " -";
+   string m15Init = g_tfMidName   + " -";
+   string m5Init  = g_tfEntryName + " -";
+   MakeLabel(OBJ_SIG_HIGH, sigX, row, h1Init, COL_DIM, 8, "Consolas");
+   sigX += 8 * (StringLen(h1Init) + 1);  // approximate char width
+   MakeLabel(OBJ_SIGNAL, sigX, row, "|", COL_DIM, 8, "Consolas");
+   sigX += 12;
+   MakeLabel(OBJ_SIG_MID, sigX, row, m15Init, COL_DIM, 8, "Consolas");
+   sigX += 8 * (StringLen(m15Init) + 1);
+   MakeLabel(OBJ_SIGNAL + "2", sigX, row, "|", COL_DIM, 8, "Consolas");
+   sigX += 12;
+   MakeLabel(OBJ_SIG_ENT, sigX, row, m5Init, COL_DIM, 8, "Consolas");
    row += BOT_ROW;
 
    // Row 4: Position info
@@ -274,23 +288,18 @@ void UpdatePanel()
       ObjectSetInteger(0, OBJ_START, OBJPROP_COLOR, C'180,180,200');
    }
 
-   // ── Signal status with arrows ──
+   // ── Signal status with arrows — individual colors per TF ──
    string h1Arrow  = g_h1Up  ? "\x25B2" : (g_h1Down  ? "\x25BC" : "-");
    string m15Arrow = g_m15Up ? "\x25B2" : (g_m15Down ? "\x25BC" : "-");
    string m5Arrow  = g_m5Up  ? "\x25B2" : (g_m5Down  ? "\x25BC" : "-");
 
-   string sigText = StringFormat("%s %s | %s %s | %s %s", g_tfHighName, h1Arrow, g_tfMidName, m15Arrow, g_tfEntryName, m5Arrow);
-   ObjectSetString(0, OBJ_SIGNAL, OBJPROP_TEXT, sigText);
+   ObjectSetString(0, OBJ_SIG_HIGH, OBJPROP_TEXT, g_tfHighName + " " + h1Arrow);
+   ObjectSetString(0, OBJ_SIG_MID,  OBJPROP_TEXT, g_tfMidName  + " " + m15Arrow);
+   ObjectSetString(0, OBJ_SIG_ENT,  OBJPROP_TEXT, g_tfEntryName + " " + m5Arrow);
 
-   // Color: all aligned = green/red, mixed = dim
-   bool allUp   = g_h1Up && g_m15Up && g_m5Up;
-   bool allDown = g_h1Down && g_m15Down && g_m5Down;
-   if(allUp)
-      ObjectSetInteger(0, OBJ_SIGNAL, OBJPROP_COLOR, COL_GREEN);
-   else if(allDown)
-      ObjectSetInteger(0, OBJ_SIGNAL, OBJPROP_COLOR, COL_RED);
-   else
-      ObjectSetInteger(0, OBJ_SIGNAL, OBJPROP_COLOR, COL_DIM);
+   ObjectSetInteger(0, OBJ_SIG_HIGH, OBJPROP_COLOR, g_h1Up  ? COL_GREEN : (g_h1Down  ? COL_RED : COL_DIM));
+   ObjectSetInteger(0, OBJ_SIG_MID,  OBJPROP_COLOR, g_m15Up ? COL_GREEN : (g_m15Down ? COL_RED : COL_DIM));
+   ObjectSetInteger(0, OBJ_SIG_ENT,  OBJPROP_COLOR, g_m5Up  ? COL_GREEN : (g_m5Down  ? COL_RED : COL_DIM));
 
    // ── Position info ──
    g_hasPos = HasPosition();
