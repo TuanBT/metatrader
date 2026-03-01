@@ -3,10 +3,10 @@
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
 //| Entry: EMA 20/50 cross on M5                                      |
 //| Filter: M15 + H1 EMA alignment                                    |
-//| v1.02: Signal-only mode - reads lot from Panel GV, no SL/TP      |
+//| v1.03: Show lot + margin estimate in No Position state           |
 //+------------------------------------------------------------------+
-#property copyright "Tuan"
-#property version   "1.02"
+#property copyright "Tuan v1.03"
+#property version   "1.03"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -263,7 +263,43 @@ void UpdatePanel()
    }
    else
    {
-      ObjectSetString(0, OBJ_POS_INFO, OBJPROP_TEXT, "No position");
+      // Show lot from Panel GV + estimated margin
+      double lot = 0;
+      string gvName = "TP_Lot_" + _Symbol;
+      if(InpUsePanelLot && GlobalVariableCheck(gvName))
+         lot = GlobalVariableGet(gvName);
+
+      // Fallback: calculate from ATR + risk
+      if(lot <= 0)
+      {
+         double atrBuf[1];
+         if(CopyBuffer(g_atrHandle, 0, 1, 1, atrBuf) == 1 && atrBuf[0] > 0)
+         {
+            double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+            double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+            double slDist  = atrBuf[0] * InpATRMult;
+            if(tickSz > 0 && tickVal > 0 && slDist > 0)
+               lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
+         }
+      }
+
+      // Normalize lot
+      double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+      double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+      if(lotStep > 0 && lot > 0)
+         lot = MathFloor(lot / lotStep) * lotStep;
+      lot = MathMax(minLot, MathMin(maxLot, lot));
+
+      // Estimate margin using OrderCalcMargin
+      double margin = 0;
+      double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      if(lot > 0)
+         if(!OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, lot, price, margin))
+            margin = 0;
+
+      ObjectSetString(0, OBJ_POS_INFO, OBJPROP_TEXT,
+         StringFormat("Lot %.2f | Margin $%.0f", lot, margin));
       ObjectSetInteger(0, OBJ_POS_INFO, OBJPROP_COLOR, COL_DIM);
    }
 
