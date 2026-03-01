@@ -3,10 +3,10 @@
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
 //| Entry: EMA cross on chart TF (auto-adapts)                        |
 //| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
-//| v1.04: Auto TF mapping — entry=chart TF, filters auto-scale      |
+//| v1.06: Multi-TF display — all TFs from entry to W1, color-coded |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.05"
-#property version   "1.05"
+#property copyright "Tuan v1.06"
+#property version   "1.06"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -36,10 +36,6 @@ input ulong           InpMagic          = 99999;      // Magic Number
 #define OBJ_TITLE    BOT_PREFIX "Title"
 #define OBJ_STATUS   BOT_PREFIX "Status"
 #define OBJ_START    BOT_PREFIX "Start"
-#define OBJ_SIGNAL   BOT_PREFIX "Signal"
-#define OBJ_SIG_HIGH BOT_PREFIX "SigHigh"
-#define OBJ_SIG_MID  BOT_PREFIX "SigMid"
-#define OBJ_SIG_ENT  BOT_PREFIX "SigEnt"
 #define OBJ_FORCE_BUY  BOT_PREFIX "ForceBuy"
 #define OBJ_FORCE_SELL BOT_PREFIX "ForceSell"
 #define OBJ_POS_INFO BOT_PREFIX "PosInfo"
@@ -67,8 +63,8 @@ input ulong           InpMagic          = 99999;      // Magic Number
 // ════════════════════════════════════════════════════════════════════
 // GLOBALS
 // ════════════════════════════════════════════════════════════════════
-ENUM_TIMEFRAMES g_tfEntry, g_tfMid, g_tfHigh;  // Auto-mapped TFs
-string g_tfEntryName, g_tfMidName, g_tfHighName; // TF labels for UI
+ENUM_TIMEFRAMES g_tfEntry, g_tfMid, g_tfHigh;  // Auto-mapped TFs for trading
+string g_tfEntryName, g_tfMidName, g_tfHighName; // TF labels for log
 
 int g_emaFastEntry, g_emaSlowEntry;
 int g_emaFastMid,   g_emaSlowMid;
@@ -79,12 +75,23 @@ datetime g_lastSignalBar = 0;
 bool     g_botEnabled    = true;    // Start/Stop state
 bool     g_hasPos        = false;
 
-// Cached EMA states for UI
+// Trading signal states (entry/mid/high only)
 bool g_h1Up = false, g_h1Down = false;
 bool g_m15Up = false, g_m15Down = false;
 bool g_m5Up = false, g_m5Down = false;
 bool g_crossUp = false, g_crossDown = false;
 double g_cachedATR = 0;
+
+// ── Multi-TF display (all TFs from entry to W1) ──
+#define MAX_DISP_TF 8
+ENUM_TIMEFRAMES g_dispTF[MAX_DISP_TF];  // Ordered: highest first (W1..entry)
+string  g_dispName[MAX_DISP_TF];
+int     g_dispFast[MAX_DISP_TF];  // iMA handle
+int     g_dispSlow[MAX_DISP_TF];  // iMA handle
+bool    g_dispUp[MAX_DISP_TF];
+bool    g_dispDown[MAX_DISP_TF];
+int     g_numDisp = 0;
+int     g_entryIdx = -1;  // Index of entry TF in display array
 
 // ════════════════════════════════════════════════════════════════════
 // AUTO TF MAPPING
@@ -125,6 +132,23 @@ void MapTimeframes()
    g_tfEntryName = TFShortName(g_tfEntry);
    g_tfMidName   = TFShortName(g_tfMid);
    g_tfHighName  = TFShortName(g_tfHigh);
+
+   // Build display TF list: from W1 down to entry TF
+   ENUM_TIMEFRAMES allTF[] = { PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M30, PERIOD_M15, PERIOD_M5, PERIOD_M1 };
+   g_numDisp = 0;
+   g_entryIdx = -1;
+   for(int i = 0; i < ArraySize(allTF) && g_numDisp < MAX_DISP_TF; i++)
+   {
+      if(allTF[i] < g_tfEntry) continue;  // Skip TFs smaller than entry
+      g_dispTF[g_numDisp]   = allTF[i];
+      g_dispName[g_numDisp] = TFShortName(allTF[i]);
+      g_dispFast[g_numDisp] = INVALID_HANDLE;
+      g_dispSlow[g_numDisp] = INVALID_HANDLE;
+      g_dispUp[g_numDisp]   = false;
+      g_dispDown[g_numDisp] = false;
+      if(allTF[i] == g_tfEntry) g_entryIdx = g_numDisp;
+      g_numDisp++;
+   }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -149,6 +173,15 @@ int OnInit()
    {
       Print("[TREND BOT] Failed to create indicator handles");
       return INIT_FAILED;
+   }
+
+   // Create display EMA handles for all TFs
+   for(int i = 0; i < g_numDisp; i++)
+   {
+      g_dispFast[i] = iMA(_Symbol, g_dispTF[i], InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
+      g_dispSlow[i] = iMA(_Symbol, g_dispTF[i], InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
+      if(g_dispFast[i] == INVALID_HANDLE || g_dispSlow[i] == INVALID_HANDLE)
+         Print(StringFormat("[TREND BOT] WARNING: iMA handle failed for %s", g_dispName[i]));
    }
 
    CreatePanel();
@@ -176,6 +209,11 @@ void OnDeinit(const int reason)
    if(g_emaFastHigh  != INVALID_HANDLE) IndicatorRelease(g_emaFastHigh);
    if(g_emaSlowHigh  != INVALID_HANDLE) IndicatorRelease(g_emaSlowHigh);
    if(g_atrHandle    != INVALID_HANDLE) IndicatorRelease(g_atrHandle);
+   for(int i = 0; i < g_numDisp; i++)
+   {
+      if(g_dispFast[i] != INVALID_HANDLE) IndicatorRelease(g_dispFast[i]);
+      if(g_dispSlow[i] != INVALID_HANDLE) IndicatorRelease(g_dispSlow[i]);
+   }
    Print("[TREND BOT] Stopped");
 }
 
@@ -236,20 +274,19 @@ void CreatePanel()
               "Bot: ON", COL_BTN_ON, COL_WHITE, 9);
    row += 26;
 
-   // Row 3: Signal status — 3 separate labels for individual coloring
+   // Row 3: Multi-TF signal labels (W1..entry, each individually colored)
    int sigX = x + BOT_PAD;
-   string h1Init  = g_tfHighName  + " -";
-   string m15Init = g_tfMidName   + " -";
-   string m5Init  = g_tfEntryName + " -";
-   MakeLabel(OBJ_SIG_HIGH, sigX, row, h1Init, COL_DIM, 8, "Consolas");
-   sigX += 8 * (StringLen(h1Init) + 1);  // approximate char width
-   MakeLabel(OBJ_SIGNAL, sigX, row, "|", COL_DIM, 8, "Consolas");
-   sigX += 12;
-   MakeLabel(OBJ_SIG_MID, sigX, row, m15Init, COL_DIM, 8, "Consolas");
-   sigX += 8 * (StringLen(m15Init) + 1);
-   MakeLabel(OBJ_SIGNAL + "2", sigX, row, "|", COL_DIM, 8, "Consolas");
-   sigX += 12;
-   MakeLabel(OBJ_SIG_ENT, sigX, row, m5Init, COL_DIM, 8, "Consolas");
+   for(int i = 0; i < g_numDisp; i++)
+   {
+      string objName = BOT_PREFIX + "Sig" + IntegerToString(i);
+      string initText;
+      if(i == g_entryIdx)
+         initText = "\x00AB" + g_dispName[i] + " -\x00BB";  // «M5 -»
+      else
+         initText = g_dispName[i] + " -";
+      MakeLabel(objName, sigX, row, initText, COL_DIM, 8, "Consolas");
+      sigX += (int)(5.2 * (StringLen(initText) + 1));  // Consolas 8pt ~5.2px/char
+   }
    row += BOT_ROW;
 
    // Row 4: Position info
@@ -288,18 +325,20 @@ void UpdatePanel()
       ObjectSetInteger(0, OBJ_START, OBJPROP_COLOR, C'180,180,200');
    }
 
-   // ── Signal status with arrows — individual colors per TF ──
-   string h1Arrow  = g_h1Up  ? "\x25B2" : (g_h1Down  ? "\x25BC" : "-");
-   string m15Arrow = g_m15Up ? "\x25B2" : (g_m15Down ? "\x25BC" : "-");
-   string m5Arrow  = g_m5Up  ? "\x25B2" : (g_m5Down  ? "\x25BC" : "-");
-
-   ObjectSetString(0, OBJ_SIG_HIGH, OBJPROP_TEXT, g_tfHighName + " " + h1Arrow);
-   ObjectSetString(0, OBJ_SIG_MID,  OBJPROP_TEXT, g_tfMidName  + " " + m15Arrow);
-   ObjectSetString(0, OBJ_SIG_ENT,  OBJPROP_TEXT, g_tfEntryName + " " + m5Arrow);
-
-   ObjectSetInteger(0, OBJ_SIG_HIGH, OBJPROP_COLOR, g_h1Up  ? COL_GREEN : (g_h1Down  ? COL_RED : COL_DIM));
-   ObjectSetInteger(0, OBJ_SIG_MID,  OBJPROP_COLOR, g_m15Up ? COL_GREEN : (g_m15Down ? COL_RED : COL_DIM));
-   ObjectSetInteger(0, OBJ_SIG_ENT,  OBJPROP_COLOR, g_m5Up  ? COL_GREEN : (g_m5Down  ? COL_RED : COL_DIM));
+   // ── Multi-TF signal display — individual colors per TF ──
+   for(int i = 0; i < g_numDisp; i++)
+   {
+      string objName = BOT_PREFIX + "Sig" + IntegerToString(i);
+      string arrow = g_dispUp[i] ? "\x25B2" : (g_dispDown[i] ? "\x25BC" : "-");
+      string text;
+      if(i == g_entryIdx)
+         text = "\x00AB" + g_dispName[i] + arrow + "\x00BB";
+      else
+         text = g_dispName[i] + arrow;
+      ObjectSetString(0, objName, OBJPROP_TEXT, text);
+      ObjectSetInteger(0, objName, OBJPROP_COLOR,
+         g_dispUp[i] ? COL_GREEN : (g_dispDown[i] ? COL_RED : COL_DIM));
+   }
 
    // ── Position info ──
    g_hasPos = HasPosition();
@@ -396,6 +435,19 @@ void UpdateSignalStates()
    g_m5Down = (entryFast[1] < entrySlow[1]);
    g_crossUp   = (entryFast[0] <= entrySlow[0]) && (entryFast[1] > entrySlow[1]);
    g_crossDown = (entryFast[0] >= entrySlow[0]) && (entryFast[1] < entrySlow[1]);
+
+   // ── Update display TF states ──
+   for(int i = 0; i < g_numDisp; i++)
+   {
+      g_dispUp[i]   = false;
+      g_dispDown[i] = false;
+      if(g_dispFast[i] == INVALID_HANDLE || g_dispSlow[i] == INVALID_HANDLE) continue;
+      double f[1], s[1];
+      if(CopyBuffer(g_dispFast[i], 0, 1, 1, f) != 1) continue;
+      if(CopyBuffer(g_dispSlow[i], 0, 1, 1, s) != 1) continue;
+      g_dispUp[i]   = (f[0] > s[0]);
+      g_dispDown[i] = (f[0] < s[0]);
+   }
 }
 
 // ════════════════════════════════════════════════════════════════════
