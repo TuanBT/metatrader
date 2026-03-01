@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.53"
+#property version   "1.54"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -116,12 +116,15 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 // Colors – Status
 #define COL_PROFIT    C'0,180,100'
 #define COL_LOSS      C'230,60,60'
+#define COL_LOCK_UP   C'0,130,75'
+#define COL_LOCK_DN   C'170,55,55'
 
 // Object names
 #define OBJ_BG         PREFIX "bg"
 #define OBJ_TITLE_BG   PREFIX "title_bg"
 #define OBJ_TITLE      PREFIX "title"
 #define OBJ_TITLE_INFO PREFIX "title_info"
+#define OBJ_TITLE_LOCK PREFIX "title_lock"
 #define OBJ_RISK_LBL   PREFIX "risk_lbl"
 #define OBJ_RISK_EDT   PREFIX "risk_edt"
 #define OBJ_SPRD_LBL   PREFIX "sprd_lbl"
@@ -947,7 +950,7 @@ void TogglePanelCollapse()
       
       // Keep title bar elements always visible
       if(name == OBJ_BG || name == OBJ_TITLE_BG || name == OBJ_TITLE ||
-         name == OBJ_TITLE_INFO ||
+         name == OBJ_TITLE_INFO || name == OBJ_TITLE_LOCK ||
          name == OBJ_COLLAPSE_BTN || name == OBJ_LINES_BTN ||
          name == OBJ_SETTINGS_BTN ||
          name == OBJ_THEME_BTN)
@@ -968,6 +971,8 @@ void TogglePanelCollapse()
 
    // Show/hide collapsed info row
    ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_TIMEFRAMES,
+      g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_TITLE_LOCK, OBJPROP_TIMEFRAMES,
       g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    
    ChartRedraw();
@@ -1025,7 +1030,11 @@ void CreatePanel()
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
+   MakeLabel(OBJ_TITLE_LOCK, IX + IW + MARGIN - 5, y + 30, " ", COL_DIM, 8, FONT_MONO);
+   ObjectSetInteger(0, OBJ_TITLE_LOCK, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
    ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_TIMEFRAMES,
+      g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_TITLE_LOCK, OBJPROP_TIMEFRAMES,
       g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
 
    // Theme + utility buttons (right side of title bar)
@@ -1105,7 +1114,7 @@ void CreatePanel()
 
    // ── Row 1b: Locked Profit at SL (left label + right value) ──
    MakeLabel(OBJ_LOCK_LBL, IX, y, "SL Lock", COL_DIM, 8, FONT_MONO);
-   MakeLabel(OBJ_LOCK_VAL, IX + IW - 5, y, " ", COL_DIM, 9, FONT_BOLD);
+   MakeLabel(OBJ_LOCK_VAL, IX + IW - 5, y, " ", COL_DIM, 8, FONT_MONO);
    ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
    y += 16;
 
@@ -1551,7 +1560,7 @@ void UpdatePanel()
       ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT,
          StringFormat("$%+.2f", lockedPnL));
       ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR,
-         lockedPnL >= 0 ? COL_PROFIT : COL_LOSS);
+         lockedPnL >= 0 ? COL_LOCK_UP : COL_LOCK_DN);
 
       // ── Dynamic button text (info merged into buttons) ──
       if(g_gridEnabled)
@@ -1627,11 +1636,16 @@ void UpdatePanel()
          string dir2 = g_isBuy ? "LONG" : "SHORT";
          ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
          ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
-         // Info row: lot + direction + P&L + locked profit
+         // Info row left: lot + direction + P&L
          ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
-            StringFormat("%.2f %s  $%+.2f  Lock $%+.2f", lots2, dir2, pnl2, lock2));
+            StringFormat("%.2f %s  $%+.2f", lots2, dir2, pnl2));
          ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_COLOR,
             pnl2 >= 0 ? COL_PROFIT : COL_LOSS);
+         // Info row right: Lock (muted color)
+         ObjectSetString(0, OBJ_TITLE_LOCK, OBJPROP_TEXT,
+            StringFormat("Lock $%+.2f", lock2));
+         ObjectSetInteger(0, OBJ_TITLE_LOCK, OBJPROP_COLOR,
+            lock2 >= 0 ? COL_LOCK_UP : COL_LOCK_DN);
       }
       else
       {
@@ -1640,6 +1654,7 @@ void UpdatePanel()
          ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
             StringFormat("Lot %.2f", avgLot));
          ObjectSetInteger(0, OBJ_TITLE_INFO, OBJPROP_COLOR, COL_DIM);
+         ObjectSetString(0, OBJ_TITLE_LOCK, OBJPROP_TEXT, " ");
       }
    }
    else
@@ -1647,6 +1662,7 @@ void UpdatePanel()
       ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
       ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
       ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT, " ");
+      ObjectSetString(0, OBJ_TITLE_LOCK, OBJPROP_TEXT, " ");
    }
 
    // Sync button colors (trail active indicator, etc.)
