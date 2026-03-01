@@ -3,10 +3,10 @@
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
 //| Entry: EMA cross on chart TF (auto-adapts)                        |
 //| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
-//| v1.06: Multi-TF display — all TFs from entry to W1, color-coded |
+//| v1.08: Always show all 8 TFs (M1-W1), fixed-width columns      |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.07"
-#property version   "1.07"
+#property copyright "Tuan v1.08"
+#property version   "1.08"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -133,13 +133,12 @@ void MapTimeframes()
    g_tfMidName   = TFShortName(g_tfMid);
    g_tfHighName  = TFShortName(g_tfHigh);
 
-   // Build display TF list: from W1 down to entry TF
+   // Build display TF list: ALL 8 TFs from W1 down to M1 (always shown)
    ENUM_TIMEFRAMES allTF[] = { PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M30, PERIOD_M15, PERIOD_M5, PERIOD_M1 };
    g_numDisp = 0;
    g_entryIdx = -1;
    for(int i = 0; i < ArraySize(allTF) && g_numDisp < MAX_DISP_TF; i++)
    {
-      if(allTF[i] < g_tfEntry) continue;  // Skip TFs smaller than entry
       g_dispTF[g_numDisp]   = allTF[i];
       g_dispName[g_numDisp] = TFShortName(allTF[i]);
       g_dispFast[g_numDisp] = INVALID_HANDLE;
@@ -274,24 +273,22 @@ void CreatePanel()
               "Bot: ON", COL_BTN_ON, COL_WHITE, 9);
    row += 26;
 
-   // Row 3-4: Multi-TF signal labels in 2 rows (4 per row, W1..entry)
-   int halfCount = (g_numDisp + 1) / 2;  // Top row gets ceil(n/2)
-   int sigX = x + BOT_PAD;
+   // Row 3-4: 8 TF signal labels in 2 rows (4 per row), fixed spacing
+   int colW = (BOT_W - 2*BOT_PAD) / 4;  // Fixed width per TF column
    for(int i = 0; i < g_numDisp; i++)
    {
-      if(i == halfCount)  // Start second row
+      if(i == 4)  // Start second row
       {
-         row += 14;  // Smaller row gap for tight layout
-         sigX = x + BOT_PAD;
+         row += 14;
       }
+      int col = i % 4;
       string objName = BOT_PREFIX + "Sig" + IntegerToString(i);
       string initText;
       if(i == g_entryIdx)
-         initText = "[" + g_dispName[i] + " -]";
+         initText = "[" + g_dispName[i] + "-]";
       else
          initText = g_dispName[i] + " -";
-      MakeLabel(objName, sigX, row, initText, COL_DIM, 8, "Consolas");
-      sigX += (int)(5.2 * (StringLen(initText) + 1));
+      MakeLabel(objName, x + BOT_PAD + col * colW, row, initText, COL_DIM, 8, "Consolas");
    }
    row += BOT_ROW;
 
