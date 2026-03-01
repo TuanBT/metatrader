@@ -2406,7 +2406,7 @@ void SyncPositionState()
          slReq.symbol   = _Symbol;
          slReq.sl       = autoSL;
          slReq.tp       = 0;
-         if(OrderSend(slReq, slRes))
+         if(OrderSend(slReq, slRes) && slRes.retcode == TRADE_RETCODE_DONE)
          {
             g_currentSL = autoSL;
             g_origSL    = autoSL;
@@ -2417,8 +2417,9 @@ void SyncPositionState()
          }
          else
          {
-            Print(StringFormat("[PANEL] Auto-SL FAILED: %d - %s",
-               slRes.retcode, slRes.comment));
+            Print(StringFormat("[PANEL] Auto-SL FAILED: retcode=%d  comment=%s  autoSL=%s  ATR=%.5f",
+               slRes.retcode, slRes.comment,
+               DoubleToString(autoSL, _Digits), g_cachedATR));
          }
       }
    }
@@ -2618,6 +2619,46 @@ void OnTick()
    if(!g_hasPos && HasOwnPosition())
    {
       SyncPositionState();
+   }
+
+   // Persistent SL fix: retry auto-SL if position still has SL=0
+   if(g_hasPos && g_currentSL == 0 && g_cachedATR > 0)
+   {
+      // Find the actual position ticket to modify
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         ulong t = PositionGetTicket(i);
+         if(t == 0) continue;
+         if(!PositionSelectByTicket(t)) continue;
+         if(PositionGetString(POSITION_SYMBOL)       != _Symbol) continue;
+         if((ulong)PositionGetInteger(POSITION_MAGIC) != g_manageMagic) continue;
+
+         double posSL = PositionGetDouble(POSITION_SL);
+         if(posSL == 0)
+         {
+            double autoSL = CalcSLPriceFrom(g_isBuy, g_entryPx);
+            if(autoSL > 0)
+            {
+               MqlTradeRequest slReq = {};
+               MqlTradeResult  slRes = {};
+               slReq.action   = TRADE_ACTION_SLTP;
+               slReq.position = t;
+               slReq.symbol   = _Symbol;
+               slReq.sl       = autoSL;
+               slReq.tp       = 0;
+               if(OrderSend(slReq, slRes) && slRes.retcode == TRADE_RETCODE_DONE)
+               {
+                  g_currentSL = autoSL;
+                  g_origSL    = autoSL;
+                  g_riskDist  = MathAbs(g_entryPx - autoSL);
+                  Print(StringFormat("[PANEL] Auto-SL retry OK: %s SL=%s",
+                     g_isBuy ? "BUY" : "SELL",
+                     DoubleToString(autoSL, _Digits)));
+               }
+            }
+         }
+         break;  // Only fix the earliest/first position
+      }
    }
 
    // Auto trailing
