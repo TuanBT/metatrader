@@ -2565,7 +2565,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.52 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.60 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -2612,6 +2612,12 @@ void OnTick()
       g_stepLevel = 0;
       g_stepSize  = 0;
       g_beReached = false;
+   }
+
+   // Detect new position opened externally (Bot, manual, etc.)
+   if(!g_hasPos && HasOwnPosition())
+   {
+      SyncPositionState();
    }
 
    // Auto trailing
