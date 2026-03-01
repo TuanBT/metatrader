@@ -1,12 +1,12 @@
 //+------------------------------------------------------------------+
 //| Trend Signal Bot.mq5                                              |
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
-//| Entry: EMA 20/50 cross on M5                                      |
-//| Filter: M15 + H1 EMA alignment                                    |
-//| v1.03: Show lot + margin estimate in No Position state           |
+//| Entry: EMA cross on chart TF (auto-adapts)                        |
+//| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
+//| v1.04: Auto TF mapping — entry=chart TF, filters auto-scale      |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.03"
-#property version   "1.03"
+#property copyright "Tuan v1.04"
+#property version   "1.04"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -15,9 +15,6 @@
 input group           "══ Strategy ══"
 input int             InpEMAFast        = 20;         // EMA Fast period
 input int             InpEMASlow        = 50;         // EMA Slow period
-input ENUM_TIMEFRAMES InpTFEntry        = PERIOD_M5;  // Entry timeframe
-input ENUM_TIMEFRAMES InpTFMid          = PERIOD_M15; // Mid filter timeframe
-input ENUM_TIMEFRAMES InpTFHigh         = PERIOD_H1;  // High filter timeframe
 
 input group           "══ Risk ══"
 input bool            InpUsePanelLot    = true;       // Use lot from Trading Panel
@@ -67,6 +64,9 @@ input ulong           InpMagic          = 99999;      // Magic Number
 // ════════════════════════════════════════════════════════════════════
 // GLOBALS
 // ════════════════════════════════════════════════════════════════════
+ENUM_TIMEFRAMES g_tfEntry, g_tfMid, g_tfHigh;  // Auto-mapped TFs
+string g_tfEntryName, g_tfMidName, g_tfHighName; // TF labels for UI
+
 int g_emaFastEntry, g_emaSlowEntry;
 int g_emaFastMid,   g_emaSlowMid;
 int g_emaFastHigh,  g_emaSlowHigh;
@@ -84,17 +84,60 @@ bool g_crossUp = false, g_crossDown = false;
 double g_cachedATR = 0;
 
 // ════════════════════════════════════════════════════════════════════
+// AUTO TF MAPPING
+// ════════════════════════════════════════════════════════════════════
+string TFShortName(ENUM_TIMEFRAMES tf)
+{
+   switch(tf)
+   {
+      case PERIOD_M1:  return "M1";
+      case PERIOD_M5:  return "M5";
+      case PERIOD_M15: return "M15";
+      case PERIOD_M30: return "M30";
+      case PERIOD_H1:  return "H1";
+      case PERIOD_H4:  return "H4";
+      case PERIOD_D1:  return "D1";
+      case PERIOD_W1:  return "W1";
+      case PERIOD_MN1: return "MN";
+      default:         return EnumToString(tf);
+   }
+}
+
+void MapTimeframes()
+{
+   g_tfEntry = _Period;
+
+   switch(_Period)
+   {
+      case PERIOD_M1:  g_tfMid = PERIOD_M5;  g_tfHigh = PERIOD_M15; break;
+      case PERIOD_M5:  g_tfMid = PERIOD_M15; g_tfHigh = PERIOD_H1;  break;
+      case PERIOD_M15: g_tfMid = PERIOD_H1;  g_tfHigh = PERIOD_H4;  break;
+      case PERIOD_M30: g_tfMid = PERIOD_H4;  g_tfHigh = PERIOD_D1;  break;
+      case PERIOD_H1:  g_tfMid = PERIOD_H4;  g_tfHigh = PERIOD_D1;  break;
+      case PERIOD_H4:  g_tfMid = PERIOD_D1;  g_tfHigh = PERIOD_W1;  break;
+      case PERIOD_D1:  g_tfMid = PERIOD_W1;  g_tfHigh = PERIOD_MN1; break;
+      default:         g_tfMid = PERIOD_M15; g_tfHigh = PERIOD_H1;  break;
+   }
+
+   g_tfEntryName = TFShortName(g_tfEntry);
+   g_tfMidName   = TFShortName(g_tfMid);
+   g_tfHighName  = TFShortName(g_tfHigh);
+}
+
+// ════════════════════════════════════════════════════════════════════
 // INIT / DEINIT
 // ════════════════════════════════════════════════════════════════════
 int OnInit()
 {
-   g_emaFastEntry = iMA(_Symbol, InpTFEntry, InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
-   g_emaSlowEntry = iMA(_Symbol, InpTFEntry, InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
-   g_emaFastMid   = iMA(_Symbol, InpTFMid,   InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
-   g_emaSlowMid   = iMA(_Symbol, InpTFMid,   InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
-   g_emaFastHigh  = iMA(_Symbol, InpTFHigh,  InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
-   g_emaSlowHigh  = iMA(_Symbol, InpTFHigh,  InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
-   g_atrHandle    = iATR(_Symbol, InpTFEntry, InpATRPeriod);
+   MapTimeframes();
+
+   g_emaFastEntry = iMA(_Symbol, g_tfEntry, InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
+   g_emaSlowEntry = iMA(_Symbol, g_tfEntry, InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
+   g_emaFastMid   = iMA(_Symbol, g_tfMid,   InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
+   g_emaSlowMid   = iMA(_Symbol, g_tfMid,   InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
+   g_emaFastHigh  = iMA(_Symbol, g_tfHigh,  InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
+   g_emaSlowHigh  = iMA(_Symbol, g_tfHigh,  InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
+   g_atrHandle    = iATR(_Symbol, g_tfEntry, InpATRPeriod);
 
    if(g_emaFastEntry == INVALID_HANDLE || g_emaSlowEntry == INVALID_HANDLE ||
       g_emaFastMid   == INVALID_HANDLE || g_emaSlowMid   == INVALID_HANDLE ||
@@ -111,9 +154,9 @@ int OnInit()
 
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s | PanelLot=%s | Fallback=$%.0f",
+   Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s (auto) | PanelLot=%s | Fallback=$%.0f",
          _Symbol, InpMagic, InpEMAFast, InpEMASlow,
-         EnumToString(InpTFEntry), EnumToString(InpTFMid), EnumToString(InpTFHigh),
+         g_tfEntryName, g_tfMidName, g_tfHighName,
          InpUsePanelLot ? "ON" : "OFF", InpRiskMoney));
 
    return INIT_SUCCEEDED;
@@ -190,8 +233,9 @@ void CreatePanel()
               "Bot: ON", COL_BTN_ON, COL_WHITE, 9);
    row += 26;
 
-   // Row 3: Signal status (H1 up | M15 up | M5 up)
-   MakeLabel(OBJ_SIGNAL, x + BOT_PAD, row, "H1 - | M15 - | M5 -", COL_DIM, 8, "Consolas");
+   // Row 3: Signal status (High up | Mid up | Entry up)
+   string initSig = StringFormat("%s - | %s - | %s -", g_tfHighName, g_tfMidName, g_tfEntryName);
+   MakeLabel(OBJ_SIGNAL, x + BOT_PAD, row, initSig, COL_DIM, 8, "Consolas");
    row += BOT_ROW;
 
    // Row 4: Position info
@@ -235,7 +279,7 @@ void UpdatePanel()
    string m15Arrow = g_m15Up ? "\x25B2" : (g_m15Down ? "\x25BC" : "-");
    string m5Arrow  = g_m5Up  ? "\x25B2" : (g_m5Down  ? "\x25BC" : "-");
 
-   string sigText = StringFormat("H1 %s | M15 %s | M5 %s", h1Arrow, m15Arrow, m5Arrow);
+   string sigText = StringFormat("%s %s | %s %s | %s %s", g_tfHighName, h1Arrow, g_tfMidName, m15Arrow, g_tfEntryName, m5Arrow);
    ObjectSetString(0, OBJ_SIGNAL, OBJPROP_TEXT, sigText);
 
    // Color: all aligned = green/red, mixed = dim
@@ -356,14 +400,14 @@ void OnTick()
    if(!g_botEnabled) return;
 
    // Only check on new bar (entry TF)
-   datetime curBar = iTime(_Symbol, InpTFEntry, 0);
+   datetime curBar = iTime(_Symbol, g_tfEntry, 0);
    if(curBar == g_lastSignalBar) return;
 
    // Skip if already have a position
    if(g_hasPos) return;
    if(g_cachedATR <= 0) return;
 
-   // ── BUY signal: M5 cross up + M15 up + H1 up ──
+   // ── BUY signal: Entry cross up + Mid up + High up ──
    if(g_crossUp && g_m15Up && g_h1Up)
    {
       g_lastSignalBar = curBar;
@@ -371,7 +415,7 @@ void OnTick()
       return;
    }
 
-   // ── SELL signal: M5 cross down + M15 down + H1 down ──
+   // ── SELL signal: Entry cross down + Mid down + High down ──
    if(g_crossDown && g_m15Down && g_h1Down)
    {
       g_lastSignalBar = curBar;
