@@ -19,7 +19,7 @@
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan"
-#property version   "1.54"
+#property version   "1.55"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1154,23 +1154,17 @@ void CreatePanel()
    y += 8;
 
    // ── Trail SL toggle + mode buttons (1 row) ──
-   //   Group: ATR continuous (Price, Close, Swing) | Discrete (Step, BE)
+   //   Modes: Close | Step | BE
    {
       int bx = PX + 5;
       int tw = 78;   // trail toggle width
       int gp = 2;    // gap between buttons
-      int mw = (IW - 2 - tw - 6 * gp) / 5;  // mode button width (5 modes)
+      int mw = (IW - 2 - tw - 4 * gp) / 3;  // mode button width (3 modes)
       MakeButton(OBJ_TRAIL_BTN, bx, y, tw, 26,
                  "Trail: OFF", C'180,180,200', C'60,60,85', 8);
       bx += tw + gp;
-      MakeButton(OBJ_TM_PRICE, bx, y, mw, 26,
-                 "Price", C'140,140,160', C'50,50,70', 7);
-      bx += mw + gp;
       MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
                  "Close", C'140,140,160', C'50,50,70', 7);
-      bx += mw + gp;
-      MakeButton(OBJ_TM_SWING, bx, y, mw, 26,
-                 "Swing", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_STEP, bx, y, mw, 26,
                  "Step", C'140,140,160', C'50,50,70', 7);
@@ -1294,23 +1288,10 @@ void CreatePanel()
       "Tự động dời SL theo hướng có lợi.\n"
       "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
 
-   ObjectSetString(0, OBJ_TM_PRICE, OBJPROP_TOOLTIP,
-      "PRICE — Theo giá Bid/Ask (~3 giây/lần)\n"
-      "SL = giá hiện tại − ATR×0.5\n"
-      "Khoá lời nhanh nhất, cập nhật liên tục.\n"
-      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
-
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
       "CLOSE — Theo giá đóng nến (mỗi nến mới)\n"
       "SL = Close[1] − ATR×0.5\n"
       "Lọc nhiễu bóng nến, ổn định nhất.\n"
-      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
-
-   ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "SWING — Theo đỉnh/đáy " + IntegerToString(InpTrailLookback) + " nến (mỗi nến mới)\n"
-      "BUY: SL = HH − ATR×0.5\n"
-      "SELL: SL = LL + ATR×0.5\n"
-      "Rộng nhất, cho trend dài chạy.\n"
       "Kích hoạt sau khi giá đi >= 0.5 ATR.");
 
    ObjectSetString(0, OBJ_TM_STEP, OBJPROP_TOOLTIP,
@@ -1388,8 +1369,8 @@ void SyncButtonAppearance()
    // Blue = selected but waiting for activation
    // Green = selected AND actively trailing
    // Gray = not selected
-   string modeObjs[] = {OBJ_TM_PRICE, OBJ_TM_CLOSE, OBJ_TM_SWING, OBJ_TM_STEP, OBJ_TM_BE};
-   ENUM_TRAIL_MODE modes[] = {TRAIL_PRICE, TRAIL_CLOSE, TRAIL_SWING, TRAIL_STEP, TRAIL_BE};
+   string modeObjs[] = {OBJ_TM_CLOSE, OBJ_TM_STEP, OBJ_TM_BE};
+   ENUM_TRAIL_MODE modes[] = {TRAIL_CLOSE, TRAIL_STEP, TRAIL_BE};
 
    // Determine if trail is actively tracking (conditions met)
    bool trailActive = false;
@@ -1417,7 +1398,7 @@ void SyncButtonAppearance()
       }
    }
 
-   for(int i = 0; i < 5; i++)
+   for(int i = 0; i < 3; i++)
    {
       if(g_trailRef == modes[i])
       {
@@ -2853,29 +2834,12 @@ void OnChartEvent(const int id,
                EnumToString(g_trailRef)));
          SyncButtonAppearance();
       }
-      // ── Trail mode: Price ──
-      else if(sparam == OBJ_TM_PRICE)
-      {
-         ObjectSetInteger(0, OBJ_TM_PRICE, OBJPROP_STATE, false);
-         g_trailRef = TRAIL_PRICE;
-         Print("[TRAIL] Mode → Price (ATR/2 from live price)");
-         SyncButtonAppearance();
-      }
       // ── Trail mode: Close ──
       else if(sparam == OBJ_TM_CLOSE)
       {
          ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_STATE, false);
          g_trailRef = TRAIL_CLOSE;
          Print("[TRAIL] Mode → Close (ATR/2 from bar[1] close)");
-         SyncButtonAppearance();
-      }
-      // ── Trail mode: Swing ──
-      else if(sparam == OBJ_TM_SWING)
-      {
-         ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_STATE, false);
-         g_trailRef = TRAIL_SWING;
-         Print(StringFormat("[TRAIL] Mode → Swing (ATR/2 from %d-bar extreme)",
-               InpTrailLookback));
          SyncButtonAppearance();
       }
       // ── Trail mode: Step ──
