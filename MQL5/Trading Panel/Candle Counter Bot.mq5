@@ -60,7 +60,7 @@ input ulong           InpMagic          = 99999;      // Magic Number
 #define BOT_PY      25
 #define BOT_W       200
 #define BOT_H       180
-#define BOT_H_INFO  265
+#define BOT_H_INFO  290
 #define BOT_ROW     22
 #define BOT_PAD     6
 
@@ -279,11 +279,11 @@ void CreatePanel()
 
    // Info section (hidden by default, 5 lines)
    int infoY = row;
-   MakeLabel(OBJ_INFO_L1, x + BOT_PAD, infoY, "", COL_DIM, 7, "Consolas"); infoY += 14;
-   MakeLabel(OBJ_INFO_L2, x + BOT_PAD, infoY, "", COL_DIM, 7, "Consolas"); infoY += 14;
-   MakeLabel(OBJ_INFO_L3, x + BOT_PAD, infoY, "", COL_DIM, 7, "Consolas"); infoY += 14;
-   MakeLabel(OBJ_INFO_L4, x + BOT_PAD, infoY, "", COL_DIM, 7, "Consolas"); infoY += 14;
-   MakeLabel(OBJ_INFO_L5, x + BOT_PAD, infoY, "", COL_DIM, 7, "Consolas");
+   MakeLabel(OBJ_INFO_L1, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
+   MakeLabel(OBJ_INFO_L2, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
+   MakeLabel(OBJ_INFO_L3, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
+   MakeLabel(OBJ_INFO_L4, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
+   MakeLabel(OBJ_INFO_L5, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas");
    // Hide info labels initially
    ObjectSetInteger(0, OBJ_INFO_L1, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_INFO_L2, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
