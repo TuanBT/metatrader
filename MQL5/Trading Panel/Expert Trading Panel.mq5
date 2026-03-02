@@ -150,6 +150,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_TM_BE      PREFIX "tm_be"
 #define OBJ_GRID_BTN   PREFIX "grid_btn"
 #define OBJ_GRID_LVL   PREFIX "grid_lvl"
+#define OBJ_GRID_DLY   PREFIX "grid_dly"
 #define OBJ_AUTOTP_BTN PREFIX "autotp_btn"
 
 // Chart lines (SL levels)
@@ -250,6 +251,8 @@ int      g_gridLevel      = 0;       // 0=initial only, 1-3=DCA additions
 int      g_gridMaxLevel   = 3;       // max DCA positions — runtime changeable
 double   g_gridBaseATR    = 0;       // ATR value when grid started
 double   g_gridBaseMult   = 0;       // ATR multiplier locked at grid start
+int      g_gridDelay      = 5;       // Delay between DCA fills (minutes), 0=disabled
+datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -1172,13 +1175,16 @@ void CreatePanel()
    }
    y += 30;
 
-   // ── Grid DCA toggle + level selector ──
-   int gridLvlW = 36;  // width of level cycle button
-   int gridBtnW = IW - 2 - gridLvlW - 2;  // main grid button width
+   // ── Grid DCA toggle + level selector + delay selector ──
+   int gridDlyW = 32;  // width of delay cycle button
+   int gridLvlW = 32;  // width of level cycle button
+   int gridBtnW = IW - 2 - gridLvlW - 2 - gridDlyW - 2;  // main grid button width
    MakeButton(OBJ_GRID_BTN, PX + 5, y, gridBtnW, 26,
               "Grid DCA: OFF", C'180,180,200', C'60,60,85', 8);
    MakeButton(OBJ_GRID_LVL, PX + 5 + gridBtnW + 2, y, gridLvlW, 26,
               StringFormat("x%d", g_gridMaxLevel), C'180,200,255', C'40,50,80', 8);
+   MakeButton(OBJ_GRID_DLY, PX + 5 + gridBtnW + 2 + gridLvlW + 2, y, gridDlyW, 26,
+              StringFormat("%dm", g_gridDelay), C'200,180,255', C'50,40,80', 8);
    y += 28;
 
    // ── Auto TP toggle ──
@@ -1312,6 +1318,11 @@ void CreatePanel()
       "Số level DCA tối đa (2-5).\n"
       "Click để đổi: 2→3→4→5→2...\n"
       "Không đổi được khi đang có lệnh + grid bật.");
+
+   ObjectSetString(0, OBJ_GRID_DLY, OBJPROP_TOOLTIP,
+      "Delay giữa các DCA (phút).\n"
+      "Gợi ý: 5m cho M1, 10-15m cho M5-M15.\n"
+      "Kèm filter: nến > 2×ATR → skip DCA.");
 
    // Auto TP
    ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TOOLTIP,
@@ -2226,6 +2237,47 @@ void ManageGrid()
    bool triggered = g_isBuy ? (cur <= dcaPrice) : (cur >= dcaPrice);
    if(!triggered) return;
 
+   // ── Delay filter: skip DCA if too soon after last DCA ──
+   if(g_gridDelay > 0 && g_lastDCATime > 0)
+   {
+      int elapsedSec = (int)(TimeCurrent() - g_lastDCATime);
+      int delaySec = g_gridDelay * 60;
+      if(elapsedSec < delaySec)
+      {
+         // Throttle log: only print once per 30 seconds
+         static uint s_lastDelayLogMs = 0;
+         uint nowMs2 = GetTickCount();
+         if(nowMs2 - s_lastDelayLogMs >= 30000)
+         {
+            s_lastDelayLogMs = nowMs2;
+            int remain = delaySec - elapsedSec;
+            Print(StringFormat("[GRID] DCA #%d waiting — delay %d/%d sec remaining",
+                  nextLevel, remain, delaySec));
+         }
+         return;
+      }
+   }
+
+   // ── Candle size filter: skip DCA if current candle is abnormally large (> 2×ATR) ──
+   {
+      double candleHigh = iHigh(_Symbol, _Period, 0);
+      double candleLow  = iLow(_Symbol, _Period, 0);
+      double candleSize = candleHigh - candleLow;
+      double maxCandle  = g_cachedATR * 2.0;
+      if(candleSize > maxCandle && g_cachedATR > 0)
+      {
+         static uint s_lastCandleLogMs = 0;
+         uint nowMs3 = GetTickCount();
+         if(nowMs3 - s_lastCandleLogMs >= 30000)
+         {
+            s_lastCandleLogMs = nowMs3;
+            Print(StringFormat("[GRID] DCA #%d skipped — candle %.1f > 2×ATR %.1f (flash move)",
+                  nextLevel, candleSize / _Point, maxCandle / _Point));
+         }
+         return;
+      }
+   }
+
    // Calculate lot for DCA position – based on ACTUAL distance from DCA entry to SL
    // SL anchored to ORIGINAL entry, not current price – prevents SL from drifting further
    double sl = CalcSLPriceFrom(g_isBuy, g_entryPx);
@@ -2261,6 +2313,7 @@ void ManageGrid()
    if(OrderSend(req, res))
    {
       g_gridLevel = nextLevel;
+      g_lastDCATime = TimeCurrent();  // Record DCA fill time for delay filter
       g_beReached = false;  // Reset BE trail — new DCA changes reference entry
       g_beStepLevel = 0;
       double avgEntry = GetAvgEntry();
@@ -2573,6 +2626,7 @@ void OnTick()
       g_gridLevel = 0;
       g_gridBaseATR = 0;
       g_gridBaseMult = 0;
+      g_lastDCATime = 0;
       // Restore grid to user's intended state
       g_gridEnabled = g_gridUserEnabled;
       g_beReached = false;
@@ -2802,6 +2856,7 @@ void OnChartEvent(const int id,
          g_gridLevel   = 0;
          g_gridBaseATR = 0;
          g_gridBaseMult = 0;
+         g_lastDCATime = 0;
 
          // Reset Trail state
          g_beReached = false;
@@ -3072,6 +3127,26 @@ void OnChartEvent(const int id,
                                g_gridLevel, g_gridMaxLevel, maxRisk));
             }
          }
+      }
+      // ── Grid DCA delay cycle: 0→3→5→10→15→0 ──
+      else if(sparam == OBJ_GRID_DLY)
+      {
+         ObjectSetInteger(0, OBJ_GRID_DLY, OBJPROP_STATE, false);
+         int delays[] = {0, 3, 5, 10, 15};
+         int numDelays = ArraySize(delays);
+         int nextIdx = 0;
+         for(int i = 0; i < numDelays; i++)
+         {
+            if(g_gridDelay == delays[i])
+            {
+               nextIdx = (i + 1) % numDelays;
+               break;
+            }
+         }
+         g_gridDelay = delays[nextIdx];
+         ObjectSetString(0, OBJ_GRID_DLY, OBJPROP_TEXT,
+            StringFormat("%dm", g_gridDelay));
+         Print(StringFormat("[GRID] Delay → %d minutes", g_gridDelay));
       }
       // ── Auto TP toggle ──
       else if(sparam == OBJ_AUTOTP_BTN)
