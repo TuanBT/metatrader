@@ -3,10 +3,10 @@
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
 //| Entry: EMA cross on chart TF (auto-adapts)                        |
 //| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
-//| v1.09: Auto-pause on Large SL (Grid DCA max + hit SL)          |
+//| v1.10: Collapsible info panel showing entry conditions          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.09"
-#property version   "1.09"
+#property copyright "Tuan v1.10"
+#property version   "1.10"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -39,6 +39,12 @@ input ulong           InpMagic          = 99999;      // Magic Number
 #define OBJ_FORCE_BUY  BOT_PREFIX "ForceBuy"
 #define OBJ_FORCE_SELL BOT_PREFIX "ForceSell"
 #define OBJ_POS_INFO BOT_PREFIX "PosInfo"
+#define OBJ_INFO_BTN BOT_PREFIX "InfoBtn"
+#define OBJ_INFO_L1  BOT_PREFIX "InfoL1"
+#define OBJ_INFO_L2  BOT_PREFIX "InfoL2"
+#define OBJ_INFO_L3  BOT_PREFIX "InfoL3"
+#define OBJ_INFO_L4  BOT_PREFIX "InfoL4"
+#define OBJ_INFO_L5  BOT_PREFIX "InfoL5"
 
 // Colors
 #define COL_BG       C'25,27,35'
@@ -57,6 +63,7 @@ input ulong           InpMagic          = 99999;      // Magic Number
 #define BOT_PY      25
 #define BOT_W       180
 #define BOT_H       175
+#define BOT_H_INFO  260
 #define BOT_ROW     22
 #define BOT_PAD     6
 
@@ -75,6 +82,7 @@ datetime g_lastSignalBar = 0;
 bool     g_botEnabled    = true;    // Start/Stop state
 bool     g_paused        = false;   // Auto-paused by Panel (large SL)
 bool     g_hasPos        = false;
+bool     g_infoExpanded  = false;   // Info panel expanded
 
 // Trading signal states (entry/mid/high only)
 bool g_h1Up = false, g_h1Down = false;
@@ -266,7 +274,7 @@ void CreatePanel()
    int row = y + BOT_PAD;
 
    // Row 1: Title
-   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "Trend Signal Bot v1.09", C'170,180,215', 9, "Segoe UI Semibold");
+   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "Trend Signal Bot v1.10", C'170,180,215', 9, "Segoe UI Semibold");
    row += BOT_ROW;
 
    // Row 2: Start/Stop button
@@ -297,10 +305,21 @@ void CreatePanel()
    MakeLabel(OBJ_POS_INFO, x + BOT_PAD, row, "No position", COL_DIM, 8, "Consolas");
    row += BOT_ROW + 2;
 
-   // Row 5: Force BUY / Force SELL buttons
-   int btnW = (BOT_W - 2*BOT_PAD - 4) / 2;
+   // Row 5: Force BUY / Force SELL + Info button
+   int infoBtnW = 24;
+   int btnW = (BOT_W - 2*BOT_PAD - 4 - infoBtnW - 2) / 2;
    MakeButton(OBJ_FORCE_BUY,  x + BOT_PAD,          row, btnW, 22, "Force BUY",  C'0,100,65', COL_WHITE, 8);
    MakeButton(OBJ_FORCE_SELL, x + BOT_PAD + btnW + 4, row, btnW, 22, "Force SELL", C'140,40,40', COL_WHITE, 8);
+   MakeButton(OBJ_INFO_BTN, x + BOT_PAD + 2*btnW + 4 + 2, row, infoBtnW, 22, "?", C'60,60,85', C'180,180,200', 9);
+   row += 26;
+
+   // Info section (hidden by default, 5 lines)
+   int infoY = row;
+   MakeLabel(OBJ_INFO_L1, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas"); infoY += 13;
+   MakeLabel(OBJ_INFO_L2, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas"); infoY += 13;
+   MakeLabel(OBJ_INFO_L3, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas"); infoY += 13;
+   MakeLabel(OBJ_INFO_L4, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas"); infoY += 13;
+   MakeLabel(OBJ_INFO_L5, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas");
 
    ChartRedraw();
 }
@@ -405,6 +424,34 @@ void UpdatePanel()
          StringFormat("Lot %.2f | Margin $%.0f", lot, margin));
       ObjectSetInteger(0, OBJ_POS_INFO, OBJPROP_COLOR, COL_DIM);
    }
+
+   // ── Info panel (expand / collapse) ──
+   int bgH = BOT_H;
+   if(g_infoExpanded)
+   {
+      bgH = BOT_H_INFO;
+      ObjectSetString(0, OBJ_INFO_BTN, OBJPROP_TEXT, "×");
+      ObjectSetString(0, OBJ_INFO_L1, OBJPROP_TEXT,
+         StringFormat("Entry: EMA %d/%d cross [%s]", InpEMAFast, InpEMASlow, g_tfEntryName));
+      ObjectSetString(0, OBJ_INFO_L2, OBJPROP_TEXT,
+         StringFormat("Filter: %s + %s aligned", g_tfMidName, g_tfHighName));
+      ObjectSetString(0, OBJ_INFO_L3, OBJPROP_TEXT,
+         "BUY : Cross up + Mid▲ + High▲");
+      ObjectSetString(0, OBJ_INFO_L4, OBJPROP_TEXT,
+         "SELL: Cross dn + Mid▼ + High▼");
+      ObjectSetString(0, OBJ_INFO_L5, OBJPROP_TEXT,
+         "Panel manages SL / TP / Trail");
+   }
+   else
+   {
+      ObjectSetString(0, OBJ_INFO_BTN, OBJPROP_TEXT, "?");
+      ObjectSetString(0, OBJ_INFO_L1, OBJPROP_TEXT, "");
+      ObjectSetString(0, OBJ_INFO_L2, OBJPROP_TEXT, "");
+      ObjectSetString(0, OBJ_INFO_L3, OBJPROP_TEXT, "");
+      ObjectSetString(0, OBJ_INFO_L4, OBJPROP_TEXT, "");
+      ObjectSetString(0, OBJ_INFO_L5, OBJPROP_TEXT, "");
+   }
+   ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, bgH);
 
    ChartRedraw();
 }
@@ -558,6 +605,13 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          OpenTrade(true, atr[0]);
          UpdatePanel();
       }
+   }
+   // ── Info toggle ──
+   else if(sparam == OBJ_INFO_BTN)
+   {
+      ObjectSetInteger(0, OBJ_INFO_BTN, OBJPROP_STATE, false);
+      g_infoExpanded = !g_infoExpanded;
+      UpdatePanel();
    }
    // ── Force SELL ──
    else if(sparam == OBJ_FORCE_SELL)
