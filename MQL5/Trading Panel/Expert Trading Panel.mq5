@@ -35,8 +35,8 @@ enum ENUM_SL_MODE
 
 enum ENUM_TRAIL_MODE
 {
-   TRAIL_CLOSE  = 1,  // ATR/2 from bar[1] close (per-bar)
-   TRAIL_SWING  = 2,  // ATR/2 from swing extreme (per-bar)
+   TRAIL_CLOSE  = 1,  // ATR×1.0 from bar[1] close (per-bar)
+   TRAIL_SWING  = 2,  // ATR×1.0 from swing extreme (per-bar)
    TRAIL_BE     = 4,  // Breakeven first, then step 1 ATR
    TRAIL_NONE   = 5,  // No auto trail
 };
@@ -58,7 +58,7 @@ input double          InpSLBuffer       = 5.0;       // SL Buffer % (push SL fur
 
 input group           "══ Trailing Stop ══"
 input ENUM_TRAIL_MODE InpTrailMode      = TRAIL_CLOSE; // Trail Mode (default)
-input double          InpTrailATRFactor = 0.5;       // Trail distance = ATR × factor
+input double          InpTrailATRFactor = 1.0;       // Trail distance = ATR × factor
 input int             InpTrailLookback  = 5;          // Swing lookback bars (Swing mode)
 
 input group           "══ Grid DCA ══"
@@ -1294,19 +1294,19 @@ void CreatePanel()
 
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
       "CLOSE — Theo giá đóng nến (mỗi nến mới)\n"
-      "SL = Close[1] − ATR×0.5\n"
+      "SL = Close[1] − ATR×1.0\n"
       "Lọc nhiễu bóng nến, ổn định nhất.\n"
-      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
+      "Kích hoạt sau khi giá đi >= 1.0 ATR.");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
       "SWING — Theo swing high/low (mỗi nến mới)\n"
-      "SL = SwingHigh/Low(" + IntegerToString(InpTrailLookback) + " bars) − ATR×0.5\n"
+      "SL = SwingHigh/Low(" + IntegerToString(InpTrailLookback) + " bars) − ATR×1.0\n"
       "Cho giá room retest, phù hợp swing trade.\n"
-      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
+      "Kích hoạt sau khi giá đi >= 1.0 ATR.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
       "BE — Dời SL về BE và ATR\n"
-      "B1: Giá +0.5 ATR → SL về entry\n"
+      "B1: Giá +1.0 ATR → SL về entry\n"
       "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n");
 
    // Grid DCA
@@ -1395,11 +1395,11 @@ void SyncButtonAppearance()
       {
          case TRAIL_CLOSE:
          case TRAIL_SWING:
-            trailActive = (move >= g_cachedATR * 0.5);  // profit gate passed
+            trailActive = (move >= g_cachedATR * 1.0);  // profit gate passed
             break;
          case TRAIL_BE:
          {
-            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * 0.5);
+            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * 1.0);
             break;
          }
       }
@@ -2025,7 +2025,7 @@ void ManageTrail()
 
    // ═══════════════════════════════════════
    // TRAIL_BE: Breakeven first, then step 1 ATR
-   // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5 ATR
+   // Phase 1 (per-tick): Move SL to breakeven when profit >= 1.0 ATR
    // Phase 2 (per-tick): Step SL in 1 ATR increments
    // ═══════════════════════════════════════
    if(g_trailRef == TRAIL_BE)
@@ -2034,12 +2034,11 @@ void ManageTrail()
 
       double fullATR = g_cachedATR;
       if(fullATR <= 0) return;
-      double halfATR = fullATR * 0.5;
 
-      // Phase 1: Move to breakeven when profit >= 0.5 ATR
+      // Phase 1: Move to breakeven when profit >= 1.0 ATR
       if(!g_beReached)
       {
-         if(moveFromEntry >= halfATR)
+         if(moveFromEntry >= fullATR)
          {
             double beSL = NormPrice(refEntry);
             bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
@@ -2050,7 +2049,7 @@ void ManageTrail()
                g_beReached = true;
                g_beStepLevel = 0;
                s_lastTrailMs = nowMs;
-               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 0.5 ATR)",
+               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 1.0 ATR)",
                      DoubleToString(beSL, _Digits)));
                ModifySL(beSL);
             }
@@ -2065,10 +2064,10 @@ void ManageTrail()
       }
 
       // Phase 2: Step SL in 1 ATR increments
-      // Level 1 reached (price +1.5 ATR from entry) → SL = entry + 1 ATR
-      // Level 2 reached (price +2.5 ATR)            → SL = entry + 2 ATR
-      // Level N reached (price +(N+0.5) ATR)        → SL = entry + N ATR
-      int reachedLevel = (int)MathFloor((moveFromEntry - halfATR) / fullATR);
+      // Level 1 reached (price +2.0 ATR from entry) → SL = entry + 1 ATR
+      // Level 2 reached (price +3.0 ATR)            → SL = entry + 2 ATR
+      // Level N reached (price +(N+1) ATR)           → SL = entry + N ATR
+      int reachedLevel = (int)MathFloor((moveFromEntry - fullATR) / fullATR);
       if(reachedLevel <= 0) reachedLevel = 0;
       if(reachedLevel <= g_beStepLevel) return;
 
@@ -2091,14 +2090,14 @@ void ManageTrail()
 
    // ═══════════════════════════════════════
    // TRAIL_CLOSE (per-bar) / TRAIL_SWING (per-bar)
-   // Continuous trail with 0.5 ATR profit gate
+   // Continuous trail with 1.0 ATR profit gate
    // ═══════════════════════════════════════
 
    // Both CLOSE and SWING: per-bar only
    if(!isNewBar) return;
 
-   // Minimum profit gate: don't trail until price moved >= 0.5 ATR from entry
-   if(moveFromEntry < g_cachedATR * 0.5)
+   // Minimum profit gate: don't trail until price moved >= 1.0 ATR from entry
+   if(moveFromEntry < g_cachedATR * 1.0)
       return;
 
    double trailDist = g_cachedATR * InpTrailATRFactor;
