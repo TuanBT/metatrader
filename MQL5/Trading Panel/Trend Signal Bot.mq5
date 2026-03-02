@@ -711,12 +711,35 @@ void OpenTrade(bool isBuy, double atrValue)
       Print(StringFormat("[TREND BOT] %s %.2f @ %s | Lot=%s | No SL/TP (Panel manages)",
             isBuy ? "BUY" : "SELL", lot,
             DoubleToString(price, _Digits), lotSource));
+
+      // ── Draw entry arrow on chart ──
+      DrawEntryArrow(isBuy, price, lot);
    }
    else
    {
       Print(StringFormat("[TREND BOT] OrderSend FAILED: %d - %s",
             res.retcode, res.comment));
    }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CHART MARKERS
+// ════════════════════════════════════════════════════════════════════
+void DrawEntryArrow(bool isBuy, double price, double lot)
+{
+   static int arrowId = 0;
+   arrowId++;
+   string name = StringFormat("TBot_Entry_%d", arrowId);
+
+   ObjectCreate(0, name, isBuy ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0,
+                TimeCurrent(), price);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, isBuy ? COL_GREEN : COL_RED);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetString (0, name, OBJPROP_TEXT,
+      StringFormat("%s %.2f @ %s", isBuy ? "BUY" : "SELL",
+                   lot, DoubleToString(price, _Digits)));
+   ChartRedraw();
 }
 
 // ════════════════════════════════════════════════════════════════════
