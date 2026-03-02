@@ -35,10 +35,8 @@ enum ENUM_SL_MODE
 
 enum ENUM_TRAIL_MODE
 {
-   TRAIL_PRICE  = 0,  // ATR/2 from live price
-   TRAIL_CLOSE  = 1,  // ATR/2 from bar[1] close
-   TRAIL_SWING  = 2,  // ATR/2 from swing extreme (N bars)
-   TRAIL_STEP   = 3,  // Ratchet: SL steps up by 1R increments
+   TRAIL_CLOSE  = 1,  // ATR/2 from bar[1] close (per-bar)
+   TRAIL_SWING  = 2,  // ATR/2 from swing extreme (per-bar)
    TRAIL_BE     = 4,  // Breakeven first, then step 1 ATR
    TRAIL_NONE   = 5,  // No auto trail
 };
@@ -147,10 +145,8 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_SEC_ORDER  PREFIX "sec_order"
 // ORDER MANAGEMENT buttons
 #define OBJ_TRAIL_BTN  PREFIX "trail_btn"
-#define OBJ_TM_PRICE   PREFIX "tm_price"
 #define OBJ_TM_CLOSE   PREFIX "tm_close"
 #define OBJ_TM_SWING   PREFIX "tm_swing"
-#define OBJ_TM_STEP    PREFIX "tm_step"
 #define OBJ_TM_BE      PREFIX "tm_be"
 #define OBJ_GRID_BTN   PREFIX "grid_btn"
 #define OBJ_GRID_LVL   PREFIX "grid_lvl"
@@ -234,10 +230,8 @@ double   g_cachedATR  = 0;        // ATR cached per bar (refreshed on new bar)
 int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
 bool     g_trailEnabled = false;
 ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail mode (changeable from panel)
-int      g_stepLevel    = 0;       // Step trail: current ratchet level (0=entry, 1=+1R, 2=+2R...)
-double   g_stepSize     = 0;       // Step trail: locked step size (normal SL dist at entry)
 bool     g_beReached    = false;   // BE trail: whether SL has been moved to breakeven
-int      g_beStepLevel  = 0;       // BE trail Phase 2: step level (0=BE, 1=+0.5R, 2=+1R...)
+int      g_beStepLevel  = 0;       // BE trail Phase 2: step level (0=BE, 1=+1ATR, 2=+2ATR...)
 bool     g_panelCollapsed = false;
 bool     g_linesHidden    = false;
 bool     g_settingsExpanded = true;
@@ -1170,8 +1164,8 @@ void CreatePanel()
       MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
                  "Close", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
-      MakeButton(OBJ_TM_STEP, bx, y, mw, 26,
-                 "Step", C'140,140,160', C'50,50,70', 7);
+      MakeButton(OBJ_TM_SWING, bx, y, mw, 26,
+                 "Swing", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_BE, bx, y, mw, 26,
                  "BE", C'140,140,160', C'50,50,70', 7);
@@ -1298,11 +1292,11 @@ void CreatePanel()
       "Lọc nhiễu bóng nến, ổn định nhất.\n"
       "Kích hoạt sau khi giá đi >= 0.5 ATR.");
 
-   ObjectSetString(0, OBJ_TM_STEP, OBJPROP_TOOLTIP,
-      "STEP — Nhảy bậc 1R (~3 giây/lần)\n"
-      "+1R → SL về entry (hòa vốn)\n"
-      "+2R → SL lên +1R, +3R → +2R...\n"
-      "Khoá lời từng bậc. Không cần profit gate.");
+   ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
+      "SWING — Theo swing high/low (mỗi nến mới)\n"
+      "SL = SwingHigh/Low(" + IntegerToString(InpTrailLookback) + " bars) − ATR×0.5\n"
+      "Cho giá room retest, phù hợp swing trade.\n"
+      "Kích hoạt sau khi giá đi >= 0.5 ATR.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
       "BE — Chỉ dời SL (không đóng lệnh)\n"
@@ -1373,8 +1367,8 @@ void SyncButtonAppearance()
    // Blue = selected but waiting for activation
    // Green = selected AND actively trailing
    // Gray = not selected
-   string modeObjs[] = {OBJ_TM_CLOSE, OBJ_TM_STEP, OBJ_TM_BE};
-   ENUM_TRAIL_MODE modes[] = {TRAIL_CLOSE, TRAIL_STEP, TRAIL_BE};
+   string modeObjs[] = {OBJ_TM_CLOSE, OBJ_TM_SWING, OBJ_TM_BE};
+   ENUM_TRAIL_MODE modes[] = {TRAIL_CLOSE, TRAIL_SWING, TRAIL_BE};
 
    // Determine if trail is actively tracking (conditions met)
    bool trailActive = false;
@@ -1389,16 +1383,9 @@ void SyncButtonAppearance()
       switch(g_trailRef)
       {
          case TRAIL_CLOSE:
+         case TRAIL_SWING:
             trailActive = (move >= g_cachedATR * 0.5);  // profit gate passed
             break;
-         case TRAIL_STEP:
-         {
-            // Check real-time: has price moved 1R+ from entry?
-            double stepSz = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
-            if(stepSz <= 0) stepSz = g_riskDist;
-            trailActive = (g_stepLevel > 0) || (stepSz > 0 && move >= stepSz);
-            break;
-         }
          case TRAIL_BE:
          {
             trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * 0.5);
@@ -1707,7 +1694,6 @@ bool ExecuteTrade(bool isBuy)
       g_currentSL = sl;
       g_riskDist  = dist;
       g_tpDist    = g_cachedATR;              // TP at 1 ATR (raw)
-      g_stepSize  = CalcNormalSLDist();       // lock step size for TRAIL_STEP (1R)
       
       // Lock grid ATR/mult if grid enabled at trade entry
       if(g_gridEnabled && g_gridBaseATR <= 0)
@@ -2025,46 +2011,7 @@ void ManageTrail()
    double moveFromEntry = g_isBuy ? (cur - refEntry) : (refEntry - cur);
 
    // ═══════════════════════════════════════
-   // TRAIL_STEP: Ratchet SL in 1R steps (per-tick)
-   // Entry → +1R → +2R → +3R...
-   // ═══════════════════════════════════════
-   if(g_trailRef == TRAIL_STEP)
-   {
-      if(!tickAllowed) return;  // throttle per-tick
-
-      // Use locked step size (normal SL distance from trade entry)
-      double stepSize = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
-      if(stepSize <= 0) stepSize = g_riskDist;  // fallback
-      if(stepSize <= 0) return;
-
-      // Calculate which step level price has reached
-      int reachedLevel = (int)MathFloor(moveFromEntry / stepSize);
-      if(reachedLevel <= g_stepLevel) return;  // Not a new step
-
-      // Advance to new step level
-      g_stepLevel = reachedLevel;
-      double newSL = g_isBuy
-         ? NormPrice(refEntry + (g_stepLevel - 1) * stepSize)
-         : NormPrice(refEntry - (g_stepLevel - 1) * stepSize);
-
-      // Step 1 = breakeven (entry), Step 2 = +1R, Step 3 = +2R...
-      // So SL = entry + (level-1) × R
-
-      // Safety checks
-      bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
-      if(!advance) return;
-      if(g_isBuy  && newSL >= bid2) return;
-      if(!g_isBuy && newSL <= ask2) return;
-
-      s_lastTrailMs = nowMs;
-      Print(StringFormat("[TRAIL-STEP] Level %d → SL=%s (+%dR from entry)",
-            g_stepLevel, DoubleToString(newSL, _Digits), g_stepLevel - 1));
-      ModifySL(newSL);
-      return;
-   }
-
-   // ═══════════════════════════════════════
-   // TRAIL_BE: Breakeven first, then step 0.5 ATR
+   // TRAIL_BE: Breakeven first, then step 1 ATR
    // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5 ATR
    // Phase 2 (per-tick): Step SL in 1 ATR increments
    // ═══════════════════════════════════════
@@ -2130,14 +2077,12 @@ void ManageTrail()
    }
 
    // ═══════════════════════════════════════
-   // TRAIL_PRICE (per-tick) / TRAIL_CLOSE (per-bar) / TRAIL_SWING (per-bar)
+   // TRAIL_CLOSE (per-bar) / TRAIL_SWING (per-bar)
    // Continuous trail with 0.5 ATR profit gate
    // ═══════════════════════════════════════
 
-   // TRAIL_PRICE: per-tick (throttled ~3s)
-   // TRAIL_CLOSE / TRAIL_SWING: per-bar only
-   if(g_trailRef == TRAIL_PRICE && !tickAllowed) return;
-   if((g_trailRef == TRAIL_CLOSE || g_trailRef == TRAIL_SWING) && !isNewBar) return;
+   // Both CLOSE and SWING: per-bar only
+   if(!isNewBar) return;
 
    // Minimum profit gate: don't trail until price moved >= 0.5 ATR from entry
    if(moveFromEntry < g_cachedATR * 0.5)
@@ -2150,11 +2095,6 @@ void ManageTrail()
 
    switch(g_trailRef)
    {
-      case TRAIL_PRICE:
-      {
-         refPrice = g_isBuy ? bid2 : ask2;
-         break;
-      }
       case TRAIL_CLOSE:
       {
          refPrice = iClose(_Symbol, _Period, 1);
@@ -2195,8 +2135,6 @@ void ManageTrail()
    if(g_isBuy  && newSL >= bid2) return;
    if(!g_isBuy && newSL <= ask2) return;
 
-   if(g_trailRef == TRAIL_PRICE)
-      s_lastTrailMs = nowMs;
    ModifySL(newSL);
 }
 
@@ -2324,7 +2262,6 @@ void ManageGrid()
    if(OrderSend(req, res))
    {
       g_gridLevel = nextLevel;
-      g_stepLevel = 0;  // Reset step trail — avgEntry shifted, recalculate from scratch
       g_beReached = false;  // Reset BE trail — new DCA changes reference entry
       g_beStepLevel = 0;
       double avgEntry = GetAvgEntry();
@@ -2440,10 +2377,6 @@ void SyncPositionState()
    g_riskDist  = MathAbs(g_entryPx - g_currentSL);
    if(g_tpDist <= 0)
       g_tpDist = g_cachedATR;  // TP at 1 ATR
-
-   // Lock step size for TRAIL_STEP (if not already locked)
-   if(g_stepSize <= 0)
-      g_stepSize = CalcNormalSLDist();
 
    // Lock grid ATR/mult if grid enabled but not yet locked
    // (covers pending order fill scenario where ExecuteTrade was never called)
@@ -2623,8 +2556,6 @@ void OnTick()
       g_gridBaseMult = 0;
       // Restore grid to user's intended state
       g_gridEnabled = g_gridUserEnabled;
-      g_stepLevel = 0;
-      g_stepSize  = 0;
       g_beReached = false;
       g_beStepLevel = 0;
    }
@@ -2854,8 +2785,6 @@ void OnChartEvent(const int id,
          g_gridBaseMult = 0;
 
          // Reset Trail state
-         g_stepLevel = 0;
-         g_stepSize  = 0;
          g_beReached = false;
          g_beStepLevel = 0;
          if(g_gridEnabled)
@@ -2948,13 +2877,12 @@ void OnChartEvent(const int id,
          Print("[TRAIL] Mode → Close (ATR/2 from bar[1] close)");
          SyncButtonAppearance();
       }
-      // ── Trail mode: Step ──
-      else if(sparam == OBJ_TM_STEP)
+      // ── Trail mode: Swing ──
+      else if(sparam == OBJ_TM_SWING)
       {
-         ObjectSetInteger(0, OBJ_TM_STEP, OBJPROP_STATE, false);
-         g_trailRef = TRAIL_STEP;
-         g_stepLevel = 0;  // Reset step level on mode change
-         Print("[TRAIL] Mode → Step (SL ratchets up by 1R increments)");
+         ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_STATE, false);
+         g_trailRef = TRAIL_SWING;
+         Print("[TRAIL] Mode → Swing (ATR/2 from swing high/low)");
          SyncButtonAppearance();
       }
       // ── Trail mode: BE ──
