@@ -2662,9 +2662,9 @@ void OnTick()
       if(wasGridMax && !wasTrailProfit)
       {
          string gvPause = "TP_BotPause_" + _Symbol;
-         GlobalVariableSet(gvPause, 1.0);
-         Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Publishing %s=1",
-               g_gridLevel, g_gridMaxLevel, gvPause));
+         GlobalVariableSet(gvPause, (double)TimeCurrent());
+         Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Publishing %s=%d (timestamp)",
+               g_gridLevel, g_gridMaxLevel, gvPause, (int)TimeCurrent()));
       }
       else
       {

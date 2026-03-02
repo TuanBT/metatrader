@@ -3,9 +3,10 @@
 //| 3 same-direction candles with wick structure → entry              |
 //| Filter: ATR candle size, wick rule (higher lows / lower highs)   |
 //| v1.01: Breakout entry — 2 confirmed candles + live breakout     |
+//| v1.02: Auto-resume after N bars pause (Large SL)               |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.01"
-#property version   "1.01"
+#property copyright "Tuan v1.02"
+#property version   "1.02"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -14,6 +15,7 @@
 input group           "══ Strategy ══"
 input double          InpATRMinMult     = 0.3;        // Min candle range × ATR (0 = off)
 input int             InpATRPeriod      = 14;         // ATR period
+input int             InpPauseBars      = 10;         // Auto-resume after N bars (0 = manual only)
 
 input group           "══ General ══"
 input int             InpDeviation      = 20;         // Max slippage (points)
@@ -66,6 +68,7 @@ int g_atrHandle;
 datetime g_lastSignalBar = 0;
 bool     g_botEnabled    = true;
 bool     g_paused        = false;   // Auto-paused by Panel (large SL)
+datetime g_pauseTime     = 0;       // Timestamp when pause was triggered
 bool     g_hasPos        = false;
 bool     g_infoExpanded  = false;
 double   g_cachedATR     = 0;
@@ -299,7 +302,17 @@ void UpdatePanel()
    // ── Start/Stop button ──
    if(g_paused)
    {
-      ObjectSetString (0, OBJ_START, OBJPROP_TEXT, "⚠ PAUSED (Large SL)");
+      // Show countdown if auto-resume is enabled
+      if(InpPauseBars > 0 && g_pauseTime > 0)
+      {
+         int barsSincePause = iBarShift(_Symbol, _Period, g_pauseTime);
+         int barsLeft = InpPauseBars - barsSincePause;
+         if(barsLeft < 0) barsLeft = 0;
+         ObjectSetString(0, OBJ_START, OBJPROP_TEXT,
+            StringFormat("⚠ PAUSED | %d bars left", barsLeft));
+      }
+      else
+         ObjectSetString(0, OBJ_START, OBJPROP_TEXT, "⚠ PAUSED (Large SL)");
       ObjectSetInteger(0, OBJ_START, OBJPROP_BGCOLOR, C'140,60,20');
       ObjectSetInteger(0, OBJ_START, OBJPROP_BORDER_COLOR, C'180,80,30');
    }
@@ -584,15 +597,34 @@ void UpdateCandleState()
 // ════════════════════════════════════════════════════════════════════
 void OnTick()
 {
-   // Check pause from Panel
+   // Check pause from Panel (GV value = timestamp of pause event)
    string gvPause = "TP_BotPause_" + _Symbol;
    if(!g_paused && GlobalVariableCheck(gvPause))
    {
-      if(GlobalVariableGet(gvPause) >= 1.0)
+      double gvVal = GlobalVariableGet(gvPause);
+      if(gvVal >= 1.0)
       {
          g_paused = true;
          g_botEnabled = false;
-         Print("[CC BOT] Auto-paused by Panel (Large SL detected)");
+         g_pauseTime = (datetime)(int)gvVal;
+         Print(StringFormat("[CC BOT] Auto-paused by Panel (Large SL) | Pause time=%s | Resume after %d bars",
+               TimeToString(g_pauseTime, TIME_DATE|TIME_MINUTES), InpPauseBars));
+         UpdatePanel();
+      }
+   }
+
+   // Auto-resume: check if enough bars have passed since pause
+   if(g_paused && InpPauseBars > 0 && g_pauseTime > 0)
+   {
+      int barsSincePause = iBarShift(_Symbol, _Period, g_pauseTime);
+      if(barsSincePause >= InpPauseBars)
+      {
+         g_paused = false;
+         g_botEnabled = true;
+         g_pauseTime = 0;
+         if(GlobalVariableCheck(gvPause))
+            GlobalVariableDel(gvPause);
+         Print(StringFormat("[CC BOT] Auto-resumed after %d bars pause", barsSincePause));
          UpdatePanel();
       }
    }
@@ -657,6 +689,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       if(g_botEnabled && g_paused)
       {
          g_paused = false;
+         g_pauseTime = 0;
          string gvPause = "TP_BotPause_" + _Symbol;
          if(GlobalVariableCheck(gvPause))
             GlobalVariableDel(gvPause);
