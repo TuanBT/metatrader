@@ -6,9 +6,10 @@
 //|  • Risk $ input → auto-calculated lot size                       |
 //|  • Auto SL: ATR / Last-N-bars / Fixed pips                       |
 //|  • One-click BUY / SELL                                          |
-//|  • Auto trailing SL: Candle-based or R-based                     |
+//|  • Auto trailing SL: Wick / Swing / Breakeven                    |
+//|  • Auto TP: 50% partial close at 0.5 or 1 ATR                    |
+//|  • Grid DCA: auto DCA with 1 ATR spacing                        |
 //|  • Dark/Light chart themes                                      |
-//|  • Dark chart theme (auto-apply on init)                         |
 //|                                                                  |
 //| Usage:                                                           |
 //|  1. Attach EA to chart                                           |
@@ -16,7 +17,6 @@
 //|  3. Click BUY or SELL → order fires instantly                    |
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
-//|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
 #property copyright "Tuan v1.70"
 #property version   "1.70"
@@ -221,7 +221,7 @@ double   g_entryPx    = 0;
 double   g_origSL     = 0;
 double   g_currentSL  = 0;
 double   g_riskDist   = 0;        // |entry − origSL| actual SL distance
-double   g_tpDist     = 0;        // TP distance = 1 ATR (raw, not multiplied)
+double   g_tpDist     = 0;        // TP distance = factor × ATR (0.5 or 1.0)
 datetime g_lastBar    = 0;
 
 int      g_theme      = 0;       // 0=Dark, 1=Light
@@ -243,7 +243,7 @@ ulong    g_manageMagic  = 0;        // Effective magic for position monitoring
 
 // Auto TP (Partial Take Profit) state
 bool     g_autoTPEnabled  = false;
-bool     g_tp1Hit         = false;    // TP1 (50% @1ATR) taken
+bool     g_tp1Hit         = false;    // TP1 (50% @ g_tpATRFactor ATR) taken
 double   g_tpATRFactor    = 1.0;     // TP1 distance factor: 0.5 or 1.0 ATR
 
 // Grid DCA state
@@ -1562,7 +1562,7 @@ void UpdatePanel()
       // Left: Lot + Direction (+ DCA count)
       string statusTxt;
       if(nPos > 1)
-         statusTxt = StringFormat("%.2f %s  x%d", totalLots, dir, nPos);
+         statusTxt = StringFormat("%.2f %s | x%d", totalLots, dir, nPos);
       else
          statusTxt = StringFormat("%.2f %s", totalLots, dir);
       ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT, statusTxt);
@@ -1687,9 +1687,6 @@ void UpdatePanel()
       ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT, " ");
       ObjectSetString(0, OBJ_TITLE_LOCK, OBJPROP_TEXT, " ");
    }
-
-   // Sync button colors (trail active indicator, etc.)
-   SyncButtonAppearance();
 
    ChartRedraw();
 }
@@ -2241,7 +2238,7 @@ void ManageTrail()
 }
 
 // ════════════════════════════════════════════════════════════════════
-// AUTO TP – Partial Take Profit: close 50% at 1 ATR
+// AUTO TP – Partial Take Profit: close 50% at g_tpATRFactor × ATR
 // ════════════════════════════════════════════════════════════════════
 void ManageAutoTP()
 {
@@ -3038,7 +3035,7 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_STATE, false);
          g_trailRef = TRAIL_CLOSE;
-         Print("[TRAIL] Mode → Close (ATR/2 from bar[1] close)");
+         Print("[TRAIL] Mode → Close (bar[1] wick, min 0.5 ATR)");
          SyncButtonAppearance();
       }
       // ── Trail mode: Swing ──
@@ -3046,7 +3043,7 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_STATE, false);
          g_trailRef = TRAIL_SWING;
-         Print("[TRAIL] Mode → Swing (ATR/2 from swing high/low)");
+         Print("[TRAIL] Mode → Swing (nearest swing low/high, min 0.5 ATR)");
          SyncButtonAppearance();
       }
       // ── Trail mode: BE ──
@@ -3097,9 +3094,8 @@ void OnChartEvent(const int id,
             // Warning about total risk
             Print(StringFormat("[GRID] WARNING: Max total risk = $%.0f (projected with min-lot clipping)",
                   maxRisk));
-            Print(StringFormat("[GRID] ENABLED | Max=%d Spacing=%.1fxATR | SL widened to %.1fxATR",
-                  g_gridMaxLevel, g_atrMult,
-                  (g_gridMaxLevel + 1) * g_atrMult));
+            Print(StringFormat("[GRID] ENABLED | Max=%d Spacing=1.0xATR | SL widened to %dxATR",
+                  g_gridMaxLevel, g_gridMaxLevel + 1));
 
             // Widen SL on existing positions to accommodate grid levels
             if(g_hasPos)
