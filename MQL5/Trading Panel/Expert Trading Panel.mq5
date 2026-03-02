@@ -1305,10 +1305,10 @@ void CreatePanel()
       "Khoá lời từng bậc. Không cần profit gate.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
-      "BE — Breakeven + Trail\n"
-      "B1: Giá đi +0.5ATR → SL về entry (~3s/lần)\n"
-      "B2: Sau đó trail theo Close (mỗi nến mới)\n"
-      "Bảo vệ vốn sớm, rồi để trend chạy.");
+      "BE — Chỉ dời SL (không đóng lệnh)\n"
+      "B1: Giá +0.5 ATR → SL về entry (hòa vốn)\n"
+      "B2: Mỗi +0.5 ATR tiếp → SL nhảy lên 0.5 ATR\n"
+      "Chỉ dời SL, không đóng lệnh. Phối hợp Auto TP.");
 
    // Grid DCA
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,
@@ -1322,10 +1322,10 @@ void CreatePanel()
 
    // Auto TP
    ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TOOLTIP,
-      "Auto Take Profit — Bật/Tắt\n"
-      "Đóng 50% lệnh khi lãi đạt 1 ATR.\n"
-      "Nếu lot = 0.01 lot → bỏ qua,\n"
-      "không đóng được nhưng vẫn cho bật.");
+      "Auto TP — Chỉ đóng lệnh (không dời SL)\n"
+      "Đóng 50% lối lượng khi lãi đạt 1 ATR.\n"
+      "Nếu lot = min → bỏ qua (không đóng được).\n"
+      "Phối hợp Trail BE để dời SL phần còn lại.");
 
    // Close buttons
    ObjectSetString(0, OBJ_CLOSE50_BTN, OBJPROP_TOOLTIP,
