@@ -39,7 +39,7 @@ enum ENUM_TRAIL_MODE
    TRAIL_CLOSE  = 1,  // ATR/2 from bar[1] close
    TRAIL_SWING  = 2,  // ATR/2 from swing extreme (N bars)
    TRAIL_STEP   = 3,  // Ratchet: SL steps up by 1R increments
-   TRAIL_BE     = 4,  // Breakeven first, then step 0.5 ATR
+   TRAIL_BE     = 4,  // Breakeven first, then step 1 ATR
    TRAIL_NONE   = 5,  // No auto trail
 };
 
@@ -1307,7 +1307,7 @@ void CreatePanel()
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
       "BE — Chỉ dời SL (không đóng lệnh)\n"
       "B1: Giá +0.5 ATR → SL về entry (hòa vốn)\n"
-      "B2: Mỗi +0.5 ATR tiếp → SL nhảy lên 0.5 ATR\n"
+      "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n"
       "Chỉ dời SL, không đóng lệnh. Phối hợp Auto TP.");
 
    // Grid DCA
@@ -2066,15 +2066,15 @@ void ManageTrail()
    // ═══════════════════════════════════════
    // TRAIL_BE: Breakeven first, then step 0.5 ATR
    // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5 ATR
-   // Phase 2 (per-tick): Step SL in 0.5 ATR increments
+   // Phase 2 (per-tick): Step SL in 1 ATR increments
    // ═══════════════════════════════════════
    if(g_trailRef == TRAIL_BE)
    {
       if(!tickAllowed) return;  // throttle per-tick for both phases
 
-      // Step size = 0.5 ATR (uses live ATR, adapts to current volatility)
-      double halfATR = g_cachedATR * 0.5;
-      if(halfATR <= 0) return;
+      double fullATR = g_cachedATR;
+      if(fullATR <= 0) return;
+      double halfATR = fullATR * 0.5;
 
       // Phase 1: Move to breakeven when profit >= 0.5 ATR
       if(!g_beReached)
@@ -2104,17 +2104,18 @@ void ManageTrail()
          return;
       }
 
-      // Phase 2: Step SL in 0.5 ATR increments
-      // Level 1 reached (price +1 ATR from entry) → SL = entry + 0.5 ATR
-      // Level 2 reached (price +1.5 ATR)          → SL = entry + 1.0 ATR
-      // Level N reached (price +0.5*(N+1) ATR)    → SL = entry + 0.5*N ATR
-      int reachedLevel = (int)MathFloor(moveFromEntry / halfATR) - 1;  // -1 because BE was at +0.5 ATR
+      // Phase 2: Step SL in 1 ATR increments
+      // Level 1 reached (price +1.5 ATR from entry) → SL = entry + 1 ATR
+      // Level 2 reached (price +2.5 ATR)            → SL = entry + 2 ATR
+      // Level N reached (price +(N+0.5) ATR)        → SL = entry + N ATR
+      int reachedLevel = (int)MathFloor((moveFromEntry - halfATR) / fullATR);
+      if(reachedLevel <= 0) reachedLevel = 0;
       if(reachedLevel <= g_beStepLevel) return;
 
       g_beStepLevel = reachedLevel;
       double newSL = g_isBuy
-         ? NormPrice(refEntry + g_beStepLevel * halfATR)
-         : NormPrice(refEntry - g_beStepLevel * halfATR);
+         ? NormPrice(refEntry + g_beStepLevel * fullATR)
+         : NormPrice(refEntry - g_beStepLevel * fullATR);
 
       bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
       if(!advance) return;
@@ -2122,8 +2123,8 @@ void ManageTrail()
       if(!g_isBuy && newSL <= ask2) return;
 
       s_lastTrailMs = nowMs;
-      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%.1f ATR from entry)",
-            g_beStepLevel, DoubleToString(newSL, _Digits), g_beStepLevel * 0.5));
+      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%d ATR from entry)",
+            g_beStepLevel, DoubleToString(newSL, _Digits), g_beStepLevel));
       ModifySL(newSL);
       return;
    }
@@ -2963,7 +2964,7 @@ void OnChartEvent(const int id,
          g_trailRef = TRAIL_BE;
          g_beReached = false;  // Reset BE state on mode change
          g_beStepLevel = 0;
-         Print("[TRAIL] Mode → BE (breakeven first, then step 0.5 ATR)");
+         Print("[TRAIL] Mode → BE (breakeven first, then step 1 ATR)");
          SyncButtonAppearance();
       }
       // ── Grid DCA toggle ──
