@@ -1155,39 +1155,6 @@ void CreatePanel()
    MakeLabel(OBJ_SEC_ORDER, IX + 2, y - 5, " ORDER MANAGEMENT ", C'100,110,140', 7, FONT_MAIN);
    y += 8;
 
-   // ── Trail SL toggle + mode buttons (1 row) ──
-   //   Modes: Close | Step | BE
-   {
-      int bx = PX + 5;
-      int tw = 78;   // trail toggle width
-      int gp = 2;    // gap between buttons
-      int mw = (IW - 2 - tw - 4 * gp) / 3;  // mode button width (3 modes)
-      MakeButton(OBJ_TRAIL_BTN, bx, y, tw, 26,
-                 "Trail: OFF", C'180,180,200', C'60,60,85', 8);
-      bx += tw + gp;
-      MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
-                 "Close", C'140,140,160', C'50,50,70', 7);
-      bx += mw + gp;
-      MakeButton(OBJ_TM_SWING, bx, y, mw, 26,
-                 "Swing", C'140,140,160', C'50,50,70', 7);
-      bx += mw + gp;
-      MakeButton(OBJ_TM_BE, bx, y, mw, 26,
-                 "BE", C'140,140,160', C'50,50,70', 7);
-   }
-   y += 30;
-
-   // ── Grid DCA toggle + level selector + delay selector ──
-   int gridDlyW = 32;  // width of delay cycle button
-   int gridLvlW = 32;  // width of level cycle button
-   int gridBtnW = IW - 2 - gridLvlW - 2 - gridDlyW - 2;  // main grid button width
-   MakeButton(OBJ_GRID_BTN, PX + 5, y, gridBtnW, 26,
-              "Grid DCA: OFF", C'180,180,200', C'60,60,85', 8);
-   MakeButton(OBJ_GRID_LVL, PX + 5 + gridBtnW + 2, y, gridLvlW, 26,
-              StringFormat("x%d", g_gridMaxLevel), C'180,200,255', C'40,50,80', 8);
-   MakeButton(OBJ_GRID_DLY, PX + 5 + gridBtnW + 2 + gridLvlW + 2, y, gridDlyW, 26,
-              StringFormat("%dm", g_gridDelay), C'200,180,255', C'50,40,80', 8);
-   y += 28;
-
    // ── Auto TP toggle + ATR factor selector (0.5 / 1) ──
    {
       int tpFcW = 30;  // width of each factor button
@@ -1204,6 +1171,39 @@ void CreatePanel()
                  "0.5", txt05, bg05, 8);
       MakeButton(OBJ_TP_10, PX + 5 + tpBtnW + tpGp + tpFcW + tpGp, y, tpFcW, 26,
                  "1", txt10, bg10, 8);
+   }
+   y += 28;
+
+   // ── Grid DCA toggle + level selector + delay selector ──
+   int gridDlyW = 32;  // width of delay cycle button
+   int gridLvlW = 32;  // width of level cycle button
+   int gridBtnW = IW - 2 - gridLvlW - 2 - gridDlyW - 2;  // main grid button width
+   MakeButton(OBJ_GRID_BTN, PX + 5, y, gridBtnW, 26,
+              "Grid DCA: OFF", C'180,180,200', C'60,60,85', 8);
+   MakeButton(OBJ_GRID_LVL, PX + 5 + gridBtnW + 2, y, gridLvlW, 26,
+              StringFormat("x%d", g_gridMaxLevel), C'180,200,255', C'40,50,80', 8);
+   MakeButton(OBJ_GRID_DLY, PX + 5 + gridBtnW + 2 + gridLvlW + 2, y, gridDlyW, 26,
+              StringFormat("%dm", g_gridDelay), C'200,180,255', C'50,40,80', 8);
+   y += 30;
+
+   // ── Trail SL toggle + mode buttons (1 row) ──
+   //   Modes: Close | Swing | BE
+   {
+      int bx = PX + 5;
+      int tw = 78;   // trail toggle width
+      int gp = 2;    // gap between buttons
+      int mw = (IW - 2 - tw - 4 * gp) / 3;  // mode button width (3 modes)
+      MakeButton(OBJ_TRAIL_BTN, bx, y, tw, 26,
+                 "Trail: OFF", C'180,180,200', C'60,60,85', 8);
+      bx += tw + gp;
+      MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
+                 "Close", C'140,140,160', C'50,50,70', 7);
+      bx += mw + gp;
+      MakeButton(OBJ_TM_SWING, bx, y, mw, 26,
+                 "Swing", C'140,140,160', C'50,50,70', 7);
+      bx += mw + gp;
+      MakeButton(OBJ_TM_BE, bx, y, mw, 26,
+                 "BE", C'140,140,160', C'50,50,70', 7);
    }
    y += 28;
 
