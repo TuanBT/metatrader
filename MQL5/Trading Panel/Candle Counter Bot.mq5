@@ -58,11 +58,11 @@ input ulong           InpMagic          = 99999;      // Magic Number
 // Layout
 #define BOT_PX      15
 #define BOT_PY      25
-#define BOT_W       200
-#define BOT_H       180
-#define BOT_H_INFO  290
-#define BOT_ROW     22
-#define BOT_PAD     6
+#define BOT_W       220
+#define BOT_H       195
+#define BOT_H_INFO  320
+#define BOT_ROW     24
+#define BOT_PAD     8
 
 // ════════════════════════════════════════════════════════════════════
 // GLOBALS
@@ -193,7 +193,7 @@ void OnDeinit(const int reason)
 // ════════════════════════════════════════════════════════════════════
 // UI PANEL
 // ════════════════════════════════════════════════════════════════════
-void MakeLabel(string name, int x, int y, string text, color clr, int fontSize=8, string font="Consolas")
+void MakeLabel(string name, int x, int y, string text, color clr, int fontSize=9, string font="Consolas")
 {
    ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
@@ -205,7 +205,7 @@ void MakeLabel(string name, int x, int y, string text, color clr, int fontSize=8
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
 }
 
-void MakeButton(string name, int x, int y, int w, int h, string text, color bgClr, color txtClr, int fontSize=8)
+void MakeButton(string name, int x, int y, int w, int h, string text, color bgClr, color txtClr, int fontSize=9)
 {
    ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
@@ -239,12 +239,12 @@ void CreatePanel()
    int row = y + BOT_PAD;
 
    // Row 1: Title
-   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "CC Bot v1.01", C'170,180,215', 9, "Segoe UI Semibold");
+   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "CC Bot v1.01", C'170,180,215', 10, "Segoe UI Semibold");
    row += BOT_ROW;
 
    // Row 2: Start/Stop button
-   MakeButton(OBJ_START, x + BOT_PAD, row, BOT_W - 2*BOT_PAD, 22,
-              "Bot: ON", COL_BTN_ON, COL_WHITE, 9);
+   MakeButton(OBJ_START, x + BOT_PAD, row, BOT_W - 2*BOT_PAD, 24,
+              "Bot: ON", COL_BTN_ON, COL_WHITE, 10);
    row += 26;
 
    // Row 3: TF name labels (8 columns) — fixed width
@@ -252,38 +252,38 @@ void CreatePanel()
    for(int i = 0; i < g_numDisp && i < 8; i++)
    {
       string objName = BOT_PREFIX + "TF" + IntegerToString(i);
-      MakeLabel(objName, x + BOT_PAD + i * colW, row, g_dispName[i], COL_DIM, 7, "Consolas");
+      MakeLabel(objName, x + BOT_PAD + i * colW, row, g_dispName[i], COL_DIM, 9, "Consolas");
    }
-   row += 12;
+   row += 15;
 
    // Row 4: Arrow labels (8 columns) — same fixed width
    for(int i = 0; i < g_numDisp && i < 8; i++)
    {
       string objName = BOT_PREFIX + "Sig" + IntegerToString(i);
       string initText = (i == g_entryIdx) ? "[-]" : "-";
-      MakeLabel(objName, x + BOT_PAD + i * colW, row, initText, COL_DIM, 7, "Consolas");
+      MakeLabel(objName, x + BOT_PAD + i * colW, row, initText, COL_DIM, 9, "Consolas");
    }
-   row += 16;
+   row += 18;
 
    // Row 5: Position info
-   MakeLabel(OBJ_POS_INFO, x + BOT_PAD, row, "No position", COL_DIM, 8, "Consolas");
+   MakeLabel(OBJ_POS_INFO, x + BOT_PAD, row, "No position", COL_DIM, 9, "Consolas");
    row += BOT_ROW + 2;
 
    // Row 6: Force BUY / Force SELL + Info button
-   int infoBtnW = 24;
+   int infoBtnW = 26;
    int btnW = (BOT_W - 2*BOT_PAD - 4 - infoBtnW - 2) / 2;
-   MakeButton(OBJ_FORCE_BUY,  x + BOT_PAD,          row, btnW, 22, "Force BUY",  C'0,100,65', COL_WHITE, 8);
-   MakeButton(OBJ_FORCE_SELL, x + BOT_PAD + btnW + 4, row, btnW, 22, "Force SELL", C'140,40,40', COL_WHITE, 8);
-   MakeButton(OBJ_INFO_BTN, x + BOT_PAD + 2*btnW + 4 + 2, row, infoBtnW, 22, "?", C'60,60,85', C'180,180,200', 9);
-   row += 26;
+   MakeButton(OBJ_FORCE_BUY,  x + BOT_PAD,          row, btnW, 24, "Force BUY",  C'0,100,65', COL_WHITE, 9);
+   MakeButton(OBJ_FORCE_SELL, x + BOT_PAD + btnW + 4, row, btnW, 24, "Force SELL", C'140,40,40', COL_WHITE, 9);
+   MakeButton(OBJ_INFO_BTN, x + BOT_PAD + 2*btnW + 4 + 2, row, infoBtnW, 24, "?", C'60,60,85', C'180,180,200', 10);
+   row += 28;
 
    // Info section (hidden by default, 5 lines)
    int infoY = row;
-   MakeLabel(OBJ_INFO_L1, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
-   MakeLabel(OBJ_INFO_L2, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
-   MakeLabel(OBJ_INFO_L3, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
-   MakeLabel(OBJ_INFO_L4, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas"); infoY += 16;
-   MakeLabel(OBJ_INFO_L5, x + BOT_PAD, infoY, "", COL_DIM, 8, "Consolas");
+   MakeLabel(OBJ_INFO_L1, x + BOT_PAD, infoY, "", COL_DIM, 9, "Consolas"); infoY += 19;
+   MakeLabel(OBJ_INFO_L2, x + BOT_PAD, infoY, "", COL_DIM, 9, "Consolas"); infoY += 19;
+   MakeLabel(OBJ_INFO_L3, x + BOT_PAD, infoY, "", COL_DIM, 9, "Consolas"); infoY += 19;
+   MakeLabel(OBJ_INFO_L4, x + BOT_PAD, infoY, "", COL_DIM, 9, "Consolas"); infoY += 19;
+   MakeLabel(OBJ_INFO_L5, x + BOT_PAD, infoY, "", COL_DIM, 9, "Consolas");
    // Hide info labels initially
    ObjectSetInteger(0, OBJ_INFO_L1, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_INFO_L2, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
