@@ -18,8 +18,8 @@
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.72"
-#property version   "1.72"
+#property copyright "Tuan v1.73"
+#property version   "1.73"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -743,8 +743,8 @@ void UpdateTPGridLines()
          if(!g_tp1Hit)
             SetHLine(OBJ_TP1_LINE, tp1, C'0,200,83',
                      STYLE_DASH, 1,
-                     StringFormat("TP1 (%.1fATR) %." + IntegerToString(_Digits) + "f",
-                                  g_tpATRFactor, tp1));
+                     StringFormat("TP1 (%.1fx%.1f) %." + IntegerToString(_Digits) + "f",
+                                  g_tpATRFactor, g_atrMult, tp1));
          else
             HideHLine(OBJ_TP1_LINE);  // already taken
       }
@@ -980,7 +980,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.72", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.73", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1367,7 +1367,7 @@ void SyncButtonAppearance()
       {
          case TRAIL_CLOSE:
          case TRAIL_SWING:
-            trailActive = (move >= g_cachedATR * g_tpATRFactor);  // profit gate = TP factor
+            trailActive = (move >= g_cachedATR * g_tpATRFactor * g_atrMult);  // profit gate = TP dist
             break;
          case TRAIL_BE:
          {
@@ -1437,7 +1437,7 @@ void SyncButtonAppearance()
       if(StringFind(ObjectGetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT), "OFF") >= 0)
          ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
             g_tp1Hit ? "Auto TP: ON | TP1 \x2713"
-                     : StringFormat("Auto TP: ON | 50%%@%.1fATR", g_tpATRFactor));
+                     : StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
@@ -1557,7 +1557,7 @@ void UpdatePanel()
                   StringFormat("Auto TP: ON | Lot min (%.2f)", minLot));
             else
                ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-                  StringFormat("Auto TP: ON | 50%%@%.1fATR", g_tpATRFactor));
+                  StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
          }
       }
       // Clear separate info line (info now on buttons)
@@ -1685,7 +1685,7 @@ bool ExecuteTrade(bool isBuy)
       g_origSL    = sl;
       g_currentSL = sl;
       g_riskDist  = dist;
-      g_tpDist    = g_cachedATR * g_tpATRFactor;  // TP at factor × ATR
+      g_tpDist    = g_cachedATR * g_tpATRFactor * g_atrMult;  // TP at factor × mult × ATR
       
       // Lock grid ATR if grid enabled at trade entry
       if(g_gridEnabled && g_gridBaseATR <= 0)
@@ -2079,7 +2079,7 @@ void ManageTrail()
 
    // Minimum profit gate: don't trail until price moved >= TP ATR factor from entry
    // Matches Auto TP distance so trail activates right after TP1 fires
-   if(moveFromEntry < g_cachedATR * g_tpATRFactor)
+   if(moveFromEntry < g_cachedATR * g_tpATRFactor * g_atrMult)
       return;
 
    double minDist = g_cachedATR * 0.5;  // minimum trail distance from price
@@ -2192,7 +2192,7 @@ void ManageTrail()
 }
 
 // ════════════════════════════════════════════════════════════════════
-// AUTO TP – Partial Take Profit: close 50% at g_tpATRFactor × ATR
+// AUTO TP – Partial Take Profit: close 50% at g_tpATRFactor × g_atrMult × ATR
 // ════════════════════════════════════════════════════════════════════
 // Auto-disable Grid DCA after TP1 — called from both minLot and partial close paths
 void DisableGridAfterTP1()
@@ -2222,9 +2222,9 @@ void ManageAutoTP()
                         : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
 
    double moveFromEntry = g_isBuy ? (cur - avgEntry) : (avgEntry - cur);
-   double moveR = moveFromEntry / g_tpDist;  // ratio based on 1 ATR
+   double moveR = moveFromEntry / g_tpDist;  // ratio based on TP distance
 
-   // TP1: 50% at 1 ATR
+   // TP1: 50% at factor × mult × ATR
    if(!g_tp1Hit && moveR >= 1.0)
    {
       // Check if partial close is possible (total lot must be > min lot)
@@ -2252,7 +2252,7 @@ void ManageAutoTP()
       if(PartialClosePercent(0.50))
       {
          g_tp1Hit = true;
-         Print(StringFormat("[AUTO TP] 50%% closed at TP1 (%.1fATR).", g_tpATRFactor));
+         Print(StringFormat("[AUTO TP] 50%% closed at TP1 (%.1f×%.1f ATR).", g_tpATRFactor, g_atrMult));
          DisableGridAfterTP1();
       }
    }
@@ -2481,7 +2481,7 @@ void SyncPositionState()
 
    g_riskDist  = MathAbs(g_entryPx - g_currentSL);
    if(g_tpDist <= 0)
-      g_tpDist = g_cachedATR * g_tpATRFactor;  // TP at factor × ATR
+      g_tpDist = g_cachedATR * g_tpATRFactor * g_atrMult;  // TP at factor × mult × ATR
 
    // Lock grid ATR/mult if grid enabled but not yet locked
    // Lock grid ATR if grid enabled but not yet locked
@@ -2620,7 +2620,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.72 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.73 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -2906,7 +2906,7 @@ void OnChartEvent(const int id,
          g_tp1Hit = false;
          if(g_autoTPEnabled)
             ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-               StringFormat("Auto TP: ON | 50%%@%.1fATR", g_tpATRFactor));
+               StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
 
          // Reset Grid DCA state
          g_gridLevel   = 0;
@@ -3103,7 +3103,7 @@ void OnChartEvent(const int id,
                g_riskDist  = MathAbs(g_entryPx - newSL);
                // Set tpDist to raw ATR for Auto TP calcs (if not already set)
                if(g_tpDist <= 0)
-                  g_tpDist = g_cachedATR * g_tpATRFactor;
+                  g_tpDist = g_cachedATR * g_tpATRFactor * g_atrMult;
             }
          }
          else
@@ -3211,12 +3211,12 @@ void OnChartEvent(const int id,
             g_tp1Hit = false;  // Reset — let ManageAutoTP detect fresh
             
             ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-               StringFormat("Auto TP: ON | 50%%@%.1fATR", g_tpATRFactor));
+               StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
-            Print(StringFormat("[AUTO TP] ENABLED | 50%% @%.1fATR (SL managed by Trail SL separately)",
-                  g_tpATRFactor));
+            Print(StringFormat("[AUTO TP] ENABLED | 50%% @%.1f×%.1f ATR (SL managed by Trail SL separately)",
+                  g_tpATRFactor, g_atrMult));
          }
          else
          {
@@ -3240,12 +3240,12 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_TP_10, OBJPROP_COLOR, C'140,140,160');
          // Recalc tpDist if we have a position
          if(g_hasPos && g_cachedATR > 0)
-            g_tpDist = g_cachedATR * g_tpATRFactor;
+            g_tpDist = g_cachedATR * g_tpATRFactor * g_atrMult;
          // Update button text
          if(g_autoTPEnabled && !g_tp1Hit)
             ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-               StringFormat("Auto TP: ON | 50%%@%.1fATR", g_tpATRFactor));
-         Print(StringFormat("[AUTO TP] Factor → %.1f ATR", g_tpATRFactor));
+               StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
+         Print(StringFormat("[AUTO TP] Factor → %.1f × %.1f ATR", g_tpATRFactor, g_atrMult));
       }
       // ── TP ATR factor: 1.0 ──
       else if(sparam == OBJ_TP_10)
@@ -3259,12 +3259,12 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_TP_05, OBJPROP_COLOR, C'140,140,160');
          // Recalc tpDist if we have a position
          if(g_hasPos && g_cachedATR > 0)
-            g_tpDist = g_cachedATR * g_tpATRFactor;
+            g_tpDist = g_cachedATR * g_tpATRFactor * g_atrMult;
          // Update button text
          if(g_autoTPEnabled && !g_tp1Hit)
             ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-               StringFormat("Auto TP: ON | 50%%@%.1fATR", g_tpATRFactor));
-         Print(StringFormat("[AUTO TP] Factor → %.1f ATR", g_tpATRFactor));
+               StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
+         Print(StringFormat("[AUTO TP] Factor → %.1f × %.1f ATR", g_tpATRFactor, g_atrMult));
       }
       // ── Theme toggle ──
       else if(sparam == OBJ_THEME_BTN)
