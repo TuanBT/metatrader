@@ -299,9 +299,9 @@ double CalcSLPrice(bool isBuy)
          {
             double dist = atrVal * mult;
             // When Grid DCA is ON, widen SL to accommodate all grid levels
-            // SL = (maxDCA + 1) × 1 ATR  (3 DCA + 1 ATR buffer)
+            // SL = ATR × (mult + maxDCA)  e.g. ATR × (1.0 + 3) = 4 ATR
             if(g_gridEnabled)
-               dist = atrVal * (g_gridMaxLevel + 1);
+               dist = atrVal * (mult + g_gridMaxLevel);
             if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
             sl = isBuy ? entry - dist : entry + dist;
          }
@@ -419,7 +419,7 @@ double CalcProjectedMaxRisk()
 
    double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
    double spacing = atrVal;  // Grid spacing = 1 ATR
-   double fullSLDist = atrVal * (g_gridMaxLevel + 1);
+   double fullSLDist = atrVal * (g_atrMult + g_gridMaxLevel);
    if(InpSLBuffer > 0) fullSLDist *= (1.0 + InpSLBuffer / 100.0);
 
    double totalRisk = 0;
@@ -1028,7 +1028,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.71", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1908,8 +1908,9 @@ double CalcSLPriceFrom(bool isBuy, double entryPrice)
          {
             double dist = atrVal * mult;
             // When Grid DCA is ON, widen SL beyond all grid levels
+            // SL = ATR × (mult + maxDCA)
             if(g_gridEnabled)
-               dist = atrVal * (g_gridMaxLevel + 1);
+               dist = atrVal * (mult + g_gridMaxLevel);
             double buffer = dist * InpSLBuffer / 100.0;
             sl = isBuy ? NormPrice(entryPrice - dist - buffer)
                        : NormPrice(entryPrice + dist + buffer);
