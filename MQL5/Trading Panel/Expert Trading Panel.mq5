@@ -1434,10 +1434,10 @@ void SyncButtonAppearance()
    // ── Auto TP button ──
    if(g_autoTPEnabled)
    {
-      if(StringFind(ObjectGetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT), "OFF") >= 0)
-         ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-            g_tp1Hit ? "Auto TP: ON | TP1 \x2713"
-                     : StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
+      // Always refresh text (ATR mult may have changed via ± buttons)
+      ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
+         g_tp1Hit ? "Auto TP: ON | TP1 \x2713"
+                  : StringFormat("Auto TP: ON | 50%%@%.1fx%.1f", g_tpATRFactor, g_atrMult));
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
@@ -2842,6 +2842,9 @@ void OnChartEvent(const int id,
          // Snap up: 1.0→1.5, 1.1→1.5, 1.5→2.0
          g_atrMult = MathMin(5.0, MathCeil(g_atrMult * 2.0 + 0.001) / 2.0);
          ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
+         // Recalc TP distance with new mult
+         if(g_hasPos && g_cachedATR > 0 && !g_tp1Hit)
+            g_tpDist = g_cachedATR * g_tpATRFactor * g_atrMult;
          UpdatePanel();
          return;
       }
@@ -2851,6 +2854,9 @@ void OnChartEvent(const int id,
          // Snap down: 1.0→0.5, 1.1→1.0, 1.5→1.0
          g_atrMult = MathMax(0.5, MathFloor(g_atrMult * 2.0 - 0.001) / 2.0);
          ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
+         // Recalc TP distance with new mult
+         if(g_hasPos && g_cachedATR > 0 && !g_tp1Hit)
+            g_tpDist = g_cachedATR * g_tpATRFactor * g_atrMult;
          UpdatePanel();
          return;
       }
