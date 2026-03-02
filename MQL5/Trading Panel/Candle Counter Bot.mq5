@@ -2,10 +2,10 @@
 //| Candle Counter Bot.mq5                                           |
 //| 3 same-direction candles with wick structure → entry              |
 //| Filter: ATR candle size, wick rule (higher lows / lower highs)   |
-//| v1.00: Initial release — Panel manages SL/TP/Trail               |
+//| v1.01: Breakout entry — 2 confirmed candles + live breakout     |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.00"
-#property version   "1.00"
+#property copyright "Tuan v1.01"
+#property version   "1.01"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -22,7 +22,7 @@ input double          InpATRMult        = 1.5;        // ATR multiplier (fallbac
 input int             InpDeviation      = 20;         // Max slippage (points)
 
 input group           "══ General ══"
-input ulong           InpMagic          = 88888;      // Magic Number
+input ulong           InpMagic          = 99999;      // Magic Number
 
 // ════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -76,13 +76,17 @@ bool     g_infoExpanded  = false;
 double   g_cachedATR     = 0;
 
 // Candle count state (live)
-int    g_countBull = 0;            // how many consecutive bull candles (1-3)
-int    g_countBear = 0;            // how many consecutive bear candles (1-3)
-bool   g_wickOK[4];               // wick rule pass for bar[1..3]
-bool   g_atrOK[4];                // ATR filter pass for bar[1..3]
-bool   g_colorOK[4];              // same color for bar[1..3]
-bool   g_signalReady = false;
-bool   g_signalIsBuy = false;
+int    g_countBull = 0;            // how many consecutive bull candles (bar[1], bar[2])
+int    g_countBear = 0;            // how many consecutive bear candles
+bool   g_wickOK[3];               // wick rule pass for bar[1..2] (index 1,2)
+bool   g_atrOK[3];                // ATR filter pass for bar[1..2]
+bool   g_colorOK[3];              // same color for bar[1..2]
+
+// Breakout pending state
+bool   g_pendingBuy   = false;     // waiting for breakout above bar[1].high
+bool   g_pendingSell  = false;     // waiting for breakout below bar[1].low
+double g_breakLevel   = 0;         // breakout price level
+datetime g_pendingBar  = 0;        // bar when pending was set (to detect new bar reset)
 
 // ── Multi-TF display (reference only, no filter) ──
 #define MAX_DISP_TF 8
@@ -235,7 +239,7 @@ void CreatePanel()
    int row = y + BOT_PAD;
 
    // Row 1: Title
-   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "CC Bot v1.00", C'170,180,215', 9, "Segoe UI Semibold");
+   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "CC Bot v1.01", C'170,180,215', 9, "Segoe UI Semibold");
    row += BOT_ROW;
 
    // Row 2: Start/Stop button
@@ -392,22 +396,25 @@ void UpdatePanel()
       string dots = "";
       for(int i = 0; i < count; i++)
          dots += (g_countBull > 0) ? "▲" : "▼";
-      for(int i = count; i < 3; i++)
+      for(int i = count; i < 2; i++)
          dots += "_";
 
-      if(g_signalReady)
+      bool isPending = (g_pendingBuy || g_pendingSell);
+      if(isPending)
          ObjectSetString(0, OBJ_INFO_L1, OBJPROP_TEXT,
-            StringFormat("READY → %s  %s", g_signalIsBuy ? "BUY" : "SELL", dots));
+            StringFormat("WAIT %s > %s  %s",
+               g_pendingBuy ? "BUY" : "SELL",
+               DoubleToString(g_breakLevel, _Digits), dots));
       else
          ObjectSetString(0, OBJ_INFO_L1, OBJPROP_TEXT,
-            StringFormat("Count: %d/3 %s  %s", count, dir, dots));
+            StringFormat("Count: %d/2 %s  %s", count, dir, dots));
       ObjectSetInteger(0, OBJ_INFO_L1, OBJPROP_COLOR,
-         g_signalReady ? (g_signalIsBuy ? COL_GREEN : COL_RED) : COL_WHITE);
+         isPending ? (g_pendingBuy ? COL_GREEN : COL_RED) : COL_WHITE);
 
-      // Lines 2-4: Bar details
-      for(int b = 1; b <= 3; b++)
+      // Lines 2-3: Bar details (only bar[1] and bar[2])
+      for(int b = 1; b <= 2; b++)
       {
-         string objL = (b == 1) ? OBJ_INFO_L2 : (b == 2) ? OBJ_INFO_L3 : OBJ_INFO_L4;
+         string objL = (b == 1) ? OBJ_INFO_L2 : OBJ_INFO_L3;
          string col  = g_colorOK[b] ? (g_countBull > 0 ? "Green" : "Red") : "✗";
          string wck  = g_wickOK[b] ? "Wick✓" : "Wick✗";
          string atr  = g_atrOK[b]  ? "ATR✓"  : "ATR✗";
@@ -420,6 +427,21 @@ void UpdatePanel()
                StringFormat("Bar%d: %s", b, col));
          ObjectSetInteger(0, objL, OBJPROP_COLOR,
             (g_colorOK[b] && g_wickOK[b] && g_atrOK[b]) ? COL_GREEN : COL_DIM);
+      }
+
+      // Line 4: Breakout level
+      if(isPending)
+      {
+         ObjectSetString(0, OBJ_INFO_L4, OBJPROP_TEXT,
+            StringFormat("Break: %s %s",
+               g_pendingBuy ? "Ask >" : "Bid <",
+               DoubleToString(g_breakLevel, _Digits)));
+         ObjectSetInteger(0, OBJ_INFO_L4, OBJPROP_COLOR, C'200,180,80');
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_INFO_L4, OBJPROP_TEXT, "Break: — (no setup)");
+         ObjectSetInteger(0, OBJ_INFO_L4, OBJPROP_COLOR, COL_DIM);
       }
 
       // Line 5: ATR info
@@ -475,110 +497,91 @@ void UpdateSignalStates()
 
 void UpdateCandleState()
 {
-   // Reset
+   // Reset display state
    g_countBull = g_countBear = 0;
-   g_signalReady = false;
-   g_signalIsBuy = false;
    ArrayInitialize(g_wickOK, false);
    ArrayInitialize(g_atrOK, false);
    ArrayInitialize(g_colorOK, false);
 
-   // Check bar[1], bar[2], bar[3]
-   bool allGreen = true, allRed = true;
-   for(int i = 1; i <= 3; i++)
+   // Check bar[1] and bar[2] (2 confirmed closed candles)
+   double o1 = iOpen(_Symbol, _Period, 1);
+   double c1 = iClose(_Symbol, _Period, 1);
+   double h1 = iHigh(_Symbol, _Period, 1);
+   double l1 = iLow(_Symbol, _Period, 1);
+   double o2 = iOpen(_Symbol, _Period, 2);
+   double c2 = iClose(_Symbol, _Period, 2);
+   double h2 = iHigh(_Symbol, _Period, 2);
+   double l2 = iLow(_Symbol, _Period, 2);
+
+   bool bar1Bull = (c1 > o1);
+   bool bar1Bear = (c1 < o1);
+   bool bar2Bull = (c2 > o2);
+   bool bar2Bear = (c2 < o2);
+
+   // ATR filter
+   if(InpATRMinMult > 0 && g_cachedATR > 0)
    {
-      double o = iOpen(_Symbol, _Period, i);
-      double c = iClose(_Symbol, _Period, i);
-      double h = iHigh(_Symbol, _Period, i);
-      double l = iLow(_Symbol, _Period, i);
-
-      bool isBull = (c > o);
-      bool isBear = (c < o);
-
-      g_colorOK[i] = true;  // will set false below if mismatch
-
-      if(!isBull) allGreen = false;
-      if(!isBear) allRed = false;
-
-      // ATR filter: candle range >= InpATRMinMult × ATR
-      double candleRange = h - l;
-      if(InpATRMinMult > 0 && g_cachedATR > 0)
-         g_atrOK[i] = (candleRange >= InpATRMinMult * g_cachedATR);
-      else
-         g_atrOK[i] = true;  // no filter
+      g_atrOK[1] = ((h1 - l1) >= InpATRMinMult * g_cachedATR);
+      g_atrOK[2] = ((h2 - l2) >= InpATRMinMult * g_cachedATR);
+   }
+   else
+   {
+      g_atrOK[1] = g_atrOK[2] = true;
    }
 
-   // Determine direction and count consecutive
-   if(allGreen)
+   // Check for 2 consecutive green
+   if(bar1Bull && bar2Bull)
    {
-      g_countBull = 3;
-      for(int i = 1; i <= 3; i++) g_colorOK[i] = true;
+      g_countBull = 2;
+      g_colorOK[1] = g_colorOK[2] = true;
 
-      // Wick rule: strictly higher lows  bar[1].low > bar[2].low > bar[3].low
-      g_wickOK[3] = true;  // first candle always OK
-      g_wickOK[2] = (iLow(_Symbol, _Period, 2) > iLow(_Symbol, _Period, 3));
-      g_wickOK[1] = (iLow(_Symbol, _Period, 1) > iLow(_Symbol, _Period, 2));
+      // Wick rule: bar[1].low > bar[2].low (strictly higher lows)
+      g_wickOK[2] = true;  // first candle always OK
+      g_wickOK[1] = (l1 > l2);
 
-      // Signal ready if all pass
-      bool allWick = g_wickOK[1] && g_wickOK[2] && g_wickOK[3];
-      bool allATR  = g_atrOK[1]  && g_atrOK[2]  && g_atrOK[3];
-      if(allWick && allATR)
+      // If all conditions pass → set pending breakout
+      if(g_wickOK[1] && g_atrOK[1] && g_atrOK[2])
       {
-         g_signalReady = true;
-         g_signalIsBuy = true;
+         g_pendingBuy  = true;
+         g_pendingSell = false;
+         g_breakLevel  = h1;  // breakout above bar[1].high
+         g_pendingBar  = iTime(_Symbol, _Period, 0);
+      }
+      else
+      {
+         g_pendingBuy = g_pendingSell = false;
       }
    }
-   else if(allRed)
+   // Check for 2 consecutive red
+   else if(bar1Bear && bar2Bear)
    {
-      g_countBear = 3;
-      for(int i = 1; i <= 3; i++) g_colorOK[i] = true;
+      g_countBear = 2;
+      g_colorOK[1] = g_colorOK[2] = true;
 
-      // Wick rule: strictly lower highs  bar[1].high < bar[2].high < bar[3].high
-      g_wickOK[3] = true;  // first candle always OK
-      g_wickOK[2] = (iHigh(_Symbol, _Period, 2) < iHigh(_Symbol, _Period, 3));
-      g_wickOK[1] = (iHigh(_Symbol, _Period, 1) < iHigh(_Symbol, _Period, 2));
+      // Wick rule: bar[1].high < bar[2].high (strictly lower highs)
+      g_wickOK[2] = true;
+      g_wickOK[1] = (h1 < h2);
 
-      bool allWick = g_wickOK[1] && g_wickOK[2] && g_wickOK[3];
-      bool allATR  = g_atrOK[1]  && g_atrOK[2]  && g_atrOK[3];
-      if(allWick && allATR)
+      if(g_wickOK[1] && g_atrOK[1] && g_atrOK[2])
       {
-         g_signalReady = true;
-         g_signalIsBuy = false;
+         g_pendingSell = true;
+         g_pendingBuy  = false;
+         g_breakLevel  = l1;  // breakout below bar[1].low
+         g_pendingBar  = iTime(_Symbol, _Period, 0);
+      }
+      else
+      {
+         g_pendingBuy = g_pendingSell = false;
       }
    }
    else
    {
-      // Partial count: how many consecutive same-color from bar[1]?
-      double o1 = iOpen(_Symbol, _Period, 1);
-      double c1 = iClose(_Symbol, _Period, 1);
-      if(c1 > o1) // bar[1] is green
-      {
-         g_countBull = 1;
-         g_colorOK[1] = true;
-         double o2 = iOpen(_Symbol, _Period, 2);
-         double c2 = iClose(_Symbol, _Period, 2);
-         if(c2 > o2) { g_countBull = 2; g_colorOK[2] = true; }
-      }
-      else if(c1 < o1) // bar[1] is red
-      {
-         g_countBear = 1;
-         g_colorOK[1] = true;
-         double o2 = iOpen(_Symbol, _Period, 2);
-         double c2 = iClose(_Symbol, _Period, 2);
-         if(c2 < o2) { g_countBear = 2; g_colorOK[2] = true; }
-      }
+      // No 2-candle pattern → clear pending
+      g_pendingBuy = g_pendingSell = false;
 
-      // Wick check for partial
-      if(g_countBull >= 2)
-      {
-         g_wickOK[2] = true;
-         g_wickOK[1] = (iLow(_Symbol, _Period, 1) > iLow(_Symbol, _Period, 2));
-      }
-      else if(g_countBear >= 2)
-      {
-         g_wickOK[2] = true;
-         g_wickOK[1] = (iHigh(_Symbol, _Period, 1) < iHigh(_Symbol, _Period, 2));
-      }
+      // Partial count for display
+      if(bar1Bull) { g_countBull = 1; g_colorOK[1] = true; }
+      else if(bar1Bear) { g_countBear = 1; g_colorOK[1] = true; }
    }
 }
 
@@ -600,22 +603,41 @@ void OnTick()
       }
    }
 
-   // New bar check
+   // On new bar: update candle state
    datetime curBar = iTime(_Symbol, _Period, 0);
-   if(curBar == g_lastSignalBar) return;
-
-   // Update candle state on every new bar
-   UpdateCandleState();
+   if(curBar != g_lastSignalBar)
+   {
+      g_lastSignalBar = curBar;
+      UpdateCandleState();
+   }
 
    // Skip if disabled or paused or already has position
    if(!g_botEnabled || g_paused) return;
    if(HasPosition()) return;
 
-   // Check signal
-   if(!g_signalReady) return;
-
-   g_lastSignalBar = curBar;
-   OpenTrade(g_signalIsBuy, g_cachedATR);
+   // ── Per-tick breakout check ──
+   if(g_pendingBuy && g_breakLevel > 0)
+   {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      if(ask > g_breakLevel)
+      {
+         Print(StringFormat("[CC BOT] Breakout BUY! Price %.5f > %.5f",
+               ask, g_breakLevel));
+         g_pendingBuy = false;
+         OpenTrade(true, g_cachedATR);
+      }
+   }
+   else if(g_pendingSell && g_breakLevel > 0)
+   {
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      if(bid < g_breakLevel)
+      {
+         Print(StringFormat("[CC BOT] Breakout SELL! Price %.5f < %.5f",
+               bid, g_breakLevel));
+         g_pendingSell = false;
+         OpenTrade(false, g_cachedATR);
+      }
+   }
 }
 
 void OnTimer()
