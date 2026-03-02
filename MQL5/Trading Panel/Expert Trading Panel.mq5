@@ -18,8 +18,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.62"
-#property version   "1.62"
+#property copyright "Tuan v1.63"
+#property version   "1.63"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -39,7 +39,7 @@ enum ENUM_TRAIL_MODE
    TRAIL_CLOSE  = 1,  // ATR/2 from bar[1] close
    TRAIL_SWING  = 2,  // ATR/2 from swing extreme (N bars)
    TRAIL_STEP   = 3,  // Ratchet: SL steps up by 1R increments
-   TRAIL_BE     = 4,  // Breakeven first, then trail from close
+   TRAIL_BE     = 4,  // Breakeven first, then step 0.5 ATR
    TRAIL_NONE   = 5,  // No auto trail
 };
 
@@ -1401,9 +1401,7 @@ void SyncButtonAppearance()
          }
          case TRAIL_BE:
          {
-            double beR = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
-            if(beR <= 0) beR = g_riskDist;
-            trailActive = g_beReached || (beR > 0 && move >= beR * 0.5);
+            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * 0.5);
             break;
          }
       }
@@ -2066,24 +2064,22 @@ void ManageTrail()
    }
 
    // ═══════════════════════════════════════
-   // TRAIL_BE: Breakeven first, then trail from Close
-   // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5R
-   // Phase 2 (per-tick): Step SL in 0.5R increments (+0.5R, +1R, +1.5R...)
+   // TRAIL_BE: Breakeven first, then step 0.5 ATR
+   // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5 ATR
+   // Phase 2 (per-tick): Step SL in 0.5 ATR increments
    // ═══════════════════════════════════════
    if(g_trailRef == TRAIL_BE)
    {
       if(!tickAllowed) return;  // throttle per-tick for both phases
 
-      // Determine step size = 0.5R (half of normal SL distance)
-      double fullR = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
-      if(fullR <= 0) fullR = g_riskDist;
-      if(fullR <= 0) return;
-      double halfR = fullR * 0.5;
+      // Step size = 0.5 ATR (uses live ATR, adapts to current volatility)
+      double halfATR = g_cachedATR * 0.5;
+      if(halfATR <= 0) return;
 
-      // Phase 1: Move to breakeven when profit >= 0.5R
+      // Phase 1: Move to breakeven when profit >= 0.5 ATR
       if(!g_beReached)
       {
-         if(moveFromEntry >= halfR)
+         if(moveFromEntry >= halfATR)
          {
             double beSL = NormPrice(refEntry);
             bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
@@ -2094,7 +2090,7 @@ void ManageTrail()
                g_beReached = true;
                g_beStepLevel = 0;
                s_lastTrailMs = nowMs;
-               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 0.5R)",
+               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 0.5 ATR)",
                      DoubleToString(beSL, _Digits)));
                ModifySL(beSL);
             }
@@ -2108,17 +2104,17 @@ void ManageTrail()
          return;
       }
 
-      // Phase 2: Step SL in 0.5R increments
-      // Level 1 reached (price +1R from entry) → SL = entry + 0.5R
-      // Level 2 reached (price +1.5R)          → SL = entry + 1.0R
-      // Level N reached (price +0.5R*(N+1))    → SL = entry + 0.5R*N
-      int reachedLevel = (int)MathFloor(moveFromEntry / halfR) - 1;  // -1 because BE was at +0.5R
+      // Phase 2: Step SL in 0.5 ATR increments
+      // Level 1 reached (price +1 ATR from entry) → SL = entry + 0.5 ATR
+      // Level 2 reached (price +1.5 ATR)          → SL = entry + 1.0 ATR
+      // Level N reached (price +0.5*(N+1) ATR)    → SL = entry + 0.5*N ATR
+      int reachedLevel = (int)MathFloor(moveFromEntry / halfATR) - 1;  // -1 because BE was at +0.5 ATR
       if(reachedLevel <= g_beStepLevel) return;
 
       g_beStepLevel = reachedLevel;
       double newSL = g_isBuy
-         ? NormPrice(refEntry + g_beStepLevel * halfR)
-         : NormPrice(refEntry - g_beStepLevel * halfR);
+         ? NormPrice(refEntry + g_beStepLevel * halfATR)
+         : NormPrice(refEntry - g_beStepLevel * halfATR);
 
       bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
       if(!advance) return;
@@ -2126,7 +2122,7 @@ void ManageTrail()
       if(!g_isBuy && newSL <= ask2) return;
 
       s_lastTrailMs = nowMs;
-      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%.1fR from entry)",
+      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%.1f ATR from entry)",
             g_beStepLevel, DoubleToString(newSL, _Digits), g_beStepLevel * 0.5));
       ModifySL(newSL);
       return;
@@ -2967,7 +2963,7 @@ void OnChartEvent(const int id,
          g_trailRef = TRAIL_BE;
          g_beReached = false;  // Reset BE state on mode change
          g_beStepLevel = 0;
-         Print("[TRAIL] Mode → BE (breakeven first, then step 0.5R)");
+         Print("[TRAIL] Mode → BE (breakeven first, then step 0.5 ATR)");
          SyncButtonAppearance();
       }
       // ── Grid DCA toggle ──
