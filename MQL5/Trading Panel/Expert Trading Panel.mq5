@@ -18,8 +18,8 @@
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.73"
-#property version   "1.73"
+#property copyright "Tuan v1.74"
+#property version   "1.74"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -980,7 +980,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.73", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.74", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1262,19 +1262,19 @@ void CreatePanel()
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
       "CLOSE — Theo râu nến (mỗi nến mới)\n"
       "BUY: SL = Low[1] | SELL: SL = High[1]\n"
-      "Nến quá ngắn (< 0.5 ATR) → bỏ qua.\n"
-      "Kích hoạt sau khi giá đi >= TP ATR factor.");
+      "Nến quá ngắn (< 0.5 × ATR input) → bỏ qua.\n"
+      "Kích hoạt sau khi giá đi >= TP factor × ATR input.");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
       "SWING — Theo chân sóng gần nhất (mỗi nến mới)\n"
       "BUY: SL = Swing Low | SELL: SL = Swing High\n"
       "Nếu không có swing → lấy nến đỏ/xanh gần nhất.\n"
-      "Min 0.5 ATR, kích hoạt sau >= TP ATR factor.");
+      "Min 0.5 × ATR input, kích hoạt sau >= TP factor × ATR input.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
-      "BE — Dời SL về BE và ATR\n"
-      "B1: Giá +1.0 ATR → SL về entry\n"
-      "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n");
+      "BE — Dời SL về BE và ATR input\n"
+      "B1: Giá +1.0 ATR input → SL về entry\n"
+      "B2: Mỗi +1 ATR input tiếp → SL nhảy lên 1 ATR input\n");
 
    // Grid DCA
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,
@@ -1371,7 +1371,7 @@ void SyncButtonAppearance()
             break;
          case TRAIL_BE:
          {
-            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * 1.0);
+            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * g_atrMult);
             break;
          }
       }
@@ -2004,18 +2004,18 @@ void ManageTrail()
    double moveFromEntry = g_isBuy ? (cur - refEntry) : (refEntry - cur);
 
    // ═══════════════════════════════════════
-   // TRAIL_BE: Breakeven first, then step 1 ATR
-   // Phase 1 (per-tick): Move SL to breakeven when profit >= 1.0 ATR
-   // Phase 2 (per-tick): Step SL in 1 ATR increments
+   // TRAIL_BE: Breakeven first, then step 1 ATR input
+   // Phase 1 (per-tick): Move SL to breakeven when profit >= 1.0 × ATR input
+   // Phase 2 (per-tick): Step SL in ATR input increments
    // ═══════════════════════════════════════
    if(g_trailRef == TRAIL_BE)
    {
       if(!tickAllowed) return;  // throttle per-tick for both phases
 
-      double fullATR = g_cachedATR;
+      double fullATR = g_cachedATR * g_atrMult;  // ATR input = raw ATR × mult
       if(fullATR <= 0) return;
 
-      // Phase 1: Move to breakeven when profit >= 1.0 ATR
+      // Phase 1: Move to breakeven when profit >= 1.0 × ATR input
       if(!g_beReached)
       {
          if(moveFromEntry >= fullATR)
@@ -2029,7 +2029,7 @@ void ManageTrail()
                g_beReached = true;
                g_beStepLevel = 0;
                s_lastTrailMs = nowMs;
-               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 1.0 ATR)",
+               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 1.0 × ATR input)",
                      DoubleToString(beSL, _Digits)));
                ModifySL(beSL);
             }
@@ -2043,10 +2043,10 @@ void ManageTrail()
          return;
       }
 
-      // Phase 2: Step SL in 1 ATR increments
-      // Level 1 reached (price +2.0 ATR from entry) → SL = entry + 1 ATR
-      // Level 2 reached (price +3.0 ATR)            → SL = entry + 2 ATR
-      // Level N reached (price +(N+1) ATR)           → SL = entry + N ATR
+      // Phase 2: Step SL in ATR input increments
+      // Level 1 reached (price +2.0 ATR input from entry) → SL = entry + 1 ATR input
+      // Level 2 reached (price +3.0 ATR input)            → SL = entry + 2 ATR input
+      // Level N reached (price +(N+1) ATR input)           → SL = entry + N ATR input
       int reachedLevel = (int)MathFloor((moveFromEntry - fullATR) / fullATR);
       if(reachedLevel <= 0) reachedLevel = 0;
       if(reachedLevel <= g_beStepLevel) return;
@@ -2062,7 +2062,7 @@ void ManageTrail()
       if(!g_isBuy && newSL <= ask2) return;
 
       s_lastTrailMs = nowMs;
-      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%d ATR from entry)",
+      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%d ATR input from entry)",
             g_beStepLevel, DoubleToString(newSL, _Digits), g_beStepLevel));
       ModifySL(newSL);
       return;
@@ -2071,7 +2071,7 @@ void ManageTrail()
    // ═══════════════════════════════════════
    // TRAIL_CLOSE (per-bar): SL = bar[1] wick (low for BUY, high for SELL)
    // TRAIL_SWING (per-bar): SL = nearest swing low/high (support/resistance)
-   // Both: min 0.5 ATR distance from current price, profit gate = TP ATR factor
+   // Both: min 0.5 × ATR input from current price, profit gate = TP factor × ATR input
    // ═══════════════════════════════════════
 
    // Both CLOSE and SWING: per-bar only
@@ -2082,7 +2082,7 @@ void ManageTrail()
    if(moveFromEntry < g_cachedATR * g_tpATRFactor * g_atrMult)
       return;
 
-   double minDist = g_cachedATR * 0.5;  // minimum trail distance from price
+   double minDist = g_cachedATR * g_atrMult * 0.5;  // minimum trail distance = 0.5 × ATR input
    if(minDist <= 0) return;
 
    double newSL = 0;
@@ -2620,7 +2620,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.73 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.74 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
