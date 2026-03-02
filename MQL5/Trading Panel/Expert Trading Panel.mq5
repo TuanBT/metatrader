@@ -2124,8 +2124,9 @@ void ManageTrail()
    // Both CLOSE and SWING: per-bar only
    if(!isNewBar) return;
 
-   // Minimum profit gate: don't trail until price moved >= 1.0 ATR from entry
-   if(moveFromEntry < g_cachedATR * 1.0)
+   // Minimum profit gate: don't trail until price moved >= TP ATR factor from entry
+   // Matches Auto TP distance so trail activates right after TP1 fires
+   if(moveFromEntry < g_cachedATR * g_tpATRFactor)
       return;
 
    double minDist = g_cachedATR * 0.5;  // minimum trail distance from price
@@ -2286,6 +2287,20 @@ void ManageAutoTP()
       {
          g_tp1Hit = true;
          Print(StringFormat("[AUTO TP] 50%% closed at TP1 (%.1fATR).", g_tpATRFactor));
+
+         // Auto-disable Grid DCA after TP1 — no more DCA once profit taken
+         // Grid restores to user intent (g_gridUserEnabled) on next trade
+         if(g_gridEnabled)
+         {
+            g_gridEnabled = false;
+            g_gridLevel   = 0;
+            g_gridBaseATR  = 0;
+            ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF (TP1)");
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+            Print("[GRID] Auto-disabled after TP1 — no more DCA for this trade.");
+         }
       }
    }
 }
