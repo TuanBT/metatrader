@@ -2241,6 +2241,20 @@ void ManageTrail()
 // ════════════════════════════════════════════════════════════════════
 // AUTO TP – Partial Take Profit: close 50% at g_tpATRFactor × ATR
 // ════════════════════════════════════════════════════════════════════
+// Auto-disable Grid DCA after TP1 — called from both minLot and partial close paths
+void DisableGridAfterTP1()
+{
+   if(!g_gridEnabled) return;
+   g_gridEnabled = false;
+   g_gridLevel   = 0;
+   g_gridBaseATR  = 0;
+   ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF (TP1)");
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
+   ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
+   Print("[GRID] Auto-disabled after TP1 — no more DCA for this trade.");
+}
+
 void ManageAutoTP()
 {
    if(!g_autoTPEnabled) return;
@@ -2277,6 +2291,7 @@ void ManageAutoTP()
          // Can't halve min lot — mark as done, skip partial close
          g_tp1Hit = true;
          Print(StringFormat("[AUTO TP] TP1 hit but lot=%.2f is min. Cannot halve — skipped.", totalLot));
+         DisableGridAfterTP1();
          return;
       }
 
@@ -2287,20 +2302,7 @@ void ManageAutoTP()
       {
          g_tp1Hit = true;
          Print(StringFormat("[AUTO TP] 50%% closed at TP1 (%.1fATR).", g_tpATRFactor));
-
-         // Auto-disable Grid DCA after TP1 — no more DCA once profit taken
-         // Grid restores to user intent (g_gridUserEnabled) on next trade
-         if(g_gridEnabled)
-         {
-            g_gridEnabled = false;
-            g_gridLevel   = 0;
-            g_gridBaseATR  = 0;
-            ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF (TP1)");
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-            ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
-            Print("[GRID] Auto-disabled after TP1 — no more DCA for this trade.");
-         }
+         DisableGridAfterTP1();
       }
    }
 }
