@@ -223,7 +223,7 @@ double   g_entryPx    = 0;
 double   g_origSL     = 0;
 double   g_currentSL  = 0;
 double   g_riskDist   = 0;        // |entry − origSL| actual SL distance
-double   g_tpDist     = 0;        // normal ATR dist for Auto TP (not grid-widened)
+double   g_tpDist     = 0;        // TP distance = 1 ATR (raw, not multiplied)
 datetime g_lastBar    = 0;
 
 int      g_theme      = 0;       // 0=Dark, 1=Light
@@ -247,7 +247,7 @@ ulong    g_manageMagic  = 0;        // Effective magic for position monitoring
 
 // Auto TP (Partial Take Profit) state
 bool     g_autoTPEnabled  = false;
-bool     g_tp1Hit         = false;    // TP1 (50% @1R) taken
+bool     g_tp1Hit         = false;    // TP1 (50% @1ATR) taken
 
 // Grid DCA state
 bool     g_gridEnabled    = false;
@@ -783,7 +783,7 @@ void UpdateChartLines()
 // ════════════════════════════════════════════════════════════════════
 void UpdateTPGridLines()
 {
-   // ── Auto TP: TP1 line at 1R from avgEntry ──
+   // ── Auto TP: TP1 line at 1 ATR from avgEntry ──
    if(g_autoTPEnabled && g_hasPos && g_tpDist > 0)
    {
       double avgEntry = GetAvgEntry();
@@ -794,7 +794,7 @@ void UpdateTPGridLines()
          if(!g_tp1Hit)
             SetHLine(OBJ_TP1_LINE, tp1, C'0,200,83',
                      STYLE_DASH, 1,
-                     StringFormat("TP1 (1R) %." + IntegerToString(_Digits) + "f", tp1));
+                     StringFormat("TP1 (1ATR) %." + IntegerToString(_Digits) + "f", tp1));
          else
             HideHLine(OBJ_TP1_LINE);  // already taken
       }
@@ -1323,7 +1323,7 @@ void CreatePanel()
    // Auto TP
    ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TOOLTIP,
       "Auto Take Profit — Bật/Tắt\n"
-      "Đóng 50% lệnh khi lãi đạt 1R.\n"
+      "Đóng 50% lệnh khi lãi đạt 1 ATR.\n"
       "Nếu lot = 0.01 lot → bỏ qua,\n"
       "không đóng được nhưng vẫn cho bật.");
 
@@ -1466,7 +1466,7 @@ void SyncButtonAppearance()
    {
       if(StringFind(ObjectGetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT), "OFF") >= 0)
          ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-            g_tp1Hit ? "Auto TP: ON | TP1 \x2713" : "Auto TP: ON | 50%@1R");
+            g_tp1Hit ? "Auto TP: ON | TP1 \x2713" : "Auto TP: ON | 50%@1ATR");
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
       ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
@@ -1575,7 +1575,7 @@ void UpdatePanel()
                ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
                   StringFormat("Auto TP: ON | Lot min (%.2f)", minLot));
             else
-               ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1R");
+               ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1ATR");
          }
       }
       // Clear separate info line (info now on buttons)
@@ -1706,8 +1706,8 @@ bool ExecuteTrade(bool isBuy)
       g_origSL    = sl;
       g_currentSL = sl;
       g_riskDist  = dist;
-      g_tpDist    = CalcNormalSLDist();  // normal ATR for TP calcs
-      g_stepSize  = g_tpDist;            // lock step size for TRAIL_STEP
+      g_tpDist    = g_cachedATR;              // TP at 1 ATR (raw)
+      g_stepSize  = CalcNormalSLDist();       // lock step size for TRAIL_STEP (1R)
       
       // Lock grid ATR/mult if grid enabled at trade entry
       if(g_gridEnabled && g_gridBaseATR <= 0)
@@ -2200,7 +2200,7 @@ void ManageTrail()
 }
 
 // ════════════════════════════════════════════════════════════════════
-// AUTO TP – Partial Take Profit: close 50% at 1R
+// AUTO TP – Partial Take Profit: close 50% at 1 ATR
 // ════════════════════════════════════════════════════════════════════
 void ManageAutoTP()
 {
@@ -2216,9 +2216,9 @@ void ManageAutoTP()
                         : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
 
    double moveFromEntry = g_isBuy ? (cur - avgEntry) : (avgEntry - cur);
-   double moveR = moveFromEntry / g_tpDist;  // R based on normal ATR
+   double moveR = moveFromEntry / g_tpDist;  // ratio based on 1 ATR
 
-   // TP1: 50% at 1R
+   // TP1: 50% at 1 ATR
    if(!g_tp1Hit && moveR >= 1.0)
    {
       // Check if partial close is possible (total lot must be > min lot)
@@ -2247,7 +2247,7 @@ void ManageAutoTP()
       if(PartialClosePercent(0.50))
       {
          g_tp1Hit = true;
-         Print("[AUTO TP] 50% closed at TP1 (1R).");
+         Print("[AUTO TP] 50% closed at TP1 (1ATR).");
       }
    }
 }
@@ -2438,7 +2438,7 @@ void SyncPositionState()
 
    g_riskDist  = MathAbs(g_entryPx - g_currentSL);
    if(g_tpDist <= 0)
-      g_tpDist = CalcNormalSLDist();
+      g_tpDist = g_cachedATR;  // TP at 1 ATR
 
    // Lock step size for TRAIL_STEP (if not already locked)
    if(g_stepSize <= 0)
@@ -2677,7 +2677,7 @@ void OnTick()
    // Auto trailing
    ManageTrail();
 
-   // Auto TP (partial close at 1R)
+   // Auto TP (partial close at 1 ATR)
    ManageAutoTP();
 
    // Grid DCA (add positions on adverse move)
@@ -2845,7 +2845,7 @@ void OnChartEvent(const int id,
          // Reset Auto TP state
          g_tp1Hit = false;
          if(g_autoTPEnabled)
-            ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1R");
+            ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1ATR");
 
          // Reset Grid DCA state
          g_gridLevel   = 0;
@@ -3045,9 +3045,9 @@ void OnChartEvent(const int id,
                g_origSL    = newSL;
                g_currentSL = newSL;
                g_riskDist  = MathAbs(g_entryPx - newSL);
-               // Set tpDist to normal ATR for Auto TP calcs (if not already set)
+               // Set tpDist to raw ATR for Auto TP calcs (if not already set)
                if(g_tpDist <= 0)
-                  g_tpDist = CalcNormalSLDist();
+                  g_tpDist = g_cachedATR;
             }
          }
          else
@@ -3133,13 +3133,13 @@ void OnChartEvent(const int id,
          g_autoTPEnabled = !g_autoTPEnabled;
          if(g_autoTPEnabled)
          {
-            g_tp1Hit = false;  // Reset — let ManageAutoTP detect 1R fresh
+            g_tp1Hit = false;  // Reset — let ManageAutoTP detect 1ATR fresh
             
-            ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1R");
+            ObjectSetString (0, OBJ_AUTOTP_BTN, OBJPROP_TEXT, "Auto TP: ON | 50%@1ATR");
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR, C'0,100,60');
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
             ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR, COL_WHITE);
-            Print("[AUTO TP] ENABLED | 50% @1R (SL managed by Trail SL separately)");
+            Print("[AUTO TP] ENABLED | 50% @1ATR (SL managed by Trail SL separately)");
          }
          else
          {
