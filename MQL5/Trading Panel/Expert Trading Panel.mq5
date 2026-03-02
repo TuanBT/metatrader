@@ -249,8 +249,7 @@ bool     g_gridEnabled    = false;
 bool     g_gridUserEnabled = false;  // User's intended state (before trail override)
 int      g_gridLevel      = 0;       // 0=initial only, 1-3=DCA additions
 int      g_gridMaxLevel   = 3;       // max DCA positions — runtime changeable
-double   g_gridBaseATR    = 0;       // ATR value when grid started
-double   g_gridBaseMult   = 0;       // ATR multiplier locked at grid start
+double   g_gridBaseATR    = 0;       // ATR value when grid started (1 ATR spacing)
 int      g_gridDelay      = 5;       // Delay between DCA fills (minutes), 0=disabled
 datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
@@ -291,16 +290,16 @@ double CalcSLPrice(bool isBuy)
    {
       case SL_ATR:
       {
-         // Use locked grid ATR/mult if available, fallback to live values
+         // Use locked grid ATR if available, fallback to live values
          double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
-         double mult   = (g_gridBaseMult > 0) ? g_gridBaseMult : g_atrMult;
+         double mult   = g_atrMult;
          if(atrVal > 0)
          {
             double dist = atrVal * mult;
             // When Grid DCA is ON, widen SL to accommodate all grid levels
-            // SL = (maxDCA + 1) × atrMult × ATR  (3 DCA + 1 buffer)
+            // SL = (maxDCA + 1) × 1 ATR  (3 DCA + 1 ATR buffer)
             if(g_gridEnabled)
-               dist = atrVal * (g_gridMaxLevel + 1) * mult;
+               dist = atrVal * (g_gridMaxLevel + 1);
             if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
             sl = isBuy ? entry - dist : entry + dist;
          }
@@ -417,9 +416,8 @@ double CalcProjectedMaxRisk()
       return g_riskMoney * (g_gridMaxLevel + 1);  // fallback
 
    double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
-   double mult   = (g_gridBaseMult > 0) ? g_gridBaseMult : g_atrMult;
-   double spacing = atrVal * mult;
-   double fullSLDist = spacing * (g_gridMaxLevel + 1);
+   double spacing = atrVal;  // Grid spacing = 1 ATR
+   double fullSLDist = atrVal * (g_gridMaxLevel + 1);
    if(InpSLBuffer > 0) fullSLDist *= (1.0 + InpSLBuffer / 100.0);
 
    double totalRisk = 0;
@@ -802,7 +800,7 @@ void UpdateTPGridLines()
    // ── Grid DCA: show pending DCA levels ──
    if(g_gridEnabled && g_hasPos && g_gridBaseATR > 0)
    {
-      double spacing = g_gridBaseATR * g_gridBaseMult;
+      double spacing = g_gridBaseATR;  // 1 ATR per DCA level
       string dcaNames[] = {OBJ_DCA1_LINE, OBJ_DCA2_LINE, OBJ_DCA3_LINE, OBJ_DCA4_LINE, OBJ_DCA5_LINE};
 
       for(int i = 0; i < g_gridMaxLevel; i++)
@@ -1706,12 +1704,11 @@ bool ExecuteTrade(bool isBuy)
       g_riskDist  = dist;
       g_tpDist    = g_cachedATR;              // TP at 1 ATR (raw)
       
-      // Lock grid ATR/mult if grid enabled at trade entry
+      // Lock grid ATR if grid enabled at trade entry
       if(g_gridEnabled && g_gridBaseATR <= 0)
       {
          if(g_cachedATR > 0)
             g_gridBaseATR = g_cachedATR;
-         g_gridBaseMult = g_atrMult;
       }
       // Start DCA delay timer from initial entry
       g_lastDCATime = TimeCurrent();
@@ -1873,15 +1870,15 @@ double CalcSLPriceFrom(bool isBuy, double entryPrice)
    {
       case SL_ATR:
       {
-         // Use locked grid ATR/mult if available, fallback to live values
+         // Use locked grid ATR if available, fallback to live values
          double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
-         double mult   = (g_gridBaseMult > 0) ? g_gridBaseMult : g_atrMult;
+         double mult   = g_atrMult;
          if(atrVal > 0)
          {
             double dist = atrVal * mult;
             // When Grid DCA is ON, widen SL beyond all grid levels
             if(g_gridEnabled)
-               dist = atrVal * (g_gridMaxLevel + 1) * mult;
+               dist = atrVal * (g_gridMaxLevel + 1);
             double buffer = dist * InpSLBuffer / 100.0;
             sl = isBuy ? NormPrice(entryPrice - dist - buffer)
                        : NormPrice(entryPrice + dist + buffer);
@@ -1964,9 +1961,9 @@ void CheckTrailOverridesGrid()
    if(!g_gridEnabled) return;
    if(!g_hasPos) return;
    if(g_gridLevel >= g_gridMaxLevel) return;  // all DCA already executed
-   if(g_gridBaseATR <= 0 || g_gridBaseMult <= 0) return;
+   if(g_gridBaseATR <= 0) return;
 
-   double spacing = g_gridBaseATR * g_gridBaseMult;
+   double spacing = g_gridBaseATR;  // 1 ATR per DCA level
    // Next unexecuted DCA level
    int nextLevel = g_gridLevel + 1;
    double nextDCA = g_isBuy
@@ -1983,7 +1980,6 @@ void CheckTrailOverridesGrid()
    g_gridEnabled  = false;
    g_gridLevel    = 0;
    g_gridBaseATR  = 0;
-   g_gridBaseMult = 0;
 
    ObjectSetString (0, OBJ_GRID_BTN, OBJPROP_TEXT, "Grid DCA: OFF (Trail)");
    ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_BGCOLOR, C'60,60,85');
@@ -2212,24 +2208,20 @@ void ManageGrid()
    if(!g_hasPos) return;
    if(g_gridLevel >= g_gridMaxLevel) return;  // max DCA reached
 
-   // Need base ATR to calculate spacing
+   // Need base ATR to calculate spacing (1 ATR per DCA level)
    if(g_gridBaseATR <= 0)
    {
       if(g_cachedATR > 0)
          g_gridBaseATR = g_cachedATR;
       else
          return;
-      g_gridBaseMult = g_atrMult;  // Also lock multiplier
    }
-   // Safety: if ATR locked but mult wasn't (edge case)
-   if(g_gridBaseMult <= 0)
-      g_gridBaseMult = g_atrMult;
 
    double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                         : SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   // Calculate expected DCA level price
-   double spacing = g_gridBaseATR * g_gridBaseMult;
+   // Calculate expected DCA level price (1 ATR spacing)
+   double spacing = g_gridBaseATR;
    int nextLevel = g_gridLevel + 1;
    double dcaPrice = g_isBuy
       ? g_entryPx - nextLevel * spacing
@@ -2433,12 +2425,12 @@ void SyncPositionState()
       g_tpDist = g_cachedATR;  // TP at 1 ATR
 
    // Lock grid ATR/mult if grid enabled but not yet locked
+   // Lock grid ATR if grid enabled but not yet locked
    // (covers pending order fill scenario where ExecuteTrade was never called)
    if(g_gridEnabled && g_gridBaseATR <= 0)
    {
       if(g_cachedATR > 0)
          g_gridBaseATR = g_cachedATR;
-      g_gridBaseMult = g_atrMult;
    }
    // Start DCA delay timer from position sync
    if(g_lastDCATime == 0)
@@ -2630,7 +2622,6 @@ void OnTick()
       g_tp1Hit    = false;
       g_gridLevel = 0;
       g_gridBaseATR = 0;
-      g_gridBaseMult = 0;
       g_lastDCATime = 0;
       // Restore grid to user's intended state
       g_gridEnabled = g_gridUserEnabled;
@@ -2860,7 +2851,6 @@ void OnChartEvent(const int id,
          // Reset Grid DCA state
          g_gridLevel   = 0;
          g_gridBaseATR = 0;
-         g_gridBaseMult = 0;
          g_lastDCATime = 0;
 
          // Reset Trail state
@@ -2982,13 +2972,12 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_STATE, false);
          if(g_gridEnabled)
          {
-            // Lock grid ATR/mult only if we have an open position
+            // Lock grid ATR only if we have an open position
             // (no position = values locked later in ExecuteTrade)
             if(g_hasPos)
             {
                if(g_cachedATR > 0)
                   g_gridBaseATR = g_cachedATR;
-               g_gridBaseMult = g_atrMult;
             }
             
             // If already in position, count existing DCA positions
@@ -3066,7 +3055,6 @@ void OnChartEvent(const int id,
             ObjectSetInteger(0, OBJ_GRID_BTN, OBJPROP_COLOR, C'180,180,200');
             g_gridLevel   = 0;
             g_gridBaseATR = 0;
-            g_gridBaseMult = 0;
             // Narrow SL back to normal on existing positions
             if(g_hasPos)
             {
