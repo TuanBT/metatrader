@@ -18,8 +18,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Use "CLOSE ALL" to exit all positions                        |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.61"
-#property version   "1.61"
+#property copyright "Tuan v1.62"
+#property version   "1.62"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -237,6 +237,7 @@ ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail mode (changeable fro
 int      g_stepLevel    = 0;       // Step trail: current ratchet level (0=entry, 1=+1R, 2=+2R...)
 double   g_stepSize     = 0;       // Step trail: locked step size (normal SL dist at entry)
 bool     g_beReached    = false;   // BE trail: whether SL has been moved to breakeven
+int      g_beStepLevel  = 0;       // BE trail Phase 2: step level (0=BE, 1=+0.5R, 2=+1R...)
 bool     g_panelCollapsed = false;
 bool     g_linesHidden    = false;
 bool     g_settingsExpanded = true;
@@ -1399,8 +1400,12 @@ void SyncButtonAppearance()
             break;
          }
          case TRAIL_BE:
-            trailActive = g_beReached || (move >= g_cachedATR * 0.5);  // gate or BE done
+         {
+            double beR = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
+            if(beR <= 0) beR = g_riskDist;
+            trailActive = g_beReached || (beR > 0 && move >= beR * 0.5);
             break;
+         }
       }
    }
 
@@ -2062,18 +2067,24 @@ void ManageTrail()
 
    // ═══════════════════════════════════════
    // TRAIL_BE: Breakeven first, then trail from Close
-   // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5 ATR
-   // Phase 2 (per-bar):  Trail from bar close with ATR/2 distance
+   // Phase 1 (per-tick): Move SL to breakeven when profit >= 0.5R
+   // Phase 2 (per-tick): Step SL in 0.5R increments (+0.5R, +1R, +1.5R...)
    // ═══════════════════════════════════════
    if(g_trailRef == TRAIL_BE)
    {
-      // Phase 1: Move to breakeven (per-tick — react immediately)
+      if(!tickAllowed) return;  // throttle per-tick for both phases
+
+      // Determine step size = 0.5R (half of normal SL distance)
+      double fullR = (g_stepSize > 0) ? g_stepSize : CalcNormalSLDist();
+      if(fullR <= 0) fullR = g_riskDist;
+      if(fullR <= 0) return;
+      double halfR = fullR * 0.5;
+
+      // Phase 1: Move to breakeven when profit >= 0.5R
       if(!g_beReached)
       {
-         if(!tickAllowed) return;  // throttle per-tick
-         if(moveFromEntry >= g_cachedATR * 0.5)
+         if(moveFromEntry >= halfR)
          {
-            // Move SL to entry (breakeven)
             double beSL = NormPrice(refEntry);
             bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
             if(advance)
@@ -2081,38 +2092,42 @@ void ManageTrail()
                if(g_isBuy  && beSL >= bid2) return;
                if(!g_isBuy && beSL <= ask2) return;
                g_beReached = true;
+               g_beStepLevel = 0;
                s_lastTrailMs = nowMs;
-               Print(StringFormat("[TRAIL-BE] Phase 1: SL moved to breakeven %s",
+               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 0.5R)",
                      DoubleToString(beSL, _Digits)));
                ModifySL(beSL);
             }
             else
             {
-               // SL is already at or past breakeven — skip to Phase 2
                g_beReached = true;
+               g_beStepLevel = 0;
                Print("[TRAIL-BE] SL already past breakeven — entering Phase 2");
             }
          }
-         return;  // Don't trail yet in Phase 1
+         return;
       }
 
-      // Phase 2: Trail from Close (per-bar — only when candle closes)
-      if(!isNewBar) return;
+      // Phase 2: Step SL in 0.5R increments
+      // Level 1 reached (price +1R from entry) → SL = entry + 0.5R
+      // Level 2 reached (price +1.5R)          → SL = entry + 1.0R
+      // Level N reached (price +0.5R*(N+1))    → SL = entry + 0.5R*N
+      int reachedLevel = (int)MathFloor(moveFromEntry / halfR) - 1;  // -1 because BE was at +0.5R
+      if(reachedLevel <= g_beStepLevel) return;
 
-      double trailDist = g_cachedATR * InpTrailATRFactor;
-      if(trailDist <= 0) return;
-
-      double refPrice = iClose(_Symbol, _Period, 1);
-      if(refPrice <= 0) return;
-
-      double newSL = g_isBuy ? NormPrice(refPrice - trailDist)
-                             : NormPrice(refPrice + trailDist);
+      g_beStepLevel = reachedLevel;
+      double newSL = g_isBuy
+         ? NormPrice(refEntry + g_beStepLevel * halfR)
+         : NormPrice(refEntry - g_beStepLevel * halfR);
 
       bool advance = g_isBuy ? (newSL > g_currentSL) : (newSL < g_currentSL);
       if(!advance) return;
       if(g_isBuy  && newSL >= bid2) return;
       if(!g_isBuy && newSL <= ask2) return;
 
+      s_lastTrailMs = nowMs;
+      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%.1fR from entry)",
+            g_beStepLevel, DoubleToString(newSL, _Digits), g_beStepLevel * 0.5));
       ModifySL(newSL);
       return;
    }
@@ -2314,6 +2329,7 @@ void ManageGrid()
       g_gridLevel = nextLevel;
       g_stepLevel = 0;  // Reset step trail — avgEntry shifted, recalculate from scratch
       g_beReached = false;  // Reset BE trail — new DCA changes reference entry
+      g_beStepLevel = 0;
       double avgEntry = GetAvgEntry();
       Print(StringFormat("[GRID] DCA #%d %s %.2f @ %s | SL=%s | AvgEntry=%s | Total=%.2f",
             nextLevel,
@@ -2613,6 +2629,7 @@ void OnTick()
       g_stepLevel = 0;
       g_stepSize  = 0;
       g_beReached = false;
+      g_beStepLevel = 0;
    }
 
    // Detect new position opened externally (Bot, manual, etc.)
@@ -2843,6 +2860,7 @@ void OnChartEvent(const int id,
          g_stepLevel = 0;
          g_stepSize  = 0;
          g_beReached = false;
+         g_beStepLevel = 0;
          if(g_gridEnabled)
          {
             double maxRisk = CalcProjectedMaxRisk();
@@ -2948,7 +2966,8 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_STATE, false);
          g_trailRef = TRAIL_BE;
          g_beReached = false;  // Reset BE state on mode change
-         Print("[TRAIL] Mode → BE (breakeven first, then trail from close)");
+         g_beStepLevel = 0;
+         Print("[TRAIL] Mode → BE (breakeven first, then step 0.5R)");
          SyncButtonAppearance();
       }
       // ── Grid DCA toggle ──
