@@ -1024,7 +1024,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v.163", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1283,7 +1283,7 @@ void CreatePanel()
    // Trail SL
    ObjectSetString(0, OBJ_TRAIL_BTN, OBJPROP_TOOLTIP,
       "Trailing Stop Loss — Bật/Tắt\n"
-      "Tự động dời SL theo hướng có lợi.\n"
+      "Chỉ dời SL mà không đóng lệnh.\n"
       "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
 
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
@@ -1299,10 +1299,9 @@ void CreatePanel()
       "Kích hoạt sau khi giá đi >= 0.5 ATR.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
-      "BE — Chỉ dời SL (không đóng lệnh)\n"
-      "B1: Giá +0.5 ATR → SL về entry (hòa vốn)\n"
-      "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n"
-      "Chỉ dời SL, không đóng lệnh. Phối hợp Auto TP.");
+      "BE — Dời SL về BE và ATR\n"
+      "B1: Giá +0.5 ATR → SL về entry\n"
+      "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n");
 
    // Grid DCA
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,

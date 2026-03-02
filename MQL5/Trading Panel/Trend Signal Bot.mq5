@@ -266,7 +266,7 @@ void CreatePanel()
    int row = y + BOT_PAD;
 
    // Row 1: Title
-   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "Trend Signal Bot", C'170,180,215', 9, "Segoe UI Semibold");
+   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "Trend Signal Bot v1.09", C'170,180,215', 9, "Segoe UI Semibold");
    row += BOT_ROW;
 
    // Row 2: Start/Stop button
