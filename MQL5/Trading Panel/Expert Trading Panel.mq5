@@ -1713,6 +1713,8 @@ bool ExecuteTrade(bool isBuy)
             g_gridBaseATR = g_cachedATR;
          g_gridBaseMult = g_atrMult;
       }
+      // Start DCA delay timer from initial entry
+      g_lastDCATime = TimeCurrent();
 
       Print(StringFormat("[PANEL] %s %.2f lot @ %s  SL=%s  Risk=$%.2f",
          isBuy ? "BUY" : "SELL", lot,
@@ -2439,6 +2441,9 @@ void SyncPositionState()
          g_gridBaseATR = g_cachedATR;
       g_gridBaseMult = g_atrMult;
    }
+   // Start DCA delay timer from position sync
+   if(g_lastDCATime == 0)
+      g_lastDCATime = TimeCurrent();
 
    Print(StringFormat("[PANEL] Synced position: %s @ %s  SL=%s  (earliest of %d)",
       g_isBuy ? "BUY" : "SELL",
