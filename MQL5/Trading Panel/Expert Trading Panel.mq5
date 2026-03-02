@@ -18,8 +18,8 @@
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.71"
-#property version   "1.71"
+#property copyright "Tuan v1.72"
+#property version   "1.72"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -298,10 +298,10 @@ double CalcSLPrice(bool isBuy)
          if(atrVal > 0)
          {
             double dist = atrVal * mult;
-            // When Grid DCA is ON, widen SL to accommodate all grid levels
-            // SL = ATR × (mult + maxDCA)  e.g. ATR × (1.0 + 3) = 4 ATR
+            // When Grid DCA is ON, all intervals equal: spacing = ATR × mult
+            // SL = spacing × (maxLevel + 1) = ATR × mult × (maxLevel + 1)
             if(g_gridEnabled)
-               dist = atrVal * (mult + g_gridMaxLevel);
+               dist = atrVal * mult * (g_gridMaxLevel + 1);
             if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
             sl = isBuy ? entry - dist : entry + dist;
          }
@@ -418,8 +418,8 @@ double CalcProjectedMaxRisk()
       return g_riskMoney * (g_gridMaxLevel + 1);  // fallback
 
    double atrVal = (g_gridBaseATR > 0) ? g_gridBaseATR : g_cachedATR;
-   double spacing = atrVal;  // Grid spacing = 1 ATR
-   double fullSLDist = atrVal * (g_atrMult + g_gridMaxLevel);
+   double spacing = atrVal * g_atrMult;  // Grid spacing = ATR × mult
+   double fullSLDist = spacing * (g_gridMaxLevel + 1);
    if(InpSLBuffer > 0) fullSLDist *= (1.0 + InpSLBuffer / 100.0);
 
    double totalRisk = 0;
@@ -803,7 +803,7 @@ void UpdateTPGridLines()
    // ── Grid DCA: show pending DCA levels ──
    if(g_gridEnabled && g_hasPos && g_gridBaseATR > 0)
    {
-      double spacing = g_gridBaseATR;  // 1 ATR per DCA level
+      double spacing = g_gridBaseATR * g_atrMult;  // Grid spacing = ATR × mult
       string dcaNames[] = {OBJ_DCA1_LINE, OBJ_DCA2_LINE, OBJ_DCA3_LINE, OBJ_DCA4_LINE, OBJ_DCA5_LINE};
 
       for(int i = 0; i < g_gridMaxLevel; i++)
@@ -1028,7 +1028,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.72", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1907,10 +1907,10 @@ double CalcSLPriceFrom(bool isBuy, double entryPrice)
          if(atrVal > 0)
          {
             double dist = atrVal * mult;
-            // When Grid DCA is ON, widen SL beyond all grid levels
-            // SL = ATR × (mult + maxDCA)
+            // When Grid DCA is ON, all intervals equal: spacing = ATR × mult
+            // SL = spacing × (maxLevel + 1)
             if(g_gridEnabled)
-               dist = atrVal * (mult + g_gridMaxLevel);
+               dist = atrVal * mult * (g_gridMaxLevel + 1);
             double buffer = dist * InpSLBuffer / 100.0;
             sl = isBuy ? NormPrice(entryPrice - dist - buffer)
                        : NormPrice(entryPrice + dist + buffer);
@@ -1995,7 +1995,7 @@ void CheckTrailOverridesGrid()
    if(g_gridLevel >= g_gridMaxLevel) return;  // all DCA already executed
    if(g_gridBaseATR <= 0) return;
 
-   double spacing = g_gridBaseATR;  // 1 ATR per DCA level
+   double spacing = g_gridBaseATR * g_atrMult;  // Grid spacing = ATR × mult
    // Next unexecuted DCA level
    int nextLevel = g_gridLevel + 1;
    double nextDCA = g_isBuy
@@ -2315,7 +2315,7 @@ void ManageGrid()
    if(!g_hasPos) return;
    if(g_gridLevel >= g_gridMaxLevel) return;  // max DCA reached
 
-   // Need base ATR to calculate spacing (1 ATR per DCA level)
+   // Need base ATR to calculate spacing (ATR × mult per DCA level)
    if(g_gridBaseATR <= 0)
    {
       if(g_cachedATR > 0)
@@ -2327,8 +2327,8 @@ void ManageGrid()
    double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                         : SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   // Calculate expected DCA level price (1 ATR spacing)
-   double spacing = g_gridBaseATR;
+   // Calculate expected DCA level price (ATR × mult spacing)
+   double spacing = g_gridBaseATR * g_atrMult;
    int nextLevel = g_gridLevel + 1;
    double dcaPrice = g_isBuy
       ? g_entryPx - nextLevel * spacing
@@ -2668,7 +2668,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.71 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.72 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3110,8 +3110,8 @@ void OnChartEvent(const int id,
             // Warning about total risk
             Print(StringFormat("[GRID] WARNING: Max total risk = $%.0f (projected with min-lot clipping)",
                   maxRisk));
-            Print(StringFormat("[GRID] ENABLED | Max=%d Spacing=1.0xATR | SL widened to %dxATR",
-                  g_gridMaxLevel, g_gridMaxLevel + 1));
+            Print(StringFormat("[GRID] ENABLED | Max=%d Spacing=%.1fxATR | SL = %dx spacing",
+                  g_gridMaxLevel, g_atrMult, g_gridMaxLevel + 1));
 
             // Widen SL on existing positions to accommodate grid levels
             if(g_hasPos)
