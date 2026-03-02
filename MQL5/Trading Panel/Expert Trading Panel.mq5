@@ -2288,10 +2288,8 @@ void ManageAutoTP()
       }
       if(totalLot <= minLot)
       {
-         // Can't halve min lot — mark as done, skip partial close
-         g_tp1Hit = true;
-         Print(StringFormat("[AUTO TP] TP1 hit but lot=%.2f is min. Cannot halve — skipped.", totalLot));
-         DisableGridAfterTP1();
+         // Can't halve min lot — wait for Grid DCA to add more positions
+         // Don't mark g_tp1Hit — Auto TP will retry after lot increases
          return;
       }
 
