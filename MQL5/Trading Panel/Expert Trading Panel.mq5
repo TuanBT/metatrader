@@ -2544,6 +2544,26 @@ void OnTick()
    // Detect position closed externally (SL hit, etc.)
    if(g_hasPos && !HasOwnPosition())
    {
+      // ── Detect "Large SL" = Grid DCA fully exhausted + closed at loss ──
+      // Check BEFORE resetting state
+      bool wasGridMax = (g_gridEnabled && g_gridLevel >= g_gridMaxLevel);
+      bool wasTrailProfit = g_beReached || (g_isBuy ? (g_currentSL > g_entryPx) : (g_currentSL < g_entryPx && g_currentSL > 0));
+
+      // If Grid DCA was maxed out AND trailing hadn't locked profit → "Large SL"
+      // Publish GV to pause Bot(s) using this symbol
+      if(wasGridMax && !wasTrailProfit)
+      {
+         string gvPause = "TP_BotPause_" + _Symbol;
+         GlobalVariableSet(gvPause, 1.0);
+         Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Publishing %s=1",
+               g_gridLevel, g_gridMaxLevel, gvPause));
+      }
+      else
+      {
+         Print(StringFormat("[PANEL] Position closed — Grid=%d/%d, TrailProfit=%s",
+               g_gridLevel, g_gridMaxLevel, wasTrailProfit ? "Yes" : "No"));
+      }
+
       g_hasPos    = false;
       g_entryPx   = 0;
       g_origSL    = 0;

@@ -3,10 +3,10 @@
 //| Multi-TF EMA Cross trend-following bot with UI panel              |
 //| Entry: EMA cross on chart TF (auto-adapts)                        |
 //| Filter: Mid + High TF EMA alignment (auto-mapped)                 |
-//| v1.08: Always show all 8 TFs (M1-W1), fixed-width columns      |
+//| v1.09: Auto-pause on Large SL (Grid DCA max + hit SL)          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.08"
-#property version   "1.08"
+#property copyright "Tuan v1.09"
+#property version   "1.09"
 #property strict
 
 // ════════════════════════════════════════════════════════════════════
@@ -73,6 +73,7 @@ int g_atrHandle;
 
 datetime g_lastSignalBar = 0;
 bool     g_botEnabled    = true;    // Start/Stop state
+bool     g_paused        = false;   // Auto-paused by Panel (large SL)
 bool     g_hasPos        = false;
 
 // Trading signal states (entry/mid/high only)
@@ -313,7 +314,14 @@ void DestroyPanel()
 void UpdatePanel()
 {
    // ── Start/Stop button ──
-   if(g_botEnabled)
+   if(g_paused)
+   {
+      ObjectSetString (0, OBJ_START, OBJPROP_TEXT, "⚠ PAUSED (Large SL)");
+      ObjectSetInteger(0, OBJ_START, OBJPROP_BGCOLOR, C'140,60,20');
+      ObjectSetInteger(0, OBJ_START, OBJPROP_BORDER_COLOR, C'180,80,30');
+      ObjectSetInteger(0, OBJ_START, OBJPROP_COLOR, COL_WHITE);
+   }
+   else if(g_botEnabled)
    {
       ObjectSetString (0, OBJ_START, OBJPROP_TEXT, "Bot: ON");
       ObjectSetInteger(0, OBJ_START, OBJPROP_BGCOLOR, COL_BTN_ON);
@@ -459,6 +467,20 @@ void UpdateSignalStates()
 void OnTick()
 {
    UpdateSignalStates();
+
+   // ── Check if Panel published a pause signal (Large SL) ──
+   string gvPause = "TP_BotPause_" + _Symbol;
+   if(!g_paused && GlobalVariableCheck(gvPause))
+   {
+      double val = GlobalVariableGet(gvPause);
+      if(val >= 1.0)
+      {
+         g_paused = true;
+         g_botEnabled = false;
+         Print(StringFormat("[TREND BOT] ⚠ AUTO-PAUSED — Large SL detected by Panel (%s)", gvPause));
+      }
+   }
+
    UpdatePanel();
 
    if(!g_botEnabled) return;
@@ -506,6 +528,17 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
    {
       ObjectSetInteger(0, OBJ_START, OBJPROP_STATE, false);
       g_botEnabled = !g_botEnabled;
+
+      // If re-enabling after pause, clear the pause GV
+      if(g_botEnabled && g_paused)
+      {
+         g_paused = false;
+         string gvPause = "TP_BotPause_" + _Symbol;
+         if(GlobalVariableCheck(gvPause))
+            GlobalVariableDel(gvPause);
+         Print("[TREND BOT] Pause cleared — resumed by user");
+      }
+
       Print(StringFormat("[TREND BOT] %s", g_botEnabled ? "ENABLED" : "DISABLED"));
       UpdatePanel();
    }
