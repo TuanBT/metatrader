@@ -35,8 +35,8 @@ enum ENUM_SL_MODE
 
 enum ENUM_TRAIL_MODE
 {
-   TRAIL_CLOSE  = 1,  // ATR×1.0 from bar[1] close (per-bar)
-   TRAIL_SWING  = 2,  // ATR×1.0 from swing extreme (per-bar)
+   TRAIL_CLOSE  = 1,  // bar[1] wick (low/high), min 0.5 ATR
+   TRAIL_SWING  = 2,  // nearest swing low/high (support/resistance)
    TRAIL_BE     = 4,  // Breakeven first, then step 1 ATR
    TRAIL_NONE   = 5,  // No auto trail
 };
@@ -58,7 +58,6 @@ input double          InpSLBuffer       = 5.0;       // SL Buffer % (push SL fur
 
 input group           "══ Trailing Stop ══"
 input ENUM_TRAIL_MODE InpTrailMode      = TRAIL_CLOSE; // Trail Mode (default)
-input double          InpTrailATRFactor = 1.0;       // Trail distance = ATR × factor
 input int             InpTrailLookback  = 5;          // Swing lookback bars (Swing mode)
 
 input group           "══ Grid DCA ══"
@@ -1309,16 +1308,16 @@ void CreatePanel()
       "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
 
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
-      "CLOSE — Theo giá đóng nến (mỗi nến mới)\n"
-      "SL = Close[1] − ATR×1.0\n"
-      "Lọc nhiễu bóng nến, ổn định nhất.\n"
+      "CLOSE — Theo râu nến (mỗi nến mới)\n"
+      "BUY: SL = Low[1] | SELL: SL = High[1]\n"
+      "Nến quá ngắn (< 0.5 ATR) → bỏ qua.\n"
       "Kích hoạt sau khi giá đi >= 1.0 ATR.");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "SWING — Theo swing high/low (mỗi nến mới)\n"
-      "SL = SwingHigh/Low(" + IntegerToString(InpTrailLookback) + " bars) − ATR×1.0\n"
-      "Cho giá room retest, phù hợp swing trade.\n"
-      "Kích hoạt sau khi giá đi >= 1.0 ATR.");
+      "SWING — Theo chân sóng gần nhất (mỗi nến mới)\n"
+      "BUY: SL = Swing Low | SELL: SL = Swing High\n"
+      "Nếu không có swing → lấy nến đỏ/xanh gần nhất.\n"
+      "Min 0.5 ATR, kích hoạt sau >= 1.0 ATR.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
       "BE — Dời SL về BE và ATR\n"
@@ -2120,8 +2119,9 @@ void ManageTrail()
    }
 
    // ═══════════════════════════════════════
-   // TRAIL_CLOSE (per-bar) / TRAIL_SWING (per-bar)
-   // Continuous trail with 1.0 ATR profit gate
+   // TRAIL_CLOSE (per-bar): SL = bar[1] wick (low for BUY, high for SELL)
+   // TRAIL_SWING (per-bar): SL = nearest swing low/high (support/resistance)
+   // Both: min 0.5 ATR distance from current price, profit gate 1 ATR
    // ═══════════════════════════════════════
 
    // Both CLOSE and SWING: per-bar only
@@ -2131,45 +2131,104 @@ void ManageTrail()
    if(moveFromEntry < g_cachedATR * 1.0)
       return;
 
-   double trailDist = g_cachedATR * InpTrailATRFactor;
-   if(trailDist <= 0) return;
+   double minDist = g_cachedATR * 0.5;  // minimum trail distance from price
+   if(minDist <= 0) return;
 
-   double refPrice = 0;
+   double newSL = 0;
 
    switch(g_trailRef)
    {
       case TRAIL_CLOSE:
       {
-         refPrice = iClose(_Symbol, _Period, 1);
+         // SL at bar[1] wick: low for BUY, high for SELL
+         // Skip if distance from current price < 0.5 ATR (candle too short)
+         if(g_isBuy)
+         {
+            newSL = NormPrice(iLow(_Symbol, _Period, 1));
+            if((bid2 - newSL) < minDist) return;  // too close, skip
+         }
+         else
+         {
+            newSL = NormPrice(iHigh(_Symbol, _Period, 1));
+            if((newSL - ask2) < minDist) return;   // too close, skip
+         }
          break;
       }
       case TRAIL_SWING:
       {
+         // Find nearest swing low/high (wave trough/crest)
+         // Swing low = bar where low < both neighbors (confirmed from bar[2])
+         // Fallback: nearest bearish candle's low (BUY) / bullish candle's high (SELL)
          int N = InpTrailLookback;
-         if(N < 1) N = 5;
+         if(N < 3) N = 5;
+         double swingPrice = 0;
+
          if(g_isBuy)
          {
-            double hh = iHigh(_Symbol, _Period, 1);
+            // Search for swing low from bar[2] backwards (bar[2] has bar[1] as right neighbor)
             for(int i = 2; i <= N; i++)
-               hh = MathMax(hh, iHigh(_Symbol, _Period, i));
-            refPrice = hh;
+            {
+               double lo  = iLow(_Symbol, _Period, i);
+               double loL = iLow(_Symbol, _Period, i - 1);  // right neighbor (newer)
+               double loR = iLow(_Symbol, _Period, i + 1);  // left neighbor (older)
+               if(lo < loL && lo < loR)
+               {
+                  swingPrice = lo;
+                  break;
+               }
+            }
+            // Fallback: nearest bearish candle's low
+            if(swingPrice <= 0)
+            {
+               for(int i = 1; i <= N; i++)
+               {
+                  if(iClose(_Symbol, _Period, i) < iOpen(_Symbol, _Period, i))
+                  {
+                     swingPrice = iLow(_Symbol, _Period, i);
+                     break;
+                  }
+               }
+            }
+            if(swingPrice <= 0) return;
+            newSL = NormPrice(swingPrice);
+            if((bid2 - newSL) < minDist) return;  // too close, skip
          }
          else
          {
-            double ll = iLow(_Symbol, _Period, 1);
+            // Search for swing high from bar[2] backwards
             for(int i = 2; i <= N; i++)
-               ll = MathMin(ll, iLow(_Symbol, _Period, i));
-            refPrice = ll;
+            {
+               double hi  = iHigh(_Symbol, _Period, i);
+               double hiL = iHigh(_Symbol, _Period, i - 1);  // right neighbor
+               double hiR = iHigh(_Symbol, _Period, i + 1);  // left neighbor
+               if(hi > hiL && hi > hiR)
+               {
+                  swingPrice = hi;
+                  break;
+               }
+            }
+            // Fallback: nearest bullish candle's high
+            if(swingPrice <= 0)
+            {
+               for(int i = 1; i <= N; i++)
+               {
+                  if(iClose(_Symbol, _Period, i) > iOpen(_Symbol, _Period, i))
+                  {
+                     swingPrice = iHigh(_Symbol, _Period, i);
+                     break;
+                  }
+               }
+            }
+            if(swingPrice <= 0) return;
+            newSL = NormPrice(swingPrice);
+            if((newSL - ask2) < minDist) return;  // too close, skip
          }
          break;
       }
       default: return;
    }
 
-   if(refPrice <= 0) return;
-
-   double newSL = g_isBuy ? NormPrice(refPrice - trailDist)
-                          : NormPrice(refPrice + trailDist);
+   if(newSL <= 0) return;
 
    bool advance = g_isBuy ? (newSL > g_currentSL)
                            : (newSL < g_currentSL);
