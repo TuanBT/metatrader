@@ -196,6 +196,10 @@ int OnInit()
    UpdateSignalStates();
    UpdatePanel();
 
+   // ── Show EMA lines on chart ──
+   ChartIndicatorAdd(0, 0, g_emaFastEntry);  // EMA 20 on chart
+   ChartIndicatorAdd(0, 0, g_emaSlowEntry);  // EMA 50 on chart
+
    EventSetMillisecondTimer(1000);
 
    Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s (auto) | PanelLot=%s | Fallback=$%.0f",
@@ -210,6 +214,18 @@ void OnDeinit(const int reason)
 {
    DestroyPanel();
    EventKillTimer();
+
+   // Remove chart indicators before releasing handles
+   string shortFast = ChartIndicatorName(0, 0, ChartIndicatorsTotal(0, 0) - 1);
+   // Remove EMA indicators from chart (iterate and check)
+   for(int i = ChartIndicatorsTotal(0, 0) - 1; i >= 0; i--)
+   {
+      string indName = ChartIndicatorName(0, 0, i);
+      int indHandle = ChartIndicatorGet(0, 0, indName);
+      if(indHandle == g_emaFastEntry || indHandle == g_emaSlowEntry)
+         ChartIndicatorDelete(0, 0, indName);
+   }
+
    if(g_emaFastEntry != INVALID_HANDLE) IndicatorRelease(g_emaFastEntry);
    if(g_emaSlowEntry != INVALID_HANDLE) IndicatorRelease(g_emaSlowEntry);
    if(g_emaFastMid   != INVALID_HANDLE) IndicatorRelease(g_emaFastMid);
@@ -320,6 +336,12 @@ void CreatePanel()
    MakeLabel(OBJ_INFO_L3, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas"); infoY += 13;
    MakeLabel(OBJ_INFO_L4, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas"); infoY += 13;
    MakeLabel(OBJ_INFO_L5, x + BOT_PAD, infoY,       "", COL_DIM, 7, "Consolas");
+   // Hide all info labels initially
+   ObjectSetInteger(0, OBJ_INFO_L1, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_INFO_L2, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_INFO_L3, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_INFO_L4, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_INFO_L5, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
 
    ChartRedraw();
 }
@@ -441,15 +463,22 @@ void UpdatePanel()
          "SELL: Cross dn + Mid▼ + High▼");
       ObjectSetString(0, OBJ_INFO_L5, OBJPROP_TEXT,
          "Panel manages SL / TP / Trail");
+      // Show info labels
+      ObjectSetInteger(0, OBJ_INFO_L1, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L2, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L3, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L4, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L5, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
    }
    else
    {
       ObjectSetString(0, OBJ_INFO_BTN, OBJPROP_TEXT, "?");
-      ObjectSetString(0, OBJ_INFO_L1, OBJPROP_TEXT, "");
-      ObjectSetString(0, OBJ_INFO_L2, OBJPROP_TEXT, "");
-      ObjectSetString(0, OBJ_INFO_L3, OBJPROP_TEXT, "");
-      ObjectSetString(0, OBJ_INFO_L4, OBJPROP_TEXT, "");
-      ObjectSetString(0, OBJ_INFO_L5, OBJPROP_TEXT, "");
+      // Hide info labels completely
+      ObjectSetInteger(0, OBJ_INFO_L1, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L2, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L3, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L4, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      ObjectSetInteger(0, OBJ_INFO_L5, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
    }
    ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, bgH);
 
