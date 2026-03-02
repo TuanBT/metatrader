@@ -8,7 +8,7 @@
 //|  • One-click BUY / SELL                                          |
 //|  • Auto trailing SL: Wick / Swing / Breakeven                    |
 //|  • Auto TP: 50% partial close at 0.5 or 1 ATR                    |
-//|  • Grid DCA: auto DCA with 1 ATR spacing                        |
+//|  • Grid DCA: auto DCA with ATR × mult spacing                    |
 //|  • Dark/Light chart themes                                      |
 //|                                                                  |
 //| Usage:                                                           |
@@ -251,7 +251,7 @@ bool     g_gridEnabled    = false;
 bool     g_gridUserEnabled = false;  // User's intended state (before trail override)
 int      g_gridLevel      = 0;       // 0=initial only, 1-3=DCA additions
 int      g_gridMaxLevel   = 3;       // max DCA positions — runtime changeable
-double   g_gridBaseATR    = 0;       // ATR value when grid started (1 ATR spacing)
+double   g_gridBaseATR    = 0;       // ATR value when grid started (base for ATR × mult spacing)
 int      g_gridDelay      = 5;       // Delay between DCA fills (minutes), 0=disabled
 datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
@@ -340,54 +340,6 @@ double CalcSLPrice(bool isBuy)
    return NormPrice(sl);
 }
 
-// Return the NORMAL SL distance (without grid widening) – used for lot sizing
-// Each position risks $RiskMoney based on normal ATR distance, NOT the wide grid SL
-double CalcNormalSLDist()
-{
-   switch(g_slMode)
-   {
-      case SL_ATR:
-      {
-         if(g_cachedATR > 0)
-         {
-            double dist = g_cachedATR * g_atrMult;
-            if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
-            return dist;
-         }
-         return 0;
-      }
-      case SL_LOOKBACK:
-      {
-         int lb = MathMax(InpSLLookback, 3);
-         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         double mid = (ask + bid) / 2.0;
-         double extreme;
-         if(g_isBuy)
-         {
-            extreme = iLow(_Symbol, _Period, 1);
-            for(int i = 2; i <= lb; i++)
-               extreme = MathMin(extreme, iLow(_Symbol, _Period, i));
-         }
-         else
-         {
-            extreme = iHigh(_Symbol, _Period, 1);
-            for(int i = 2; i <= lb; i++)
-               extreme = MathMax(extreme, iHigh(_Symbol, _Period, i));
-         }
-         double dist = MathAbs(mid - extreme);
-         if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
-         return dist;
-      }
-      case SL_FIXED:
-      {
-         double dist = InpFixedSLPips * PipSize();
-         if(InpSLBuffer > 0) dist *= (1.0 + InpSLBuffer / 100.0);
-         return dist;
-      }
-   }
-   return 0;
-}
 
 // Lot from risk $ and SL distance
 double CalcLot(double slDist)
@@ -1311,13 +1263,13 @@ void CreatePanel()
       "CLOSE — Theo râu nến (mỗi nến mới)\n"
       "BUY: SL = Low[1] | SELL: SL = High[1]\n"
       "Nến quá ngắn (< 0.5 ATR) → bỏ qua.\n"
-      "Kích hoạt sau khi giá đi >= 1.0 ATR.");
+      "Kích hoạt sau khi giá đi >= TP ATR factor.");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
       "SWING — Theo chân sóng gần nhất (mỗi nến mới)\n"
       "BUY: SL = Swing Low | SELL: SL = Swing High\n"
       "Nếu không có swing → lấy nến đỏ/xanh gần nhất.\n"
-      "Min 0.5 ATR, kích hoạt sau >= 1.0 ATR.");
+      "Min 0.5 ATR, kích hoạt sau >= TP ATR factor.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
       "BE — Dời SL về BE và ATR\n"
@@ -1415,7 +1367,7 @@ void SyncButtonAppearance()
       {
          case TRAIL_CLOSE:
          case TRAIL_SWING:
-            trailActive = (move >= g_cachedATR * 1.0);  // profit gate passed
+            trailActive = (move >= g_cachedATR * g_tpATRFactor);  // profit gate = TP factor
             break;
          case TRAIL_BE:
          {
@@ -2119,7 +2071,7 @@ void ManageTrail()
    // ═══════════════════════════════════════
    // TRAIL_CLOSE (per-bar): SL = bar[1] wick (low for BUY, high for SELL)
    // TRAIL_SWING (per-bar): SL = nearest swing low/high (support/resistance)
-   // Both: min 0.5 ATR distance from current price, profit gate 1 ATR
+   // Both: min 0.5 ATR distance from current price, profit gate = TP ATR factor
    // ═══════════════════════════════════════
 
    // Both CLOSE and SWING: per-bar only
@@ -2785,7 +2737,7 @@ void OnTick()
    // Auto trailing
    ManageTrail();
 
-   // Auto TP (partial close at 1 ATR)
+   // Auto TP (partial close at TP ATR factor)
    ManageAutoTP();
 
    // Grid DCA (add positions on adverse move)
