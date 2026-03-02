@@ -15,7 +15,7 @@
 input group           "══ Strategy ══"
 input double          InpATRMinMult     = 0.3;        // Min candle range × ATR (0 = off)
 input int             InpATRPeriod      = 14;         // ATR period
-input int             InpPauseBars      = 10;         // Auto-resume after N bars (0 = manual only)
+input int             InpPauseBars      = 60;         // Auto-resume after N bars (0 = manual only)
 
 input group           "══ General ══"
 input int             InpDeviation      = 20;         // Max slippage (points)
@@ -236,7 +236,7 @@ void CreatePanel()
    int row = y + BOT_PAD;
 
    // Row 1: Title
-   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "CC Bot v1.01", C'170,180,215', 10, "Segoe UI Semibold");
+   MakeLabel(OBJ_TITLE, x + BOT_PAD, row, "CC Bot v1.02", C'170,180,215', 10, "Segoe UI Semibold");
    row += BOT_ROW;
 
    // Row 2: Start/Stop button
@@ -308,8 +308,15 @@ void UpdatePanel()
          int barsSincePause = iBarShift(_Symbol, _Period, g_pauseTime);
          int barsLeft = InpPauseBars - barsSincePause;
          if(barsLeft < 0) barsLeft = 0;
-         ObjectSetString(0, OBJ_START, OBJPROP_TEXT,
-            StringFormat("⚠ PAUSED | %d bars left", barsLeft));
+         // Calculate minutes remaining
+         int secPerBar = PeriodSeconds(_Period);
+         int minsLeft = (barsLeft * secPerBar) / 60;
+         if(minsLeft >= 60)
+            ObjectSetString(0, OBJ_START, OBJPROP_TEXT,
+               StringFormat("⚠ PAUSED | ~%dh%dm", minsLeft / 60, minsLeft % 60));
+         else
+            ObjectSetString(0, OBJ_START, OBJPROP_TEXT,
+               StringFormat("⚠ PAUSED | ~%dm", minsLeft));
       }
       else
          ObjectSetString(0, OBJ_START, OBJPROP_TEXT, "⚠ PAUSED (Large SL)");
