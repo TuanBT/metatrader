@@ -15,13 +15,8 @@ input group           "══ Strategy ══"
 input double          InpATRMinMult     = 0.3;        // Min candle range × ATR (0 = off)
 input int             InpATRPeriod      = 14;         // ATR period
 
-input group           "══ Risk ══"
-input bool            InpUsePanelLot    = true;       // Use lot from Trading Panel
-input double          InpRiskMoney      = 10.0;       // Fallback risk per trade ($)
-input double          InpATRMult        = 1.5;        // ATR multiplier (fallback SL calc)
-input int             InpDeviation      = 20;         // Max slippage (points)
-
 input group           "══ General ══"
+input int             InpDeviation      = 20;         // Max slippage (points)
 input ulong           InpMagic          = 99999;      // Magic Number
 
 // ════════════════════════════════════════════════════════════════════
@@ -170,9 +165,8 @@ int OnInit()
 
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[CC BOT] Started | %s | Magic=%d | ATR(%d) | MinMult=%.1f | PanelLot=%s",
-         _Symbol, InpMagic, InpATRPeriod, InpATRMinMult,
-         InpUsePanelLot ? "ON" : "OFF"));
+   Print(StringFormat("[CC BOT] Started | %s | Magic=%d | ATR(%d) | MinMult=%.1f",
+         _Symbol, InpMagic, InpATRPeriod, InpATRMinMult));
 
    return INIT_SUCCEEDED;
 }
@@ -624,7 +618,7 @@ void OnTick()
          Print(StringFormat("[CC BOT] Breakout BUY! Price %.5f > %.5f",
                ask, g_breakLevel));
          g_pendingBuy = false;
-         OpenTrade(true, g_cachedATR);
+         OpenTrade(true);
       }
    }
    else if(g_pendingSell && g_breakLevel > 0)
@@ -635,7 +629,7 @@ void OnTick()
          Print(StringFormat("[CC BOT] Breakout SELL! Price %.5f < %.5f",
                bid, g_breakLevel));
          g_pendingSell = false;
-         OpenTrade(false, g_cachedATR);
+         OpenTrade(false);
       }
    }
 }
@@ -681,13 +675,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          Print("[CC BOT] Already have a position, cannot force BUY");
          return;
       }
-      double atr[1];
-      if(CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1 && atr[0] > 0)
-      {
-         Print("[CC BOT] Force BUY triggered by user");
-         OpenTrade(true, atr[0]);
-         UpdatePanel();
-      }
+      Print("[CC BOT] Force BUY triggered by user");
+      OpenTrade(true);
+      UpdatePanel();
    }
    // ── Info toggle ──
    else if(sparam == OBJ_INFO_BTN)
@@ -705,54 +695,30 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          Print("[CC BOT] Already have a position, cannot force SELL");
          return;
       }
-      double atr[1];
-      if(CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1 && atr[0] > 0)
-      {
-         Print("[CC BOT] Force SELL triggered by user");
-         OpenTrade(false, atr[0]);
-         UpdatePanel();
-      }
+      Print("[CC BOT] Force SELL triggered by user");
+      OpenTrade(false);
+      UpdatePanel();
    }
 }
 
 // ════════════════════════════════════════════════════════════════════
 // TRADE FUNCTIONS
 // ════════════════════════════════════════════════════════════════════
-void OpenTrade(bool isBuy, double atrValue)
+void OpenTrade(bool isBuy)
 {
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   // ── Determine lot size ──
+   // ── Lot from Panel GV, fallback = min lot ──
    double lot = 0;
-   string lotSource = "";
-
-   if(InpUsePanelLot)
-   {
-      string gvName = "TP_Lot_" + _Symbol;
-      if(GlobalVariableCheck(gvName))
-      {
-         lot = GlobalVariableGet(gvName);
-         lotSource = "Panel";
-      }
-      else
-         Print("[CC BOT] WARNING: Panel GV not found, using fallback risk calc");
-   }
-
-   if(lot <= 0)
-   {
-      double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      double slDist  = atrValue * InpATRMult;
-      if(tickSz > 0 && tickVal > 0 && slDist > 0)
-         lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
-      lotSource = StringFormat("Risk$%.0f", InpRiskMoney);
-   }
+   string gvName = "TP_Lot_" + _Symbol;
+   if(GlobalVariableCheck(gvName))
+      lot = GlobalVariableGet(gvName);
 
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   if(lotStep > 0)
+   if(lotStep > 0 && lot > 0)
       lot = MathFloor(lot / lotStep) * lotStep;
    lot = MathMax(minLot, MathMin(maxLot, lot));
 
@@ -786,9 +752,9 @@ void OpenTrade(bool isBuy, double atrValue)
 
    if(OrderSend(req, res))
    {
-      Print(StringFormat("[CC BOT] %s %.2f @ %s | Lot=%s | No SL/TP (Panel manages)",
+      Print(StringFormat("[CC BOT] %s %.2f @ %s | No SL/TP (Panel manages)",
             isBuy ? "BUY" : "SELL", lot,
-            DoubleToString(price, _Digits), lotSource));
+            DoubleToString(price, _Digits)));
 
       // Draw entry arrow on chart
       DrawEntryArrow(isBuy, price, lot);

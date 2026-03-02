@@ -31,7 +31,7 @@ Panel và Bot giao tiếp qua **GlobalVariable** (GV) của MT5.
 | **GV Key** | `"TP_Lot_" + _Symbol` |
 | **Writer** | Panel — mỗi tick tính avg lot từ SL distance của cả BUY lẫn SELL |
 | **Reader** | Tất cả Bot — đọc trong `UpdatePanel()` và `OpenTrade()` |
-| **Fallback** | Nếu GV không tồn tại → Bot tự tính lot theo ATR-based risk |
+| **Fallback** | Nếu GV không tồn tại → Bot dùng `SYMBOL_VOLUME_MIN` |
 
 **Code mẫu (Bot đọc lot):**
 ```mql5
@@ -40,7 +40,7 @@ double GetLotFromPanel()
    string gvName = "TP_Lot_" + _Symbol;
    if(GlobalVariableCheck(gvName))
       return GlobalVariableGet(gvName);
-   return 0; // fallback to internal calc
+   return SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
 }
 ```
 
@@ -143,14 +143,12 @@ Mọi Bot **phải** có các input sau với **cùng tên và default**:
 
 | Input | Type | Default | Mô tả |
 |-------|------|---------|-------|
-| `InpUsePanelLot` | `bool` | `true` | Dùng lot từ Panel GV |
-| `InpRiskMoney` | `double` | `10.0` | Fallback risk $ nếu ko có Panel |
-| `InpATRMult` | `double` | `1.5` | ATR multiplier cho SL (fallback) |
-| `InpATRPeriod` | `int` | `14` | ATR period |
 | `InpDeviation` | `int` | `20` | Max slippage (points) |
 | `InpMagic` | `int` | `99999` | Magic Number |
 
-Bot có thể thêm input riêng phía trên (ví dụ `InpEMAFast`, `InpATRMinMult`...), nhưng **nhóm chung phải giữ nguyên** default.
+Bot có thể thêm input riêng (ví dụ `InpEMAFast`, `InpATRMinMult`, `InpATRPeriod`...), nhưng **nhóm chung phải giữ nguyên** default.
+
+> **Note:** Bot KHÔNG có risk inputs (lot, risk $, ATR mult). Lot hoàn toàn do Panel quản lý qua GV. Fallback = `SYMBOL_VOLUME_MIN`.
 
 ---
 
@@ -316,11 +314,11 @@ void OnDeinit(const int reason)
 void OpenTrade(bool isBuy)
 {
    // 1. HasPosition() check → return nếu đã có
-   // 2. Lấy lot: Panel GV → fallback ATR-based
-   // 3. Tính SL: ATR × multiplier
+   // 2. Lấy lot: Panel GV → fallback SYMBOL_VOLUME_MIN
+   // 3. Normalize lot (step, min, max)
    // 4. entry = isBuy ? SymbolInfoDouble(ASK) : SymbolInfoDouble(BID)
-   // 5. sl = isBuy ? entry - slDist : entry + slDist
-   // 6. CTrade.PositionOpen(...)
+   // 5. sl = 0, tp = 0 (Panel manages)
+   // 6. OrderSend(req, res)
    // 7. DrawEntryArrow() (nếu Bot hỗ trợ)
    // 8. Log: PrintFormat("[BOT] Opened %s ...", isBuy?"BUY":"SELL", ...)
 }

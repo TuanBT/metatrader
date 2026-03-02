@@ -16,14 +16,8 @@ input group           "══ Strategy ══"
 input int             InpEMAFast        = 20;         // EMA Fast period
 input int             InpEMASlow        = 50;         // EMA Slow period
 
-input group           "══ Risk ══"
-input bool            InpUsePanelLot    = true;       // Use lot from Trading Panel
-input double          InpRiskMoney      = 10.0;       // Fallback risk per trade ($)
-input double          InpATRMult        = 1.5;        // ATR multiplier (fallback SL calc)
-input int             InpATRPeriod      = 14;         // ATR period
-input int             InpDeviation      = 20;         // Max slippage (points)
-
 input group           "══ General ══"
+input int             InpDeviation      = 20;         // Max slippage (points)
 input ulong           InpMagic          = 99999;      // Magic Number
 
 // ════════════════════════════════════════════════════════════════════
@@ -76,7 +70,6 @@ string g_tfEntryName, g_tfMidName, g_tfHighName; // TF labels for log
 int g_emaFastEntry, g_emaSlowEntry;
 int g_emaFastMid,   g_emaSlowMid;
 int g_emaFastHigh,  g_emaSlowHigh;
-int g_atrHandle;
 
 datetime g_lastSignalBar = 0;
 bool     g_botEnabled    = true;    // Start/Stop state
@@ -89,7 +82,6 @@ bool g_h1Up = false, g_h1Down = false;
 bool g_m15Up = false, g_m15Down = false;
 bool g_m5Up = false, g_m5Down = false;
 bool g_crossUp = false, g_crossDown = false;
-double g_cachedATR = 0;
 
 // ── Multi-TF display (all TFs from entry to W1) ──
 #define MAX_DISP_TF 8
@@ -172,12 +164,10 @@ int OnInit()
    g_emaSlowMid   = iMA(_Symbol, g_tfMid,   InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
    g_emaFastHigh  = iMA(_Symbol, g_tfHigh,  InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
    g_emaSlowHigh  = iMA(_Symbol, g_tfHigh,  InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
-   g_atrHandle    = iATR(_Symbol, g_tfEntry, InpATRPeriod);
 
    if(g_emaFastEntry == INVALID_HANDLE || g_emaSlowEntry == INVALID_HANDLE ||
       g_emaFastMid   == INVALID_HANDLE || g_emaSlowMid   == INVALID_HANDLE ||
-      g_emaFastHigh  == INVALID_HANDLE || g_emaSlowHigh  == INVALID_HANDLE ||
-      g_atrHandle    == INVALID_HANDLE)
+      g_emaFastHigh  == INVALID_HANDLE || g_emaSlowHigh  == INVALID_HANDLE)
    {
       Print("[TREND BOT] Failed to create indicator handles");
       return INIT_FAILED;
@@ -202,10 +192,9 @@ int OnInit()
 
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s (auto) | PanelLot=%s | Fallback=$%.0f",
+   Print(StringFormat("[TREND BOT] Started | %s | Magic=%d | EMA %d/%d | TF=%s/%s/%s (auto)",
          _Symbol, InpMagic, InpEMAFast, InpEMASlow,
-         g_tfEntryName, g_tfMidName, g_tfHighName,
-         InpUsePanelLot ? "ON" : "OFF", InpRiskMoney));
+         g_tfEntryName, g_tfMidName, g_tfHighName));
 
    return INIT_SUCCEEDED;
 }
@@ -232,7 +221,6 @@ void OnDeinit(const int reason)
    if(g_emaSlowMid   != INVALID_HANDLE) IndicatorRelease(g_emaSlowMid);
    if(g_emaFastHigh  != INVALID_HANDLE) IndicatorRelease(g_emaFastHigh);
    if(g_emaSlowHigh  != INVALID_HANDLE) IndicatorRelease(g_emaSlowHigh);
-   if(g_atrHandle    != INVALID_HANDLE) IndicatorRelease(g_atrHandle);
    for(int i = 0; i < g_numDisp; i++)
    {
       if(g_dispFast[i] != INVALID_HANDLE) IndicatorRelease(g_dispFast[i]);
@@ -410,22 +398,8 @@ void UpdatePanel()
       // Show lot from Panel GV + estimated margin
       double lot = 0;
       string gvName = "TP_Lot_" + _Symbol;
-      if(InpUsePanelLot && GlobalVariableCheck(gvName))
+      if(GlobalVariableCheck(gvName))
          lot = GlobalVariableGet(gvName);
-
-      // Fallback: calculate from ATR + risk
-      if(lot <= 0)
-      {
-         double atrBuf[1];
-         if(CopyBuffer(g_atrHandle, 0, 1, 1, atrBuf) == 1 && atrBuf[0] > 0)
-         {
-            double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-            double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-            double slDist  = atrBuf[0] * InpATRMult;
-            if(tickSz > 0 && tickVal > 0 && slDist > 0)
-               lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
-         }
-      }
 
       // Normalize lot
       double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -493,7 +467,6 @@ void UpdateSignalStates()
    double entryFast[2], entrySlow[2];
    double midFast[1], midSlow[1];
    double highFast[1], highSlow[1];
-   double atr[1];
 
    // Reset
    g_h1Up = g_h1Down = g_m15Up = g_m15Down = g_m5Up = g_m5Down = false;
@@ -505,9 +478,6 @@ void UpdateSignalStates()
    if(CopyBuffer(g_emaSlowMid,   0, 1, 1, midSlow)   != 1) return;
    if(CopyBuffer(g_emaFastHigh,  0, 1, 1, highFast)   != 1) return;
    if(CopyBuffer(g_emaSlowHigh,  0, 1, 1, highSlow)   != 1) return;
-   if(CopyBuffer(g_atrHandle,    0, 1, 1, atr)        != 1) return;
-
-   g_cachedATR = atr[0];
 
    // H1 trend
    g_h1Up   = (highFast[0] > highSlow[0]);
@@ -567,13 +537,12 @@ void OnTick()
 
    // Skip if already have a position
    if(g_hasPos) return;
-   if(g_cachedATR <= 0) return;
 
    // ── BUY signal: Entry cross up + Mid up + High up ──
    if(g_crossUp && g_m15Up && g_h1Up)
    {
       g_lastSignalBar = curBar;
-      OpenTrade(true, g_cachedATR);
+      OpenTrade(true);
       return;
    }
 
@@ -581,7 +550,7 @@ void OnTick()
    if(g_crossDown && g_m15Down && g_h1Down)
    {
       g_lastSignalBar = curBar;
-      OpenTrade(false, g_cachedATR);
+      OpenTrade(false);
       return;
    }
 }
@@ -627,13 +596,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          Print("[TREND BOT] Already have a position, cannot force BUY");
          return;
       }
-      double atr[1];
-      if(CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1 && atr[0] > 0)
-      {
-         Print("[TREND BOT] Force BUY triggered by user");
-         OpenTrade(true, atr[0]);
-         UpdatePanel();
-      }
+      Print("[TREND BOT] Force BUY triggered by user");
+      OpenTrade(true);
+      UpdatePanel();
    }
    // ── Info toggle ──
    else if(sparam == OBJ_INFO_BTN)
@@ -651,58 +616,30 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          Print("[TREND BOT] Already have a position, cannot force SELL");
          return;
       }
-      double atr[1];
-      if(CopyBuffer(g_atrHandle, 0, 1, 1, atr) == 1 && atr[0] > 0)
-      {
-         Print("[TREND BOT] Force SELL triggered by user");
-         OpenTrade(false, atr[0]);
-         UpdatePanel();
-      }
+      Print("[TREND BOT] Force SELL triggered by user");
+      OpenTrade(false);
+      UpdatePanel();
    }
 }
 
 // ════════════════════════════════════════════════════════════════════
 // TRADE FUNCTIONS
 // ════════════════════════════════════════════════════════════════════
-void OpenTrade(bool isBuy, double atrValue)
+void OpenTrade(bool isBuy)
 {
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   // ── Determine lot size ──
+   // ── Lot from Panel GV, fallback = min lot ──
    double lot = 0;
-   string lotSource = "";
-
-   if(InpUsePanelLot)
-   {
-      // Read lot from Trading Panel's GlobalVariable
-      string gvName = "TP_Lot_" + _Symbol;
-      if(GlobalVariableCheck(gvName))
-      {
-         lot = GlobalVariableGet(gvName);
-         lotSource = "Panel";
-      }
-      else
-      {
-         Print("[TREND BOT] WARNING: Panel GV not found, using fallback risk calc");
-      }
-   }
-
-   // Fallback: calculate from InpRiskMoney + ATR
-   if(lot <= 0)
-   {
-      double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      double slDist  = atrValue * InpATRMult;
-      if(tickSz > 0 && tickVal > 0 && slDist > 0)
-         lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
-      lotSource = StringFormat("Risk$%.0f", InpRiskMoney);
-   }
+   string gvName = "TP_Lot_" + _Symbol;
+   if(GlobalVariableCheck(gvName))
+      lot = GlobalVariableGet(gvName);
 
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   if(lotStep > 0)
+   if(lotStep > 0 && lot > 0)
       lot = MathFloor(lot / lotStep) * lotStep;
    lot = MathMax(minLot, MathMin(maxLot, lot));
 
@@ -737,9 +674,9 @@ void OpenTrade(bool isBuy, double atrValue)
 
    if(OrderSend(req, res))
    {
-      Print(StringFormat("[TREND BOT] %s %.2f @ %s | Lot=%s | No SL/TP (Panel manages)",
+      Print(StringFormat("[TREND BOT] %s %.2f @ %s | No SL/TP (Panel manages)",
             isBuy ? "BUY" : "SELL", lot,
-            DoubleToString(price, _Digits), lotSource));
+            DoubleToString(price, _Digits)));
 
       // ── Draw entry arrow on chart ──
       DrawEntryArrow(isBuy, price, lot);

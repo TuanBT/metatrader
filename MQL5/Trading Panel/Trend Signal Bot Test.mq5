@@ -12,10 +12,6 @@
 // ════════════════════════════════════════════════════════════════════
 input int             InpInterval       = 30;         // Trade every N seconds
 input bool            InpAlternate      = true;       // Alternate BUY ↔ SELL
-input bool            InpUsePanelLot    = true;       // Use lot from Panel
-input double          InpRiskMoney      = 10.0;       // Fallback risk ($)
-input double          InpATRMult        = 1.5;        // ATR multiplier (SL)
-input int             InpATRPeriod      = 14;         // ATR period
 input int             InpDeviation      = 20;         // Max slippage
 input ulong           InpMagic          = 99999;      // Magic Number
 
@@ -42,12 +38,10 @@ input ulong           InpMagic          = 99999;      // Magic Number
 // ════════════════════════════════════════════════════════════════════
 // GLOBALS
 // ════════════════════════════════════════════════════════════════════
-int      g_atr;
 bool     g_on       = true;
 bool     g_hasPos   = false;
 bool     g_nextBuy  = true;
 datetime g_lastTime = 0;
-double   g_atrVal   = 0;
 int      g_count    = 0;
 
 // ════════════════════════════════════════════════════════════════════
@@ -55,9 +49,6 @@ int      g_count    = 0;
 // ════════════════════════════════════════════════════════════════════
 int OnInit()
 {
-   g_atr = iATR(_Symbol, _Period, InpATRPeriod);
-   if(g_atr == INVALID_HANDLE) return INIT_FAILED;
-
    // ── Panel ──
    int x = 15, y = 25, w = 180;
 
@@ -108,7 +99,6 @@ void OnDeinit(const int reason)
 {
    ObjectsDeleteAll(0, P);
    EventKillTimer();
-   if(g_atr != INVALID_HANDLE) IndicatorRelease(g_atr);
    PrintFormat("[TEST] Stopped | trades: %d", g_count);
 }
 
@@ -186,29 +176,21 @@ bool IsBuy()
 
 double CalcLot()
 {
-   // Try Panel lot first
-   if(InpUsePanelLot)
+   // Read lot from Panel GV, fallback = min lot
+   string gv = "TP_Lot_" + _Symbol;
+   if(GlobalVariableCheck(gv))
    {
-      string gv = "TP_Lot_" + _Symbol;
-      if(GlobalVariableCheck(gv))
+      double lot = GlobalVariableGet(gv);
+      if(lot > 0)
       {
-         double lot = GlobalVariableGet(gv);
-         if(lot > 0) return lot;
+         double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+         if(step > 0) lot = MathFloor(lot / step) * step;
+         lot = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN),
+                       MathMin(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX), lot));
+         return lot;
       }
    }
-   // Fallback: ATR-based risk
-   if(g_atrVal <= 0) return SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-   double slDist  = g_atrVal * InpATRMult;
-   if(tickSz <= 0 || tickVal <= 0 || slDist <= 0)
-      return SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double lot = InpRiskMoney / ((slDist / tickSz) * tickVal);
-   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   if(step > 0) lot = MathFloor(lot / step) * step;
-   lot = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN),
-                 MathMin(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX), lot));
-   return lot;
+   return SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -216,13 +198,9 @@ double CalcLot()
 // ════════════════════════════════════════════════════════════════════
 void OnTick()
 {
-   double a[1];
-   if(CopyBuffer(g_atr, 0, 1, 1, a) == 1 && a[0] > 0) g_atrVal = a[0];
-
    if(!g_on) return;
    g_hasPos = HasPos();
    if(g_hasPos) return;
-   if(g_atrVal <= 0) return;
 
    datetime now = TimeCurrent();
    if(g_lastTime > 0 && (now - g_lastTime) < InpInterval) return;
