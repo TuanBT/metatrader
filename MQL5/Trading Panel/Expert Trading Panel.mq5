@@ -1313,7 +1313,8 @@ void CreatePanel()
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,
       "Grid DCA — Bật/Tắt\n"
       "Tự động thêm lệnh khi giá đi ngược.\n"
-      "SL mở rộng tự động theo số level.");
+      "SL mở rộng tự động theo số level.\n"
+      "Bảo vệ: delay + nến > 2×ATR → skip DCA.");
    ObjectSetString(0, OBJ_GRID_LVL, OBJPROP_TOOLTIP,
       "Số level DCA tối đa (2-5).\n"
       "Click để đổi: 2→3→4→5→2...\n"
