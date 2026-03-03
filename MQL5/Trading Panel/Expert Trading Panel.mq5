@@ -21,7 +21,7 @@
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
 #property copyright "Tuan v2.05"
-#property version   "2.03"
+#property version   "2.05"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
