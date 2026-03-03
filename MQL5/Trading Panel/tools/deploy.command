@@ -5,7 +5,7 @@
 VPS_HOST="103.122.221.141"
 VPS_USER="administrator"
 VPS_PASS="PNS1G3e7oc3h6PWJD4dsA"
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(dirname "$0")/.."
 REMOTE_DIR="C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\53785E099C927DB68A545C249CDBCE06\\MQL5\\Experts\\Trading Panel"
 SSH_OPTS="-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no"
 
