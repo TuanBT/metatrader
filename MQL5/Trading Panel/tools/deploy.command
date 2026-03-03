@@ -13,6 +13,7 @@ FILES=(
     "Expert Trading Panel.mq5"
     "Candle Counter Strategy.mqh"
     "Trend Signal Strategy.mqh"
+    "News Straddle Strategy.mqh"
 )
 
 echo "═══════════════════════════════════════════"

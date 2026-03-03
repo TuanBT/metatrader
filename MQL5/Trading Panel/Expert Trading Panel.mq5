@@ -192,11 +192,12 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BOT_BG        PREFIX "bot_bg"
 #define OBJ_BOT_CC_BTN    PREFIX "bot_cc"
 #define OBJ_BOT_TS_BTN    PREFIX "bot_ts"
+#define OBJ_BOT_NS_BTN    PREFIX "bot_ns"
 
 // Bot panel layout constants
 #define BOT_PANEL_X       (PX + PW + 5)
 #define BOT_PANEL_Y       PY
-#define BOT_BTN_W         110
+#define BOT_BTN_W         78
 #define BOT_BTN_H         24
 #define BOT_CONTENT_W     224
 #define BOT_CONTENT_Y     (PY + BOT_BTN_H + 4)
@@ -272,7 +273,7 @@ datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
 // Bot integration state
 double   g_panelLot       = 0;       // Calculated lot — shared with bots
-int      g_activeBot      = 0;       // 0=none, 1=CC Bot, 2=Trend Signal Bot
+int      g_activeBot      = 0;       // 0=none, 1=CC Bot, 2=Trend Signal Bot, 3=News Straddle
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -952,10 +953,12 @@ void TogglePanelCollapse()
    bool showBot = !g_panelCollapsed;
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_BG, OBJPROP_TIMEFRAMES,
       (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    if(g_activeBot == 1) CC_SetVisible(showBot);
    if(g_activeBot == 2) TS_SetVisible(showBot);
+   if(g_activeBot == 3) NS_SetVisible(showBot);
    
    ChartRedraw();
 }
@@ -1003,6 +1006,7 @@ void ToggleSettings()
 // ════════════════════════════════════════════════════════════════════
 #include "Candle Counter Strategy.mqh"
 #include "Trend Signal Strategy.mqh"
+#include "News Straddle Strategy.mqh"
 
 // ════════════════════════════════════════════════════════════════════
 // BOT PANEL MANAGEMENT
@@ -1012,16 +1016,20 @@ void CreateBotButtons()
    int x = BOT_PANEL_X;
    int y = BOT_PANEL_Y;
 
-   // [CC] [TS] buttons
+   // [CC] [TS] [NS] buttons
    color ccBg = (g_activeBot == 1) ? C'0,100,60' : C'50,50,70';
    color tsBg = (g_activeBot == 2) ? C'0,100,60' : C'50,50,70';
+   color nsBg = (g_activeBot == 3) ? C'0,100,60' : C'50,50,70';
    color ccTxt = (g_activeBot == 1) ? C'255,255,255' : C'140,140,160';
    color tsTxt = (g_activeBot == 2) ? C'255,255,255' : C'140,140,160';
+   color nsTxt = (g_activeBot == 3) ? C'255,255,255' : C'140,140,160';
 
    MakeButton(OBJ_BOT_CC_BTN, x, y, BOT_BTN_W, BOT_BTN_H,
-              "Candle Counter", ccTxt, ccBg, 8);
+              "Candle Cnt", ccTxt, ccBg, 8);
    MakeButton(OBJ_BOT_TS_BTN, x + BOT_BTN_W + 2, y, BOT_BTN_W, BOT_BTN_H,
-              "Trend Signal", tsTxt, tsBg, 8);
+              "Trend Sig", tsTxt, tsBg, 8);
+   MakeButton(OBJ_BOT_NS_BTN, x + (BOT_BTN_W + 2) * 2, y, BOT_BTN_W, BOT_BTN_H,
+              "News Str", nsTxt, nsBg, 8);
 }
 
 void CreateBotPanel()
@@ -1035,24 +1043,28 @@ void CreateBotPanel()
       CC_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
    else if(g_activeBot == 2)
       TS_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
+   else if(g_activeBot == 3)
+      NS_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
 }
 
 void DestroyBotPanel()
 {
    CC_DestroyPanel();
    TS_DestroyPanel();
+   NS_DestroyPanel();
    ObjectDelete(0, OBJ_BOT_BG);
 }
 
 void ToggleBot(int botId)
 {
-   // botId: 1=CC, 2=TS
+   // botId: 1=CC, 2=TS, 3=NS
 
    if(g_activeBot == botId)
    {
       // Turn off current bot
       if(botId == 1) { cc_enabled = false; CC_DestroyPanel(); }
       if(botId == 2) { ts_enabled = false; TS_DestroyPanel(); TS_HideChartEMA(); }
+      if(botId == 3) { ns_enabled = false; NS_DestroyPanel(); }
       ObjectDelete(0, OBJ_BOT_BG);
       g_activeBot = 0;
       Print(StringFormat("[PANEL] Bot %d disabled", botId));
@@ -1062,12 +1074,14 @@ void ToggleBot(int botId)
       // Turn off old bot if any
       if(g_activeBot == 1) { cc_enabled = false; CC_DestroyPanel(); }
       if(g_activeBot == 2) { ts_enabled = false; TS_DestroyPanel(); TS_HideChartEMA(); }
+      if(g_activeBot == 3) { ns_enabled = false; NS_DestroyPanel(); }
       ObjectDelete(0, OBJ_BOT_BG);
 
       // Turn on new bot
       g_activeBot = botId;
       if(botId == 1) { cc_enabled = true; CC_UpdateSignalStates(); CC_UpdateCandleState(); }
       if(botId == 2) { ts_enabled = true; TS_UpdateSignalStates(); TS_ShowChartEMA(); }
+      if(botId == 3) { ns_enabled = true; NS_ScanNextEvent(); }
       CreateBotPanel();
       Print(StringFormat("[PANEL] Bot %d enabled", botId));
    }
@@ -1075,14 +1089,19 @@ void ToggleBot(int botId)
    // Update button colors
    color ccBg = (g_activeBot == 1) ? C'0,100,60' : C'50,50,70';
    color tsBg = (g_activeBot == 2) ? C'0,100,60' : C'50,50,70';
+   color nsBg = (g_activeBot == 3) ? C'0,100,60' : C'50,50,70';
    color ccTxt = (g_activeBot == 1) ? C'255,255,255' : C'140,140,160';
    color tsTxt = (g_activeBot == 2) ? C'255,255,255' : C'140,140,160';
+   color nsTxt = (g_activeBot == 3) ? C'255,255,255' : C'140,140,160';
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BGCOLOR, ccBg);
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BORDER_COLOR, ccBg);
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_COLOR, ccTxt);
    ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BGCOLOR, tsBg);
    ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BORDER_COLOR, tsBg);
    ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_COLOR, tsTxt);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BGCOLOR, nsBg);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BORDER_COLOR, nsBg);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_COLOR, nsTxt);
 
    ChartRedraw();
 }
@@ -2743,6 +2762,7 @@ int OnInit()
    // ── Initialize integrated bots ──
    CC_Init();
    TS_Init();
+   NS_Init();
 
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
@@ -2759,6 +2779,7 @@ void OnDeinit(const int reason)
 {
    CC_Deinit();
    TS_Deinit();
+   NS_Deinit();
    DestroyPanel();
    EventKillTimer();
 
@@ -2793,6 +2814,7 @@ void OnTick()
          datetime pauseTs = (datetime)TimeCurrent();
          if(cc_enabled) CC_SetPaused(pauseTs);
          if(ts_enabled) TS_SetPaused(true);
+         if(ns_enabled) NS_SetPaused(true);
          Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Bots paused",
                g_gridLevel, g_gridMaxLevel));
       }
@@ -2890,6 +2912,7 @@ void OnTick()
    // ── Dispatch to active bot ──
    if(g_activeBot == 1) CC_Tick();
    else if(g_activeBot == 2) TS_Tick();
+   else if(g_activeBot == 3) NS_Tick();
 }
 
 void OnTimer()
@@ -2904,6 +2927,7 @@ void OnTimer()
    // ── Dispatch to active bot timer ──
    if(g_activeBot == 1) CC_Timer();
    else if(g_activeBot == 2) TS_Timer();
+   else if(g_activeBot == 3) NS_Timer();
 }
 
 void OnChartEvent(const int id,
@@ -2939,6 +2963,12 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_STATE, false);
          ToggleBot(2);
+         return;
+      }
+      if(sparam == OBJ_BOT_NS_BTN)
+      {
+         ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_STATE, false);
+         ToggleBot(3);
          return;
       }
 
