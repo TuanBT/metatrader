@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.76"
-#property version   "1.76"
+#property copyright "Tuan v2.00"
+#property version   "2.00"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1097,7 +1097,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.76", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.00", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -2747,7 +2747,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.76 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.00 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
