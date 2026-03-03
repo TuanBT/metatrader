@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.01"
-#property version   "2.00"
+#property copyright "Tuan v2.02"
+#property version   "2.02"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1115,7 +1115,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.01", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.02", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -2781,8 +2781,19 @@ int OnInit()
    g_atrMult   = InpATRMult;
    g_slMode    = SL_ATR;  // Always ATR mode
    g_manageMagic = (InpManageMagic > 0) ? InpManageMagic : InpMagic;
-   g_trailRef  = InpTrailMode;  // Initialize trail mode from input
    g_gridMaxLevel = MathMax(2, MathMin(5, InpGridMaxLevel));  // Clamp 2-5
+
+   // ── Defaults: AutoTP 1, Grid DCA x2 5m, Trail SL Swing, Bot CC ──
+   g_autoTPEnabled  = true;
+   g_tpATRFactor    = 1.0;
+   g_gridEnabled    = true;
+   g_gridUserEnabled = true;
+   g_gridMaxLevel   = 2;
+   g_gridDelay      = 5;
+   g_trailEnabled   = true;
+   g_trailRef       = TRAIL_SWING;
+   g_activeBot      = 1;
+   cc_enabled       = true;
 
    // Recover if EA restarted with open position
    SyncPositionState();
@@ -2798,11 +2809,14 @@ int OnInit()
    CC_Init();
    TS_Init();
    NS_Init();
+   // CC Bot default: update states after Init
+   CC_UpdateSignalStates();
+   CC_UpdateCandleState();
 
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.01 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.02 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
