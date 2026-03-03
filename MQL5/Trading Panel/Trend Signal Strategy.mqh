@@ -407,10 +407,15 @@ void TS_DestroyPanel()
 
 void TS_UpdatePanel()
 {
-   if(!ts_enabled) return;
+   if(g_activeBot != 2) return;   // skip if not viewing
 
    // ── Status ──
-   if(ts_paused)
+   if(!ts_enabled)
+   {
+      ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "Stopped");
+      ObjectSetInteger(0, TS_OBJ_STATUS, OBJPROP_COLOR, C'120,125,145');
+   }
+   else if(ts_paused)
    {
       ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "PAUSED (Large SL)");
       ObjectSetInteger(0, TS_OBJ_STATUS, OBJPROP_COLOR, C'220,80,80');

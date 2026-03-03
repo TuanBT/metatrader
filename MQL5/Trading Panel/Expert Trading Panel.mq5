@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.02"
-#property version   "2.02"
+#property copyright "Tuan v2.03"
+#property version   "2.03"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -193,13 +193,14 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BOT_CC_BTN    PREFIX "bot_cc"
 #define OBJ_BOT_TS_BTN    PREFIX "bot_ts"
 #define OBJ_BOT_NS_BTN    PREFIX "bot_ns"
+#define OBJ_BOT_START_BTN PREFIX "bot_start"  // Start/Stop inside bot panel
 
 // Bot panel layout constants
 #define BOT_PANEL_X       (PX + PW + 5)
 #define BOT_PANEL_Y       PY
-#define BOT_BTN_W         78
+#define BOT_BTN_W         80
 #define BOT_BTN_H         24
-#define BOT_CONTENT_W     224
+#define BOT_CONTENT_W     246
 #define BOT_CONTENT_Y     (PY + BOT_BTN_H + 4)
 #define OBJ_SET_RISK_LBL  PREFIX "set_risk_lbl"
 #define OBJ_SET_RISK_EDT  PREFIX "set_risk_edt"
@@ -955,6 +956,8 @@ void TogglePanelCollapse()
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_BG, OBJPROP_TIMEFRAMES,
       (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_TIMEFRAMES,
+      (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    if(g_activeBot == 1) CC_SetVisible(showBot);
    if(g_activeBot == 2) TS_SetVisible(showBot);
    if(g_activeBot == 3) NS_SetVisible(showBot);
@@ -1015,35 +1018,73 @@ void CreateBotButtons()
    int x = BOT_PANEL_X;
    int y = BOT_PANEL_Y;
 
-   // [CC] [TS] [NS] buttons
-   color ccBg = (g_activeBot == 1) ? C'0,100,60' : C'50,50,70';
-   color tsBg = (g_activeBot == 2) ? C'0,100,60' : C'50,50,70';
-   color nsBg = (g_activeBot == 3) ? C'0,100,60' : C'50,50,70';
-   color ccTxt = (g_activeBot == 1) ? C'255,255,255' : C'140,140,160';
-   color tsTxt = (g_activeBot == 2) ? C'255,255,255' : C'140,140,160';
-   color nsTxt = (g_activeBot == 3) ? C'255,255,255' : C'140,140,160';
+   // [Candle Count] [Trend Signal] [News Straddle] buttons
+   // Color: green=running, blue=viewing (not running), dark=inactive
+   color ccBg, tsBg, nsBg, ccTxt, tsTxt, nsTxt;
+   GetBotButtonColors(1, ccBg, ccTxt);
+   GetBotButtonColors(2, tsBg, tsTxt);
+   GetBotButtonColors(3, nsBg, nsTxt);
 
    MakeButton(OBJ_BOT_CC_BTN, x, y, BOT_BTN_W, BOT_BTN_H,
-              "Candle Cnt", ccTxt, ccBg, 8);
+              "Candle Count", ccTxt, ccBg, 8);
    MakeButton(OBJ_BOT_TS_BTN, x + BOT_BTN_W + 2, y, BOT_BTN_W, BOT_BTN_H,
-              "Trend Sig", tsTxt, tsBg, 8);
+              "Trend Signal", tsTxt, tsBg, 8);
    MakeButton(OBJ_BOT_NS_BTN, x + (BOT_BTN_W + 2) * 2, y, BOT_BTN_W, BOT_BTN_H,
-              "News Str", nsTxt, nsBg, 8);
+              "News Straddle", nsTxt, nsBg, 8);
+}
+
+// Get button colors: green=running, blue=viewing, dark=inactive
+void GetBotButtonColors(int botId, color &bg, color &txt)
+{
+   bool running = false;
+   if(botId == 1) running = cc_enabled;
+   if(botId == 2) running = ts_enabled;
+   if(botId == 3) running = ns_enabled;
+
+   if(running)
+   {
+      bg  = C'0,100,60';       // Green = running
+      txt = C'255,255,255';
+   }
+   else if(g_activeBot == botId)
+   {
+      bg  = C'30,60,120';      // Blue = viewing but not running
+      txt = C'180,200,255';
+   }
+   else
+   {
+      bg  = C'50,50,70';       // Dark = inactive
+      txt = C'140,140,160';
+   }
 }
 
 void CreateBotPanel()
 {
    // Background for bot content area
-   int bgH = 195;
+   int bgH = 215;
    MakeRect(OBJ_BOT_BG, BOT_PANEL_X, BOT_CONTENT_Y, BOT_CONTENT_W, bgH,
             COL_BG, COL_BORDER);
 
+   // Start/Stop button at top of bot content area
+   bool running = false;
+   if(g_activeBot == 1) running = cc_enabled;
+   if(g_activeBot == 2) running = ts_enabled;
+   if(g_activeBot == 3) running = ns_enabled;
+
+   color startBg  = running ? C'180,40,40' : C'0,100,60';  // Red=stop, Green=start
+   color startTxt = C'255,255,255';
+   string startLabel = running ? "\x25A0 Stop" : "\x25B6 Start";
+   MakeButton(OBJ_BOT_START_BTN, BOT_PANEL_X + 4, BOT_CONTENT_Y + 4, 60, 20,
+              startLabel, startTxt, startBg, 8);
+
+   int contentStartY = BOT_CONTENT_Y + 28;  // Below start button
+
    if(g_activeBot == 1)
-      CC_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
+      CC_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
    else if(g_activeBot == 2)
-      TS_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
+      TS_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
    else if(g_activeBot == 3)
-      NS_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
+      NS_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
 }
 
 void DestroyBotPanel()
@@ -1051,58 +1092,98 @@ void DestroyBotPanel()
    CC_DestroyPanel();
    TS_DestroyPanel();
    NS_DestroyPanel();
+   ObjectDelete(0, OBJ_BOT_START_BTN);
    ObjectDelete(0, OBJ_BOT_BG);
 }
 
 void ToggleBot(int botId)
 {
    // botId: 1=CC, 2=TS, 3=NS
+   // Only switches VIEW — does NOT start/stop the bot
 
    if(g_activeBot == botId)
    {
-      // Turn off current bot
-      if(botId == 1) { cc_enabled = false; CC_DestroyPanel(); }
-      if(botId == 2) { ts_enabled = false; TS_DestroyPanel(); TS_HideChartEMA(); }
-      if(botId == 3) { ns_enabled = false; NS_DestroyPanel(); }
-      ObjectDelete(0, OBJ_BOT_BG);
+      // Hide current view
+      DestroyBotPanel();
       g_activeBot = 0;
-      Print(StringFormat("[PANEL] Bot %d disabled", botId));
+      Print(StringFormat("[PANEL] Bot %d panel hidden", botId));
    }
    else
    {
-      // Turn off old bot if any
-      if(g_activeBot == 1) { cc_enabled = false; CC_DestroyPanel(); }
-      if(g_activeBot == 2) { ts_enabled = false; TS_DestroyPanel(); TS_HideChartEMA(); }
-      if(g_activeBot == 3) { ns_enabled = false; NS_DestroyPanel(); }
-      ObjectDelete(0, OBJ_BOT_BG);
-
-      // Turn on new bot
+      // Switch to new bot view
+      DestroyBotPanel();
       g_activeBot = botId;
-      if(botId == 1) { cc_enabled = true; CC_UpdateSignalStates(); CC_UpdateCandleState(); }
-      if(botId == 2) { ts_enabled = true; TS_UpdateSignalStates(); TS_ShowChartEMA(); }
-      if(botId == 3) { ns_enabled = true; NS_ScanNextEvent(); }
       CreateBotPanel();
-      Print(StringFormat("[PANEL] Bot %d enabled", botId));
+      Print(StringFormat("[PANEL] Bot %d panel shown", botId));
    }
 
    // Update button colors
-   color ccBg = (g_activeBot == 1) ? C'0,100,60' : C'50,50,70';
-   color tsBg = (g_activeBot == 2) ? C'0,100,60' : C'50,50,70';
-   color nsBg = (g_activeBot == 3) ? C'0,100,60' : C'50,50,70';
-   color ccTxt = (g_activeBot == 1) ? C'255,255,255' : C'140,140,160';
-   color tsTxt = (g_activeBot == 2) ? C'255,255,255' : C'140,140,160';
-   color nsTxt = (g_activeBot == 3) ? C'255,255,255' : C'140,140,160';
-   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BGCOLOR, ccBg);
-   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BORDER_COLOR, ccBg);
-   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_COLOR, ccTxt);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BGCOLOR, tsBg);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BORDER_COLOR, tsBg);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_COLOR, tsTxt);
-   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BGCOLOR, nsBg);
-   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BORDER_COLOR, nsBg);
-   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_COLOR, nsTxt);
-
+   UpdateBotButtonColors();
    ChartRedraw();
+}
+
+void ToggleBotStart()
+{
+   // Start/Stop the currently viewed bot
+   if(g_activeBot == 0) return;
+
+   if(g_activeBot == 1)
+   {
+      cc_enabled = !cc_enabled;
+      if(cc_enabled) { CC_UpdateSignalStates(); CC_UpdateCandleState(); }
+      Print(StringFormat("[PANEL] CC Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
+   }
+   else if(g_activeBot == 2)
+   {
+      ts_enabled = !ts_enabled;
+      if(ts_enabled) { TS_UpdateSignalStates(); TS_ShowChartEMA(); }
+      else { TS_HideChartEMA(); }
+      Print(StringFormat("[PANEL] TS Bot %s", ts_enabled ? "STARTED" : "STOPPED"));
+   }
+   else if(g_activeBot == 3)
+   {
+      ns_enabled = !ns_enabled;
+      if(ns_enabled) { NS_ScanNextEvent(); }
+      Print(StringFormat("[PANEL] NS Bot %s", ns_enabled ? "STARTED" : "STOPPED"));
+   }
+
+   // Update Start/Stop button appearance
+   UpdateBotStartButton();
+   UpdateBotButtonColors();
+   ChartRedraw();
+}
+
+void UpdateBotStartButton()
+{
+   if(g_activeBot == 0) return;
+
+   bool running = false;
+   if(g_activeBot == 1) running = cc_enabled;
+   if(g_activeBot == 2) running = ts_enabled;
+   if(g_activeBot == 3) running = ns_enabled;
+
+   color bg  = running ? C'180,40,40' : C'0,100,60';
+   string label = running ? "\x25A0 Stop" : "\x25B6 Start";
+   ObjectSetString (0, OBJ_BOT_START_BTN, OBJPROP_TEXT, label);
+   ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_BORDER_COLOR, bg);
+}
+
+void UpdateBotButtonColors()
+{
+   color bg, txt;
+   GetBotButtonColors(1, bg, txt);
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BORDER_COLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_COLOR, txt);
+   GetBotButtonColors(2, bg, txt);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BORDER_COLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_COLOR, txt);
+   GetBotButtonColors(3, bg, txt);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BORDER_COLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_COLOR, txt);
 }
 
 void CreatePanel()
@@ -1115,7 +1196,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.02", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.03", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -2792,8 +2873,11 @@ int OnInit()
    g_gridDelay      = 5;
    g_trailEnabled   = true;
    g_trailRef       = TRAIL_SWING;
-   g_activeBot      = 1;
-   cc_enabled       = true;
+   g_activeBot      = 1;   // Show CC panel by default
+   // Bots start stopped — user presses Start
+   cc_enabled       = false;
+   ts_enabled       = false;
+   ns_enabled       = false;
 
    // Recover if EA restarted with open position
    SyncPositionState();
@@ -2809,14 +2893,11 @@ int OnInit()
    CC_Init();
    TS_Init();
    NS_Init();
-   // CC Bot default: update states after Init
-   CC_UpdateSignalStates();
-   CC_UpdateCandleState();
 
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.02 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.03 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -2958,10 +3039,10 @@ void OnTick()
       lastMs = now;
    }
 
-   // ── Dispatch to active bot ──
-   if(g_activeBot == 1) CC_Tick();
-   else if(g_activeBot == 2) TS_Tick();
-   else if(g_activeBot == 3) NS_Tick();
+   // ── Dispatch to ALL running bots (independent of view) ──
+   if(cc_enabled) CC_Tick();
+   if(ts_enabled) TS_Tick();
+   if(ns_enabled) NS_Tick();
 }
 
 void OnTimer()
@@ -2973,10 +3054,14 @@ void OnTimer()
       UpdatePanel();
    s_lastTickMs = now2;
 
-   // ── Dispatch to active bot timer ──
-   if(g_activeBot == 1) CC_Timer();
-   else if(g_activeBot == 2) TS_Timer();
-   else if(g_activeBot == 3) NS_Timer();
+   // ── Dispatch to ALL running bots + update viewed bot panel ──
+   if(cc_enabled) CC_Timer();
+   if(ts_enabled) TS_Timer();
+   if(ns_enabled) NS_Timer();
+   // If viewing a non-running bot, still update its panel display
+   if(g_activeBot == 1 && !cc_enabled) CC_UpdatePanel();
+   if(g_activeBot == 2 && !ts_enabled) TS_UpdatePanel();
+   if(g_activeBot == 3 && !ns_enabled) NS_UpdatePanel();
 }
 
 void OnChartEvent(const int id,
@@ -3018,6 +3103,13 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_STATE, false);
          ToggleBot(3);
+         return;
+      }
+      // ── Bot Start/Stop button ──
+      if(sparam == OBJ_BOT_START_BTN)
+      {
+         ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_STATE, false);
+         ToggleBotStart();
          return;
       }
 

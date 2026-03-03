@@ -459,12 +459,17 @@ void NS_DestroyPanel()
 
 void NS_UpdatePanel()
 {
-   if(!ns_enabled) return;
+   if(g_activeBot != 3) return;   // skip if not viewing
 
    datetime now = TimeCurrent();
 
    // ── Status ──
-   if(ns_paused)
+   if(!ns_enabled)
+   {
+      ObjectSetString(0, NS_OBJ_STATUS, OBJPROP_TEXT, "Stopped");
+      ObjectSetInteger(0, NS_OBJ_STATUS, OBJPROP_COLOR, C'120,125,145');
+   }
+   else if(ns_paused)
    {
       ObjectSetString(0, NS_OBJ_STATUS, OBJPROP_TEXT, "PAUSED (Large SL)");
       ObjectSetInteger(0, NS_OBJ_STATUS, OBJPROP_COLOR, C'220,80,80');

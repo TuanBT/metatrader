@@ -425,10 +425,15 @@ void CC_DestroyPanel()
 
 void CC_UpdatePanel()
 {
-   if(!cc_enabled) return;   // skip if not visible
+   if(g_activeBot != 1) return;   // skip if not viewing
 
    // ── Status line ──
-   if(cc_paused)
+   if(!cc_enabled)
+   {
+      ObjectSetString(0, CC_OBJ_STATUS, OBJPROP_TEXT, "Stopped");
+      ObjectSetInteger(0, CC_OBJ_STATUS, OBJPROP_COLOR, C'120,125,145');
+   }
+   else if(cc_paused)
    {
       if(InpCC_PauseBars > 0 && cc_pauseTime > 0)
       {
