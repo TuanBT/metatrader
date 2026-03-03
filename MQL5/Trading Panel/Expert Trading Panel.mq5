@@ -20,7 +20,7 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.04"
+#property copyright "Tuan v2.05"
 #property version   "2.03"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
@@ -167,8 +167,9 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_ENTRY_LINE    PREFIX "entry_line"
 #define OBJ_PENDING_LINE  PREFIX "pending_line"
 
-// Chart lines (Auto TP / Grid DCA)
+// Chart lines (Auto TP / Grid DCA / Trail Start)
 #define OBJ_TP1_LINE      PREFIX "tp1_line"
+#define OBJ_TRAIL_START   PREFIX "trail_start"
 #define OBJ_AVG_ENTRY     PREFIX "avg_entry"
 #define OBJ_DCA1_LINE     PREFIX "dca1_line"
 #define OBJ_DCA2_LINE     PREFIX "dca2_line"
@@ -778,6 +779,54 @@ void UpdateTPGridLines()
    else
       HideHLine(OBJ_TP1_LINE);
 
+   // ── Trail Start: line showing where trail SL begins ──
+   if(g_trailEnabled && g_hasPos && g_cachedATR > 0 && g_trailRef != TRAIL_NONE)
+   {
+      double avgEntry = GetAvgEntry();
+      if(avgEntry <= 0) avgEntry = g_entryPx;
+
+      // Calculate trail start distance based on mode
+      double trailStartDist = 0;
+      string trailLbl = "";
+      bool alreadyActive = false;
+
+      switch(g_trailRef)
+      {
+         case TRAIL_BE:
+            trailStartDist = g_beStartMult * g_cachedATR * g_atrMult;
+            trailLbl = StringFormat("Trail BE (%.1fx)", g_beStartMult);
+            alreadyActive = g_beReached;
+            break;
+         case TRAIL_CLOSE:
+         case TRAIL_SWING:
+         {
+            trailStartDist = g_tpATRFactor * g_cachedATR * g_atrMult;
+            string mName = (g_trailRef == TRAIL_CLOSE) ? "Close" : "Swing";
+            trailLbl = StringFormat("Trail %s Start", mName);
+            // Active once profit gate met
+            double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                                 : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            double move = g_isBuy ? (cur - avgEntry) : (avgEntry - cur);
+            alreadyActive = (move >= trailStartDist);
+            break;
+         }
+      }
+
+      if(trailStartDist > 0 && !alreadyActive)
+      {
+         double trailPx = g_isBuy ? NormPrice(avgEntry + trailStartDist)
+                                  : NormPrice(avgEntry - trailStartDist);
+         SetHLine(OBJ_TRAIL_START, trailPx, C'255,165,0',
+                  STYLE_DOT, 1,
+                  StringFormat("%s %." + IntegerToString(_Digits) + "f",
+                               trailLbl, trailPx));
+      }
+      else
+         HideHLine(OBJ_TRAIL_START);
+   }
+   else
+      HideHLine(OBJ_TRAIL_START);
+
    // ── Grid DCA: show pending DCA levels ──
    if(g_gridEnabled && g_hasPos && g_gridBaseATR > 0)
    {
@@ -1202,7 +1251,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.04", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.05", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1582,6 +1631,8 @@ void UpdateTrailParamDisplay()
    double val = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
    ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TEXT, lbl);
    ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TEXT, StringFormat("%.1fx", val));
+   // Update trail start line on chart immediately
+   UpdateTPGridLines();
    ChartRedraw(0);
 }
 
@@ -2932,7 +2983,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.04 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.05 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3335,6 +3386,7 @@ void OnChartEvent(const int id,
 
          // Clear chart lines
          HideHLine(OBJ_TP1_LINE);
+         HideHLine(OBJ_TRAIL_START);
          HideHLine(OBJ_DCA1_LINE);
          HideHLine(OBJ_DCA2_LINE);
          HideHLine(OBJ_DCA3_LINE);
