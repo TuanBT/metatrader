@@ -10,6 +10,7 @@
 //|  • Auto TP: 50% partial close at 0.5 or 1 ATR                    |
 //|  • Grid DCA: auto DCA with ATR × mult spacing                    |
 //|  • Dark/Light chart themes                                      |
+//|  • Integrated bots: CC Bot, Trend Signal Bot (.mqh)              |
 //|                                                                  |
 //| Usage:                                                           |
 //|  1. Attach EA to chart                                           |
@@ -17,9 +18,10 @@
 //|  3. Click BUY or SELL → order fires instantly                    |
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
+//|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v1.75"
-#property version   "1.75"
+#property copyright "Tuan v1.76"
+#property version   "1.76"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -185,6 +187,19 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_SETTINGS_BTN  PREFIX "settings_btn"
 #define OBJ_SET_SEP       PREFIX "set_sep"
 #define OBJ_SET_SEC       PREFIX "set_sec"
+
+// Bot toggle buttons (right side of panel)
+#define OBJ_BOT_BG        PREFIX "bot_bg"
+#define OBJ_BOT_CC_BTN    PREFIX "bot_cc"
+#define OBJ_BOT_TS_BTN    PREFIX "bot_ts"
+
+// Bot panel layout constants
+#define BOT_PANEL_X       (PX + PW + 5)
+#define BOT_PANEL_Y       PY
+#define BOT_BTN_W         110
+#define BOT_BTN_H         24
+#define BOT_CONTENT_W     224
+#define BOT_CONTENT_Y     (PY + BOT_BTN_H + 4)
 #define OBJ_SET_RISK_LBL  PREFIX "set_risk_lbl"
 #define OBJ_SET_RISK_EDT  PREFIX "set_risk_edt"
 #define OBJ_SET_RISK_PLUS PREFIX "set_rplus"
@@ -254,6 +269,10 @@ int      g_gridMaxLevel   = 3;       // max DCA positions — runtime changeable
 double   g_gridBaseATR    = 0;       // ATR value when grid started (base for ATR × mult spacing)
 int      g_gridDelay      = 5;       // Delay between DCA fills (minutes), 0=disabled
 datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
+
+// Bot integration state
+double   g_panelLot       = 0;       // Calculated lot — shared with bots
+int      g_activeBot      = 0;       // 0=none, 1=CC Bot, 2=Trend Signal Bot
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -928,6 +947,15 @@ void TogglePanelCollapse()
       g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_TITLE_LOCK, OBJPROP_TIMEFRAMES,
       g_panelCollapsed ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+
+   // Hide/show bot buttons + bot panel when collapsing
+   bool showBot = !g_panelCollapsed;
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_BOT_BG, OBJPROP_TIMEFRAMES,
+      (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   if(g_activeBot == 1) CC_SetVisible(showBot);
+   if(g_activeBot == 2) TS_SetVisible(showBot);
    
    ChartRedraw();
 }
@@ -970,6 +998,95 @@ void ToggleSettings()
    UpdatePanel();
 }
 
+// ════════════════════════════════════════════════════════════════════
+// BOT STRATEGY INCLUDES
+// ════════════════════════════════════════════════════════════════════
+#include "Candle Counter Strategy.mqh"
+#include "Trend Signal Strategy.mqh"
+
+// ════════════════════════════════════════════════════════════════════
+// BOT PANEL MANAGEMENT
+// ════════════════════════════════════════════════════════════════════
+void CreateBotButtons()
+{
+   int x = BOT_PANEL_X;
+   int y = BOT_PANEL_Y;
+
+   // [CC] [TS] buttons
+   color ccBg = (g_activeBot == 1) ? C'0,100,60' : C'50,50,70';
+   color tsBg = (g_activeBot == 2) ? C'0,100,60' : C'50,50,70';
+   color ccTxt = (g_activeBot == 1) ? C'255,255,255' : C'140,140,160';
+   color tsTxt = (g_activeBot == 2) ? C'255,255,255' : C'140,140,160';
+
+   MakeButton(OBJ_BOT_CC_BTN, x, y, BOT_BTN_W, BOT_BTN_H,
+              "Candle Counter", ccTxt, ccBg, 8);
+   MakeButton(OBJ_BOT_TS_BTN, x + BOT_BTN_W + 2, y, BOT_BTN_W, BOT_BTN_H,
+              "Trend Signal", tsTxt, tsBg, 8);
+}
+
+void CreateBotPanel()
+{
+   // Background for bot content area
+   int bgH = 195;
+   MakeRect(OBJ_BOT_BG, BOT_PANEL_X, BOT_CONTENT_Y, BOT_CONTENT_W, bgH,
+            COL_BG, COL_BORDER);
+
+   if(g_activeBot == 1)
+      CC_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
+   else if(g_activeBot == 2)
+      TS_CreatePanel(BOT_PANEL_X, BOT_CONTENT_Y + 4, BOT_CONTENT_W);
+}
+
+void DestroyBotPanel()
+{
+   CC_DestroyPanel();
+   TS_DestroyPanel();
+   ObjectDelete(0, OBJ_BOT_BG);
+}
+
+void ToggleBot(int botId)
+{
+   // botId: 1=CC, 2=TS
+
+   if(g_activeBot == botId)
+   {
+      // Turn off current bot
+      if(botId == 1) { cc_enabled = false; CC_DestroyPanel(); }
+      if(botId == 2) { ts_enabled = false; TS_DestroyPanel(); TS_HideChartEMA(); }
+      ObjectDelete(0, OBJ_BOT_BG);
+      g_activeBot = 0;
+      Print(StringFormat("[PANEL] Bot %d disabled", botId));
+   }
+   else
+   {
+      // Turn off old bot if any
+      if(g_activeBot == 1) { cc_enabled = false; CC_DestroyPanel(); }
+      if(g_activeBot == 2) { ts_enabled = false; TS_DestroyPanel(); TS_HideChartEMA(); }
+      ObjectDelete(0, OBJ_BOT_BG);
+
+      // Turn on new bot
+      g_activeBot = botId;
+      if(botId == 1) { cc_enabled = true; CC_UpdateSignalStates(); CC_UpdateCandleState(); }
+      if(botId == 2) { ts_enabled = true; TS_UpdateSignalStates(); TS_ShowChartEMA(); }
+      CreateBotPanel();
+      Print(StringFormat("[PANEL] Bot %d enabled", botId));
+   }
+
+   // Update button colors
+   color ccBg = (g_activeBot == 1) ? C'0,100,60' : C'50,50,70';
+   color tsBg = (g_activeBot == 2) ? C'0,100,60' : C'50,50,70';
+   color ccTxt = (g_activeBot == 1) ? C'255,255,255' : C'140,140,160';
+   color tsTxt = (g_activeBot == 2) ? C'255,255,255' : C'140,140,160';
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BGCOLOR, ccBg);
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BORDER_COLOR, ccBg);
+   ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_COLOR, ccTxt);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BGCOLOR, tsBg);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BORDER_COLOR, tsBg);
+   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_COLOR, tsTxt);
+
+   ChartRedraw();
+}
+
 void CreatePanel()
 {
    int y  = PY;
@@ -980,7 +1097,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.75", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v1.76", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1316,11 +1433,17 @@ void CreatePanel()
    g_panelFullHeight = y - PY + 5;
    ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, g_panelFullHeight);
 
+   // ── Bot toggle buttons (right of panel) ──
+   CreateBotButtons();
+   if(g_activeBot > 0)
+      CreateBotPanel();
+
    ChartRedraw();
 }
 
 void DestroyPanel()
 {
+   DestroyBotPanel();
    ObjectsDeleteAll(0, PREFIX);
    ChartRedraw();
 }
@@ -1488,8 +1611,8 @@ void UpdatePanel()
    double avgDist = (distBuy + distSell) / 2.0;
    double avgLot = CalcLot(avgDist);
 
-   // ── Publish lot to GlobalVariable for external bots ──
-   GlobalVariableSet("TP_Lot_" + _Symbol, avgLot);
+   // ── Share lot with integrated bots (direct access) ──
+   g_panelLot = avgLot;
 
    // ── BUY / SELL button text (clean, no lot) ──
    ObjectSetString(0, OBJ_BUY_BTN,  OBJPROP_TEXT, "BUY");
@@ -2617,10 +2740,14 @@ int OnInit()
    CreatePanel();
    UpdatePanel();
 
+   // ── Initialize integrated bots ──
+   CC_Init();
+   TS_Init();
+
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v1.75 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v1.76 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -2630,6 +2757,8 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
+   CC_Deinit();
+   TS_Deinit();
    DestroyPanel();
    EventKillTimer();
 
@@ -2658,13 +2787,14 @@ void OnTick()
       bool wasTrailProfit = g_beReached || (g_isBuy ? (g_currentSL > g_entryPx) : (g_currentSL < g_entryPx && g_currentSL > 0));
 
       // If Grid DCA was maxed out AND trailing hadn't locked profit → "Large SL"
-      // Publish GV to pause Bot(s) using this symbol
+      // Directly pause integrated bots (no GV needed)
       if(wasGridMax && !wasTrailProfit)
       {
-         string gvPause = "TP_BotPause_" + _Symbol;
-         GlobalVariableSet(gvPause, (double)TimeCurrent());
-         Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Publishing %s=%d (timestamp)",
-               g_gridLevel, g_gridMaxLevel, gvPause, (int)TimeCurrent()));
+         datetime pauseTs = (datetime)TimeCurrent();
+         if(cc_enabled) CC_SetPaused(pauseTs);
+         if(ts_enabled) TS_SetPaused(true);
+         Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Bots paused",
+               g_gridLevel, g_gridMaxLevel));
       }
       else
       {
@@ -2756,16 +2886,24 @@ void OnTick()
       UpdatePanel();
       lastMs = now;
    }
+
+   // ── Dispatch to active bot ──
+   if(g_activeBot == 1) CC_Tick();
+   else if(g_activeBot == 2) TS_Tick();
 }
 
 void OnTimer()
 {
    // Only update panel if no ticks in last 2s (weekend/closed market fallback)
    static uint s_lastTickMs = 0;
-   uint now = GetTickCount();
-   if(now - s_lastTickMs >= 2000)
+   uint now2 = GetTickCount();
+   if(now2 - s_lastTickMs >= 2000)
       UpdatePanel();
-   s_lastTickMs = now;
+   s_lastTickMs = now2;
+
+   // ── Dispatch to active bot timer ──
+   if(g_activeBot == 1) CC_Timer();
+   else if(g_activeBot == 2) TS_Timer();
 }
 
 void OnChartEvent(const int id,
@@ -2789,6 +2927,21 @@ void OnChartEvent(const int id,
          ToggleChartLines();
          return;
       }
+
+      // ── Bot toggle buttons ──
+      if(sparam == OBJ_BOT_CC_BTN)
+      {
+         ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_STATE, false);
+         ToggleBot(1);
+         return;
+      }
+      if(sparam == OBJ_BOT_TS_BTN)
+      {
+         ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_STATE, false);
+         ToggleBot(2);
+         return;
+      }
+
       // ── Settings panel toggle ──
       if(sparam == OBJ_SETTINGS_BTN)
       {
