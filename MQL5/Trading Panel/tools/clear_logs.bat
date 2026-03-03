@@ -1,24 +1,24 @@
 @echo off
 :: ═══════════════════════════════════════════════════════════════
 :: Clear MT5 Logs, Tester Cache & Reports
-:: Double-click to run — safe to execute while MT5 is running
-:: (MT5 will recreate today's log automatically)
+:: Covers BOTH MT5 installations on this VPS:
+::   1. AppData (standard install)
+::   2. C:\MetaTrader 5 EXNESS Real (portable copy)
+:: Double-click to run — safe while MT5 is running
 :: ═══════════════════════════════════════════════════════════════
 
-set "BASE=C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\53785E099C927DB68A545C249CDBCE06"
+set "BASE1=C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\53785E099C927DB68A545C249CDBCE06"
+set "BASE2=C:\MetaTrader 5 EXNESS Real"
 
 echo.
 echo ═══════════════════════════════════════════
-echo   Clear MT5 Logs ^& Cache
+echo   Clear MT5 Logs ^& Cache (both installs)
 echo ═══════════════════════════════════════════
 echo.
-echo This will delete:
-echo   - Terminal logs       (%BASE%\logs\*.log)
-echo   - EA/Expert logs      (%BASE%\MQL5\Logs\*.log)
-echo   - Tester logs         (%BASE%\Tester\logs\*)
-echo   - Tester cache        (%BASE%\Tester\cache\*)
-echo   - Backtest reports    (%BASE%\reports\*)
-echo   - Temp files          (%BASE%\temp\*)
+echo [1] AppData install:  %BASE1%
+echo [2] Portable install: %BASE2%
+echo.
+echo Will delete: logs, EA logs, tester logs/cache, reports, temp
 echo.
 
 set /p CONFIRM="Are you sure? (Y/N): "
@@ -30,37 +30,52 @@ if /i not "%CONFIRM%"=="Y" (
 
 echo.
 
-:: ── Terminal logs ──
-echo Clearing Terminal logs...
-del /q "%BASE%\logs\*.log" 2>nul
-echo   Done.
+:: ════════════════════════════════════════════
+:: INSTALL 1: AppData
+:: ════════════════════════════════════════════
+echo [1/2] Clearing AppData install...
 
-:: ── MQL5/Expert logs ──
-echo Clearing Expert logs...
-del /q "%BASE%\MQL5\Logs\*.log" 2>nul
-echo   Done.
+echo   Terminal logs...
+del /q "%BASE1%\logs\*.log" 2>nul
 
-:: ── Tester logs ──
-echo Clearing Tester logs...
-del /q /s "%BASE%\Tester\logs\*.*" 2>nul
-echo   Done.
+echo   Expert logs...
+del /q "%BASE1%\MQL5\Logs\*.log" 2>nul
 
-:: ── Tester cache ──
-echo Clearing Tester cache...
-del /q /s "%BASE%\Tester\cache\*.*" 2>nul
-echo   Done.
+echo   Tester logs...
+del /q /s "%BASE1%\Tester\logs\*.*" 2>nul
 
-:: ── Reports ──
-echo Clearing backtest reports...
-del /q "%BASE%\reports\*.*" 2>nul
-echo   Done.
+echo   Tester cache...
+del /q /s "%BASE1%\Tester\cache\*.*" 2>nul
 
-:: ── Temp ──
-echo Clearing temp files...
-del /q /s "%BASE%\temp\*.*" 2>nul
-echo   Done.
+echo   Reports...
+del /q "%BASE1%\reports\*.*" 2>nul
 
+echo   Temp...
+del /q /s "%BASE1%\temp\*.*" 2>nul
+
+echo   Done.
 echo.
+
+:: ════════════════════════════════════════════
+:: INSTALL 2: Portable (C:\MetaTrader 5 EXNESS Real)
+:: ════════════════════════════════════════════
+echo [2/2] Clearing Portable install...
+
+echo   Terminal logs...
+del /q "%BASE2%\logs\*.log" 2>nul
+
+echo   Expert logs...
+del /q "%BASE2%\MQL5\Logs\*.log" 2>nul
+
+echo   Tester logs...
+del /q /s "%BASE2%\Tester\logs\*.*" 2>nul
+
+echo   Tester cache...
+del /q /s "%BASE2%\Tester\cache\*.*" 2>nul
+
+echo   Done.
+echo.
+
 echo ═══════════════════════════════════════════
 echo   All logs ^& cache cleared!
 echo ═══════════════════════════════════════════
