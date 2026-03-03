@@ -20,7 +20,7 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.03"
+#property copyright "Tuan v2.04"
 #property version   "2.03"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
@@ -149,6 +149,10 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_TM_CLOSE   PREFIX "tm_close"
 #define OBJ_TM_SWING   PREFIX "tm_swing"
 #define OBJ_TM_BE      PREFIX "tm_be"
+#define OBJ_TRAIL_LBL  PREFIX "trail_lbl"   // Trail param label
+#define OBJ_TRAIL_VAL  PREFIX "trail_val"   // Trail param value display
+#define OBJ_TRAIL_PLUS PREFIX "trail_plus"  // Trail param +
+#define OBJ_TRAIL_MINUS PREFIX "trail_minus" // Trail param -
 #define OBJ_GRID_BTN   PREFIX "grid_btn"
 #define OBJ_GRID_LVL   PREFIX "grid_lvl"
 #define OBJ_GRID_DLY   PREFIX "grid_dly"
@@ -248,6 +252,8 @@ double   g_cachedATR  = 0;        // ATR cached per bar (refreshed on new bar)
 int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
 bool     g_trailEnabled = false;
 ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail mode (changeable from panel)
+double   g_beStartMult    = 1.0;   // BE mode: start breakeven when profit >= N × ATR input (0.1-3.0)
+double   g_trailMinDist   = 0.5;   // Close/Swing mode: min SL distance as factor of ATR input (0.1-3.0)
 bool     g_beReached    = false;   // BE trail: whether SL has been moved to breakeven
 int      g_beStepLevel  = 0;       // BE trail Phase 2: step level (0=BE, 1=+1ATR, 2=+2ATR...)
 bool     g_panelCollapsed = false;
@@ -1196,7 +1202,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.03", C'170,180,215', 10, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Trading Panel v2.04", C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
    MakeLabel(OBJ_TITLE_INFO, IX, y + 30, " ", COL_DIM, 9, FONT_BOLD);
@@ -1385,6 +1391,20 @@ void CreatePanel()
    }
    y += 28;
 
+   // ── Trail parameter line (contextual: BE Start / Min Dist / hidden) ──
+   {
+      string tpLbl = (g_trailRef == TRAIL_BE) ? "BE Start:" : "Min Dist:";
+      double tpVal = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
+      MakeLabel(OBJ_TRAIL_LBL, PX + 8, y + 4, tpLbl, C'140,140,160', 8, "Segoe UI");
+      MakeLabel(OBJ_TRAIL_VAL, PX + 70, y + 4,
+                StringFormat("%.1fx", tpVal), C'220,225,240', 8, "Consolas");
+      MakeButton(OBJ_TRAIL_MINUS, PX + 5 + IW - 56, y, 26, 22,
+                 "-", C'180,180,200', C'55,55,75', 9);
+      MakeButton(OBJ_TRAIL_PLUS, PX + 5 + IW - 28, y, 26, 22,
+                 "+", C'180,180,200', C'55,55,75', 9);
+   }
+   y += 24;
+
    // ── Grid/TP info line (hidden initially, shown when grid/tp active with position) ──
    MakeLabel(OBJ_GRID_INFO, IX, y, " ", COL_DIM, 8, FONT_MONO);
    y += 16;
@@ -1554,6 +1574,18 @@ void DestroyPanel()
 }
 
 //+------------------------------------------------------------------+
+//| Update trail parameter display (label + value) based on mode     |
+//+------------------------------------------------------------------+
+void UpdateTrailParamDisplay()
+{
+   string lbl = (g_trailRef == TRAIL_BE) ? "BE Start:" : "Min Dist:";
+   double val = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
+   ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TEXT, lbl);
+   ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TEXT, StringFormat("%.1fx", val));
+   ChartRedraw(0);
+}
+
+//+------------------------------------------------------------------+
 //| Sync button appearance with actual enabled state                  |
 //+------------------------------------------------------------------+
 void SyncButtonAppearance()
@@ -1599,7 +1631,7 @@ void SyncButtonAppearance()
             break;
          case TRAIL_BE:
          {
-            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_cachedATR * g_atrMult);
+            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_beStartMult * g_cachedATR * g_atrMult);
             break;
          }
       }
@@ -1632,6 +1664,9 @@ void SyncButtonAppearance()
          ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, C'140,140,160');
       }
    }
+
+   // ── Trail parameter display refresh ──
+   UpdateTrailParamDisplay();
 
    // ── Grid DCA button ──
    if(g_gridEnabled)
@@ -2260,7 +2295,7 @@ void ManageTrail()
 
    // ═══════════════════════════════════════
    // TRAIL_BE: Breakeven first, then step 1 ATR input
-   // Phase 1 (per-tick): Move SL to breakeven when profit >= 1.0 × ATR input
+   // Phase 1 (per-tick): Move SL to breakeven when profit >= g_beStartMult × ATR input
    // Phase 2 (per-tick): Step SL in ATR input increments
    // ═══════════════════════════════════════
    if(g_trailRef == TRAIL_BE)
@@ -2270,10 +2305,10 @@ void ManageTrail()
       double fullATR = g_cachedATR * g_atrMult;  // ATR input = raw ATR × mult
       if(fullATR <= 0) return;
 
-      // Phase 1: Move to breakeven when profit >= 1.0 × ATR input
+      // Phase 1: Move to breakeven when profit >= g_beStartMult × ATR input
       if(!g_beReached)
       {
-         if(moveFromEntry >= fullATR)
+         if(moveFromEntry >= g_beStartMult * fullATR)
          {
             double beSL = NormPrice(refEntry);
             bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
@@ -2284,8 +2319,8 @@ void ManageTrail()
                g_beReached = true;
                g_beStepLevel = 0;
                s_lastTrailMs = nowMs;
-               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= 1.0 × ATR input)",
-                     DoubleToString(beSL, _Digits)));
+               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= %.1f × ATR input)",
+                     DoubleToString(beSL, _Digits), g_beStartMult));
                ModifySL(beSL);
             }
             else
@@ -2337,7 +2372,7 @@ void ManageTrail()
    if(moveFromEntry < g_cachedATR * g_tpATRFactor * g_atrMult)
       return;
 
-   double minDist = g_cachedATR * g_atrMult * 0.5;  // minimum trail distance = 0.5 × ATR input
+   double minDist = g_cachedATR * g_atrMult * g_trailMinDist;  // minimum trail distance
    if(minDist <= 0) return;
 
    double newSL = 0;
@@ -2897,7 +2932,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.03 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.04 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3377,7 +3412,8 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_STATE, false);
          g_trailRef = TRAIL_CLOSE;
-         Print("[TRAIL] Mode → Close (bar[1] wick, min 0.5 ATR)");
+         Print(StringFormat("[TRAIL] Mode → Close (bar[1] wick, min %.1f ATR)", g_trailMinDist));
+         UpdateTrailParamDisplay();
          SyncButtonAppearance();
       }
       // ── Trail mode: Swing ──
@@ -3385,7 +3421,8 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_STATE, false);
          g_trailRef = TRAIL_SWING;
-         Print("[TRAIL] Mode → Swing (nearest swing low/high, min 0.5 ATR)");
+         Print(StringFormat("[TRAIL] Mode → Swing (nearest swing low/high, min %.1f ATR)", g_trailMinDist));
+         UpdateTrailParamDisplay();
          SyncButtonAppearance();
       }
       // ── Trail mode: BE ──
@@ -3395,7 +3432,30 @@ void OnChartEvent(const int id,
          g_trailRef = TRAIL_BE;
          g_beReached = false;  // Reset BE state on mode change
          g_beStepLevel = 0;
-         Print("[TRAIL] Mode → BE (breakeven first, then step 1 ATR)");
+         Print(StringFormat("[TRAIL] Mode → BE (start %.1fx ATR, then step 1 ATR)", g_beStartMult));
+         UpdateTrailParamDisplay();
+         SyncButtonAppearance();
+      }
+      // ── Trail param: minus ──
+      else if(sparam == OBJ_TRAIL_MINUS)
+      {
+         ObjectSetInteger(0, OBJ_TRAIL_MINUS, OBJPROP_STATE, false);
+         if(g_trailRef == TRAIL_BE)
+         { g_beStartMult = MathMax(0.1, g_beStartMult - 0.1); }
+         else
+         { g_trailMinDist = MathMax(0.1, g_trailMinDist - 0.1); }
+         UpdateTrailParamDisplay();
+         SyncButtonAppearance();
+      }
+      // ── Trail param: plus ──
+      else if(sparam == OBJ_TRAIL_PLUS)
+      {
+         ObjectSetInteger(0, OBJ_TRAIL_PLUS, OBJPROP_STATE, false);
+         if(g_trailRef == TRAIL_BE)
+         { g_beStartMult = MathMin(3.0, g_beStartMult + 0.1); }
+         else
+         { g_trailMinDist = MathMin(3.0, g_trailMinDist + 0.1); }
+         UpdateTrailParamDisplay();
          SyncButtonAppearance();
       }
       // ── Grid DCA toggle ──
