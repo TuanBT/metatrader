@@ -205,14 +205,11 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_SET_RISK_EDT  PREFIX "set_risk_edt"
 #define OBJ_SET_RISK_PLUS PREFIX "set_rplus"
 #define OBJ_SET_RISK_MINUS PREFIX "set_rminus"
-#define OBJ_SET_R1        PREFIX "set_r1"
-#define OBJ_SET_R2        PREFIX "set_r2"
-#define OBJ_SET_R5        PREFIX "set_r5"
-#define OBJ_SET_R10       PREFIX "set_r10"
-#define OBJ_SET_R25       PREFIX "set_r25"
-#define OBJ_SET_R50       PREFIX "set_r50"
-#define OBJ_SET_R75       PREFIX "set_r75"
-#define OBJ_SET_R100      PREFIX "set_r100"
+#define OBJ_SET_MODE_DOLLAR PREFIX "set_mode_d"
+#define OBJ_SET_PCT_EDT   PREFIX "set_pct_edt"
+#define OBJ_SET_PCT_PLUS  PREFIX "set_pplus"
+#define OBJ_SET_PCT_MINUS PREFIX "set_pminus"
+#define OBJ_SET_MODE_PCT  PREFIX "set_mode_p"
 #define OBJ_SET_ATR_LBL   PREFIX "set_atr_lbl"
 #define OBJ_SET_ATR_EDT   PREFIX "set_atr_edt"
 #define OBJ_SET_ATR_PLUS  PREFIX "set_aplus"
@@ -229,6 +226,8 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 // ════════════════════════════════════════════════════════════════════
 int      g_atrHandle  = INVALID_HANDLE;
 double   g_riskMoney  = 0;
+double   g_riskPct    = 1.0;     // Risk % of balance
+bool     g_riskPctMode = true;   // true=%Auto, false=$Fixed
 
 // Position tracking
 bool     g_hasPos     = false;
@@ -1154,30 +1153,40 @@ void CreatePanel()
       MakeLabel(OBJ_SET_SEC, IX + 2, y - 5, " SETTINGS ", C'100,110,140', 7, FONT_MAIN);
       y += 8;
 
-      // ── Risk row: label + edit + [−] [+] ──
-      MakeLabel(OBJ_SET_RISK_LBL, IX, y + 3, "Risk $", COL_DIM, 9);
-      MakeEdit(OBJ_SET_RISK_EDT, IX + 48, y, 60, 22,
-               IntegerToString((int)g_riskMoney),
-               COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
-      MakeButton(OBJ_SET_RISK_MINUS, IX + 112, y, 28, 22, "-", COL_BTN_TXT, C'80,40,40', 10, FONT_BOLD);
-      MakeButton(OBJ_SET_RISK_PLUS,  IX + 143, y, 28, 22, "+", COL_BTN_TXT, C'40,80,40', 10, FONT_BOLD);
-      y += 26;
-
-      // ── Risk $ quick-select buttons ──
+      // ── Risk row: [$] [__$__] [-][+]   [%] [__%__] [-][+] ──
       {
-         int rbw = (IW - 2 - 7 * 2) / 8;  // ~35px each, 8 buttons
-         int rx = PX + 5;
-         int rg = 2;
-         MakeButton(OBJ_SET_R1,   rx + 0 * (rbw + rg), y, rbw, 22, "1%",   COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R2,   rx + 1 * (rbw + rg), y, rbw, 22, "2%",   COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R5,   rx + 2 * (rbw + rg), y, rbw, 22, "5%",   COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R10,  rx + 3 * (rbw + rg), y, rbw, 22, "10%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R25,  rx + 4 * (rbw + rg), y, rbw, 22, "25%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R50,  rx + 5 * (rbw + rg), y, rbw, 22, "50%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R75,  rx + 6 * (rbw + rg), y, rbw, 22, "75%",  COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
-         MakeButton(OBJ_SET_R100, rx + 7 * (rbw + rg), y, rbw, 22, "100%", COL_BTN_TXT, C'50,50,70', 7, FONT_MAIN);
+         int rx = IX;
+         // [$] mode button
+         color dBg  = g_riskPctMode ? C'50,50,70' : C'0,100,60';
+         color dTxt = g_riskPctMode ? C'140,140,160' : C'255,255,255';
+         MakeButton(OBJ_SET_MODE_DOLLAR, rx, y, 24, 22, "$", dTxt, dBg, 9, FONT_BOLD);
+         rx += 26;
+         // $ edit
+         MakeEdit(OBJ_SET_RISK_EDT, rx, y, 52, 22,
+                  IntegerToString((int)g_riskMoney),
+                  COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
+         rx += 54;
+         // [-] [+] for $
+         MakeButton(OBJ_SET_RISK_MINUS, rx, y, 24, 22, "-", COL_BTN_TXT, C'80,40,40', 10, FONT_BOLD);
+         rx += 26;
+         MakeButton(OBJ_SET_RISK_PLUS,  rx, y, 24, 22, "+", COL_BTN_TXT, C'40,80,40', 10, FONT_BOLD);
+         rx += 32;
+         // [%] mode button
+         color pBg  = g_riskPctMode ? C'0,100,60' : C'50,50,70';
+         color pTxt = g_riskPctMode ? C'255,255,255' : C'140,140,160';
+         MakeButton(OBJ_SET_MODE_PCT, rx, y, 24, 22, "%", pTxt, pBg, 9, FONT_BOLD);
+         rx += 26;
+         // % edit
+         MakeEdit(OBJ_SET_PCT_EDT, rx, y, 52, 22,
+                  StringFormat("%.1f", g_riskPct),
+                  COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
+         rx += 54;
+         // [-] [+] for %
+         MakeButton(OBJ_SET_PCT_MINUS, rx, y, 24, 22, "-", COL_BTN_TXT, C'80,40,40', 10, FONT_BOLD);
+         rx += 26;
+         MakeButton(OBJ_SET_PCT_PLUS,  rx, y, 24, 22, "+", COL_BTN_TXT, C'40,80,40', 10, FONT_BOLD);
       }
-      y += 28;
+      y += 26;
 
       // ── ATR row: label + edit + [−] [+] ──
       MakeLabel(OBJ_SET_ATR_LBL, IX, y + 3, "ATR", COL_DIM, 9);
@@ -1323,9 +1332,7 @@ void CreatePanel()
    ObjectSetString(0, OBJ_TITLE, OBJPROP_TOOLTIP,
       "Bảng giao dịch nhanh — vào lệnh thủ công, bot quản lý SL/TP.");
    ObjectSetString(0, OBJ_SET_SEC, OBJPROP_TOOLTIP,
-      "Cài đặt Risk (rủi ro) và ATR (Average True Range).");
-   ObjectSetString(0, OBJ_SET_RISK_LBL, OBJPROP_TOOLTIP,
-      "Risk: Số tiền tối đa bạn chấp nhận mất nếu lệnh dính SL.\nLot size sẽ tự tính dựa trên Risk $ và khoảng cách SL.");
+      "Cài đặt Risk (rủi ro) và ATR (Average True Range).\n[$] = Fixed dollar risk | [%] = Auto % of balance.");
    ObjectSetString(0, OBJ_SET_ATR_LBL, OBJPROP_TOOLTIP,
       "ATR (Average True Range): Chỉ báo đo biên độ dao động trung bình.\nHệ số ATR càng lớn → SL càng xa → lot càng nhỏ.\nVD: ATR 1.5x = SL cách giá 1.5 lần biên độ ATR.");
    ObjectSetString(0, OBJ_SEC_INFO, OBJPROP_TOOLTIP,
@@ -1364,16 +1371,14 @@ void CreatePanel()
       "Nhập hệ số ATR (Average True Range).\nVD: 1.5 = SL cách giá vào 1.5 lần biên độ dao động.");
 
    // Settings: Risk
-   ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk $1");
-   ObjectSetString(0, OBJ_SET_RISK_PLUS,  OBJPROP_TOOLTIP, "Tăng Risk $1");
-   ObjectSetString(0, OBJ_SET_R1,   OBJPROP_TOOLTIP, "Risk = 1% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R2,   OBJPROP_TOOLTIP, "Risk = 2% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R5,   OBJPROP_TOOLTIP, "Risk = 5% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R10,  OBJPROP_TOOLTIP, "Risk = 10% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R25,  OBJPROP_TOOLTIP, "Risk = 25% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R50,  OBJPROP_TOOLTIP, "Risk = 50% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R75,  OBJPROP_TOOLTIP, "Risk = 75% số dư tài khoản");
-   ObjectSetString(0, OBJ_SET_R100, OBJPROP_TOOLTIP, "Risk = 100% số dư tài khoản");
+   ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk $1 (chuyển sang $Fixed)");
+   ObjectSetString(0, OBJ_SET_RISK_PLUS,  OBJPROP_TOOLTIP, "Tăng Risk $1 (chuyển sang $Fixed)");
+   ObjectSetString(0, OBJ_SET_PCT_MINUS,  OBJPROP_TOOLTIP, "Giảm Risk 0.5% (chuyển sang %Auto)");
+   ObjectSetString(0, OBJ_SET_PCT_PLUS,   OBJPROP_TOOLTIP, "Tăng Risk 0.5% (chuyển sang %Auto)");
+   ObjectSetString(0, OBJ_SET_MODE_DOLLAR, OBJPROP_TOOLTIP,
+      "$Fixed: Risk cố định theo số tiền.\nKhông tự thay đổi khi balance thay đổi.");
+   ObjectSetString(0, OBJ_SET_MODE_PCT,   OBJPROP_TOOLTIP,
+      "%Auto: Risk = % balance.\nTự tính lại trước mỗi lệnh theo số dư hiện tại.");
 
    // Settings: ATR
    ObjectSetString(0, OBJ_SET_ATR_MINUS, OBJPROP_TOOLTIP, "Giảm ATR ×0.5 (snap đến bước 0.5 gần nhất)");
@@ -1608,9 +1613,36 @@ void UpdatePanel()
    // ── Read risk: settings edit if open, otherwise use current g_riskMoney ──
    if(g_settingsExpanded)
    {
-      string riskStr = ObjectGetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT);
-      double parsed  = StringToDouble(riskStr);
-      if(parsed > 0) g_riskMoney = parsed;
+      if(!g_riskPctMode)
+      {
+         // $Fixed mode: read $ edit
+         string riskStr = ObjectGetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT);
+         double parsed  = StringToDouble(riskStr);
+         if(parsed > 0) g_riskMoney = parsed;
+      }
+      else
+      {
+         // %Auto mode: read % edit, recalc $
+         string pctStr = ObjectGetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT);
+         double parsedPct = StringToDouble(pctStr);
+         if(parsedPct > 0) g_riskPct = parsedPct;
+      }
+   }
+   // %Auto mode: always recalc $ from current balance
+   if(g_riskPctMode)
+   {
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+      // Update $ edit display to reflect recalculated value
+      if(g_settingsExpanded)
+         ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+   }
+   else if(g_settingsExpanded)
+   {
+      // $Fixed mode: sync % display from current $
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
+      ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
    }
    if(g_riskMoney <= 0) g_riskMoney = InpDefaultRisk;
 
@@ -1640,7 +1672,7 @@ void UpdatePanel()
    // ── Row 2: Risk | ATR | Spread ──
    double spread = (ask - bid) / _Point;
    ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TEXT,
-      StringFormat("Risk $%d | ATR %.1fx | Spread %.0f", (int)g_riskMoney, g_atrMult, spread));
+      StringFormat("Risk $%d (%.1f%%) | ATR %.1fx | Spread %.0f", (int)g_riskMoney, g_riskPct, g_atrMult, spread));
    ObjectSetInteger(0, OBJ_SPRD_LBL, OBJPROP_COLOR, COL_DIM);
 
    // ── Row 1: Position status ──
@@ -2742,7 +2774,10 @@ int OnInit()
    if(g_atrHandle == INVALID_HANDLE)
       Print("[PANEL] Warning: iATR handle failed");
 
-   g_riskMoney = InpDefaultRisk;
+   g_riskPct     = 1.0;              // Default 1%
+   g_riskPctMode = true;             // Default %Auto mode
+   double initBal = AccountInfoDouble(ACCOUNT_BALANCE);
+   g_riskMoney = (initBal > 0) ? MathMax(1, MathFloor(initBal * g_riskPct / 100.0)) : InpDefaultRisk;
    g_atrMult   = InpATRMult;
    g_slMode    = SL_ATR;  // Always ATR mode
    g_manageMagic = (InpManageMagic > 0) ? InpManageMagic : InpMagic;
@@ -2979,42 +3014,83 @@ void OnChartEvent(const int id,
          ToggleSettings();
          return;
       }
-      // ── Settings: Risk ±$1 ──
+      // ── Settings: Risk $ ±1 → switch to $Fixed mode ──
       if(sparam == OBJ_SET_RISK_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_RISK_PLUS, OBJPROP_STATE, false);
+         g_riskPctMode = false;
          g_riskMoney = MathMax(1, g_riskMoney + 1);
+         // Sync % from $
+         double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+         // Rebuild to update mode button colors
+         DestroyPanel(); CreatePanel();
          UpdatePanel();
          return;
       }
       if(sparam == OBJ_SET_RISK_MINUS)
       {
          ObjectSetInteger(0, OBJ_SET_RISK_MINUS, OBJPROP_STATE, false);
+         g_riskPctMode = false;
          g_riskMoney = MathMax(1, g_riskMoney - 1);
+         // Sync % from $
+         double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+         DestroyPanel(); CreatePanel();
          UpdatePanel();
          return;
       }
-      // ── Settings: Risk % of balance ──
-      if(sparam == OBJ_SET_R1 || sparam == OBJ_SET_R2 ||
-         sparam == OBJ_SET_R5 || sparam == OBJ_SET_R10 ||
-         sparam == OBJ_SET_R25 || sparam == OBJ_SET_R50 ||
-         sparam == OBJ_SET_R75 || sparam == OBJ_SET_R100)
+      // ── Settings: Risk % ±0.5 → switch to %Auto mode ──
+      if(sparam == OBJ_SET_PCT_PLUS)
       {
-         ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
-         double pct = 0;
-         if(sparam == OBJ_SET_R1)   pct = 1;
-         if(sparam == OBJ_SET_R2)   pct = 2;
-         if(sparam == OBJ_SET_R5)   pct = 5;
-         if(sparam == OBJ_SET_R10)  pct = 10;
-         if(sparam == OBJ_SET_R25)  pct = 25;
-         if(sparam == OBJ_SET_R50)  pct = 50;
-         if(sparam == OBJ_SET_R75)  pct = 75;
-         if(sparam == OBJ_SET_R100) pct = 100;
+         ObjectSetInteger(0, OBJ_SET_PCT_PLUS, OBJPROP_STATE, false);
+         g_riskPctMode = true;
+         g_riskPct = MathMin(100.0, g_riskPct + 0.5);
+         // Sync $ from %
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-         g_riskMoney = MathMax(1, MathFloor(bal * pct / 100.0));
+         if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+         DestroyPanel(); CreatePanel();
+         UpdatePanel();
+         return;
+      }
+      if(sparam == OBJ_SET_PCT_MINUS)
+      {
+         ObjectSetInteger(0, OBJ_SET_PCT_MINUS, OBJPROP_STATE, false);
+         g_riskPctMode = true;
+         g_riskPct = MathMax(0.5, g_riskPct - 0.5);
+         // Sync $ from %
+         double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+         ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+         DestroyPanel(); CreatePanel();
+         UpdatePanel();
+         return;
+      }
+      // ── Settings: Mode toggle buttons ──
+      if(sparam == OBJ_SET_MODE_DOLLAR)
+      {
+         ObjectSetInteger(0, OBJ_SET_MODE_DOLLAR, OBJPROP_STATE, false);
+         g_riskPctMode = false;
+         DestroyPanel(); CreatePanel();
+         UpdatePanel();
+         return;
+      }
+      if(sparam == OBJ_SET_MODE_PCT)
+      {
+         ObjectSetInteger(0, OBJ_SET_MODE_PCT, OBJPROP_STATE, false);
+         g_riskPctMode = true;
+         // Recalc $ from current %
+         double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+         ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+         DestroyPanel(); CreatePanel();
          UpdatePanel();
          return;
       }
@@ -3486,6 +3562,29 @@ void OnChartEvent(const int id,
             ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT,
                IntegerToString((int)g_riskMoney));
          }
+         // Typing in $ → switch to $Fixed, sync %
+         g_riskPctMode = false;
+         double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+         DestroyPanel(); CreatePanel();
+         UpdatePanel();
+      }
+      else if(sparam == OBJ_SET_PCT_EDT)
+      {
+         // Typing in % → switch to %Auto, sync $
+         string val = ObjectGetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT);
+         double pct = StringToDouble(val);
+         if(pct > 0 && pct <= 100)
+         {
+            g_riskPct = NormalizeDouble(pct, 1);
+            g_riskPctMode = true;
+            double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+            if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+            ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+         }
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+         DestroyPanel(); CreatePanel();
          UpdatePanel();
       }
       else if(sparam == OBJ_SET_ATR_EDT)
