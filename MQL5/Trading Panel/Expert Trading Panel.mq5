@@ -1082,10 +1082,16 @@ void CreateBotButtons()
 
    MakeButton(OBJ_BOT_CC_BTN, x, y, BOT_BTN_W, BOT_BTN_H,
               "Candle Count", ccTxt, ccBg, 8);
+   ObjectSetString(0, OBJ_BOT_CC_BTN, OBJPROP_TOOLTIP,
+      "Candle Counter — đếm nến + ATR filter.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
    MakeButton(OBJ_BOT_TS_BTN, x + BOT_BTN_W + 2, y, BOT_BTN_W, BOT_BTN_H,
               "Trend Signal", tsTxt, tsBg, 8);
+   ObjectSetString(0, OBJ_BOT_TS_BTN, OBJPROP_TOOLTIP,
+      "Trend Signal — EMA cross + multi-TF.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
    MakeButton(OBJ_BOT_NS_BTN, x + (BOT_BTN_W + 2) * 2, y, BOT_BTN_W, BOT_BTN_H,
               "News Straddle", nsTxt, nsBg, 8);
+   ObjectSetString(0, OBJ_BOT_NS_BTN, OBJPROP_TOOLTIP,
+      "News Straddle — pending order trước tin.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
 }
 
 // Get button colors: green=running, blue=viewing, dark=inactive
@@ -1131,6 +1137,8 @@ void CreateBotPanel()
    string startLabel = running ? "\x25A0 Stop" : "\x25B6 Start";
    MakeButton(OBJ_BOT_START_BTN, BOT_PANEL_X + 4, BOT_CONTENT_Y + 4, 60, 20,
               startLabel, startTxt, startBg, 8);
+   ObjectSetString(0, OBJ_BOT_START_BTN, OBJPROP_TOOLTIP,
+      "Start/Stop bot hiện tại.\nBot chạy nền ngay cả khi xem bot khác.");
 
    int contentStartY = BOT_CONTENT_Y + 28;  // Below start button
 
@@ -1551,21 +1559,22 @@ void CreatePanel()
       "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
 
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
-      "CLOSE — Theo râu nến (mỗi nến mới)\n"
+      "CLOSE — Theo râu nến bar[1]\n"
       "BUY: SL = Low[1] | SELL: SL = High[1]\n"
-      "Nến quá ngắn (< 0.5 × ATR input) → bỏ qua.\n"
-      "Kích hoạt sau khi giá đi >= TP factor × ATR input.");
+      "Min Dist: khoảng cách tối thiểu (chỉnh [-][+])\n"
+      "Kích hoạt sau giá >= TP factor × ATR.");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "SWING — Theo chân sóng gần nhất (mỗi nến mới)\n"
+      "SWING — Theo chân sóng gần nhất\n"
       "BUY: SL = Swing Low | SELL: SL = Swing High\n"
-      "Nếu không có swing → lấy nến đỏ/xanh gần nhất.\n"
-      "Min 0.5 × ATR input, kích hoạt sau >= TP factor × ATR input.");
+      "Min Dist: khoảng cách tối thiểu (chỉnh [-][+])\n"
+      "Kích hoạt sau giá >= TP factor × ATR.");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
-      "BE — Dời SL về BE và ATR input\n"
-      "B1: Giá +1.0 ATR input → SL về entry\n"
-      "B2: Mỗi +1 ATR input tiếp → SL nhảy lên 1 ATR input\n");
+      "BE — Dời SL về entry rồi bước theo ATR\n"
+      "B1: Giá >= BE Start × ATR → SL về entry\n"
+      "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n"
+      "BE Start: chỉnh bằng [-][+] bên dưới.");
 
    // Grid DCA
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,
@@ -1594,6 +1603,16 @@ void CreatePanel()
       "TP1 tại 0.5 ATR (đóng 50% volume)");
    ObjectSetString(0, OBJ_TP_10, OBJPROP_TOOLTIP,
       "TP1 tại 1.0 ATR (đóng 50% volume)");
+
+   // Trail params
+   ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TOOLTIP,
+      "BE Start: khi nào trail bắt đầu (BE mode)\n"
+      "Min Dist: khoảng cách SL tối thiểu (Close/Swing)");
+   ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TOOLTIP,
+      "Giá trị hiện tại × ATR input.\n"
+      "Nhấn [-][+] để chỉnh (bước 0.1, phạm vi 0.1-3.0).");
+   ObjectSetString(0, OBJ_TRAIL_MINUS, OBJPROP_TOOLTIP, "Giảm 0.1 (min 0.1)");
+   ObjectSetString(0, OBJ_TRAIL_PLUS,  OBJPROP_TOOLTIP, "Tăng 0.1 (max 3.0)");
 
    // Close buttons
    ObjectSetString(0, OBJ_CLOSE50_BTN, OBJPROP_TOOLTIP,
