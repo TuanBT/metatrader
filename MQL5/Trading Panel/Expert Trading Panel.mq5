@@ -384,6 +384,18 @@ double CalcLot(double slDist)
    return NormLot(lot);
 }
 
+// Calculate the minimum risk ($) needed to trade min lot at current ATR SL
+double CalcMinRisk()
+{
+   if(g_cachedATR <= 0) return 1;
+   double slDist  = g_cachedATR * g_atrMult;
+   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   if(tickSz <= 0 || tickVal <= 0) return 1;
+   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   return MathCeil(minLot * (slDist / tickSz) * tickVal);  // round up to nearest $1
+}
+
 // Calculate TRUE projected max risk for Grid DCA (accounts for min-lot clipping)
 // Simulates initial entry + all DCA levels, sums actual risk per position
 double CalcProjectedMaxRisk()
@@ -1529,7 +1541,7 @@ void CreatePanel()
       "Nhập hệ số ATR (Average True Range).\nVD: 1.5 = SL cách giá vào 1.5 lần biên độ dao động.");
 
    // Settings: Risk
-   ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk $1 (chuyển sang $Fixed)");
+   ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk $1 (chuyển sang $Fixed)\nMin = risk tối thiểu cho min lot");
    ObjectSetString(0, OBJ_SET_RISK_PLUS,  OBJPROP_TOOLTIP, "Tăng Risk $1 (chuyển sang $Fixed)");
    ObjectSetString(0, OBJ_SET_PCT_MINUS,  OBJPROP_TOOLTIP, "Giảm Risk 10% (chuyển sang %Auto)");
    ObjectSetString(0, OBJ_SET_PCT_PLUS,   OBJPROP_TOOLTIP, "Tăng Risk 10% (chuyển sang %Auto)");
@@ -1926,9 +1938,19 @@ void UpdatePanel()
    else
    {
       // No position: show expected lot (left), clear P&L (right)
-      ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT,
-         StringFormat("Lot %.2f", avgLot));
-      ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, COL_DIM);
+      double minR = CalcMinRisk();
+      if(g_riskMoney < minR && minR > 1)
+      {
+         ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT,
+            StringFormat("Lot %.2f (min $%.0f)", avgLot, minR));
+         ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, C'220,160,0');  // Orange warning
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT,
+            StringFormat("Lot %.2f", avgLot));
+         ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, COL_DIM);
+      }
       ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TEXT, " ");
       ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT, " ");
       ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT, " ");
@@ -3245,7 +3267,8 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_SET_RISK_MINUS, OBJPROP_STATE, false);
          g_riskPctMode = false;
-         g_riskMoney = MathMax(1, g_riskMoney - 1);
+         double minR = CalcMinRisk();
+         g_riskMoney = MathMax(minR, g_riskMoney - 1);
          // Sync % from $
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
@@ -3280,7 +3303,8 @@ void OnChartEvent(const int id,
          g_riskPct = MathMax(1.0, snapped);
          // Sync $ from %
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-         if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+         double minR = CalcMinRisk();
+         if(bal > 0) g_riskMoney = MathMax(minR, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
          DestroyPanel(); CreatePanel();
