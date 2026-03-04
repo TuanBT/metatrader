@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.12"
-#property version   "2.12"
+#property copyright "Tuan v2.13"
+#property version   "2.13"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -260,7 +260,6 @@ int      g_beStepLevel  = 0;       // BE trail Phase 2: step level (0=BE, 1=+1AT
 bool     g_panelCollapsed = false;
 bool     g_linesHidden    = false;
 bool     g_settingsExpanded = true;
-bool     g_warmupDone       = false;  // True when all indicators have data cached
 int      g_panelFullHeight = 460;
 ENUM_SL_MODE g_slMode = SL_ATR;
 ulong    g_manageMagic  = 0;        // Effective magic for position monitoring
@@ -1223,12 +1222,13 @@ void ToggleBotStart()
    if(g_activeBot == 1)
    {
       cc_enabled = !cc_enabled;
+      if(cc_enabled) CC_CreateHandles();  // Lazy: create indicators on first Start
       Print(StringFormat("[PANEL] CC Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 2)
    {
       ts_enabled = !ts_enabled;
-      if(ts_enabled) { TS_ShowChartEMA(); }
+      if(ts_enabled) { TS_CreateHandles(); TS_ShowChartEMA(); }  // Lazy: create indicators on first Start
       else { TS_HideChartEMA(); }
       Print(StringFormat("[PANEL] TS Bot %s", ts_enabled ? "STARTED" : "STOPPED"));
    }
@@ -1287,7 +1287,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = g_warmupDone ? "Trading Panel v2.12" : "Trading Panel v2.12 \x23F3";
+   string titleTxt = "Trading Panel v2.13";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2003,7 +2003,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = g_warmupDone ? "Trading Panel v2.12" : "Trading Panel v2.12 \x23F3";
+   string panelTitle = "Trading Panel v2.13";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3045,7 +3045,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.12 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.13 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3202,46 +3202,8 @@ void OnTick()
    if(ns_enabled) NS_Tick();
 }
 
-// ── Check if all indicator handles have data cached ──
-bool CheckWarmupDone()
-{
-   double tmp[1];
-   // Check CC display handles (8 TF × 2 EMA = 16)
-   for(int i = 0; i < cc_numDisp; i++)
-   {
-      if(cc_dispFast[i] != INVALID_HANDLE && CopyBuffer(cc_dispFast[i], 0, 0, 1, tmp) < 1) return false;
-      if(cc_dispSlow[i] != INVALID_HANDLE && CopyBuffer(cc_dispSlow[i], 0, 0, 1, tmp) < 1) return false;
-   }
-   // Check TS core handles (6)
-   if(ts_emaFastEntry != INVALID_HANDLE && CopyBuffer(ts_emaFastEntry, 0, 0, 1, tmp) < 1) return false;
-   if(ts_emaSlowEntry != INVALID_HANDLE && CopyBuffer(ts_emaSlowEntry, 0, 0, 1, tmp) < 1) return false;
-   if(ts_emaFastMid   != INVALID_HANDLE && CopyBuffer(ts_emaFastMid,   0, 0, 1, tmp) < 1) return false;
-   if(ts_emaSlowMid   != INVALID_HANDLE && CopyBuffer(ts_emaSlowMid,   0, 0, 1, tmp) < 1) return false;
-   if(ts_emaFastHigh  != INVALID_HANDLE && CopyBuffer(ts_emaFastHigh,  0, 0, 1, tmp) < 1) return false;
-   if(ts_emaSlowHigh  != INVALID_HANDLE && CopyBuffer(ts_emaSlowHigh,  0, 0, 1, tmp) < 1) return false;
-   // Check TS display handles
-   for(int i = 0; i < ts_numDisp; i++)
-   {
-      if(ts_dispFast[i] != INVALID_HANDLE && CopyBuffer(ts_dispFast[i], 0, 0, 1, tmp) < 1) return false;
-      if(ts_dispSlow[i] != INVALID_HANDLE && CopyBuffer(ts_dispSlow[i], 0, 0, 1, tmp) < 1) return false;
-   }
-   return true;
-}
-
 void OnTimer()
 {
-   // ── Warmup check: once all indicators have data, clear ⏳ ──
-   if(!g_warmupDone)
-   {
-      if(CheckWarmupDone())
-      {
-         g_warmupDone = true;
-         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel v2.12");
-         ChartRedraw();
-         Print("[PANEL] Indicator warmup complete — all handles have data");
-      }
-   }
-
    // Only update panel if no ticks in last 2s (weekend/closed market fallback)
    static uint s_lastTickMs = 0;
    uint now2 = GetTickCount();
