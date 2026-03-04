@@ -3067,6 +3067,15 @@ void OnDeinit(const int reason)
 
 void OnTick()
 {
+   // ── Fast-path: detect Start/Stop button click during OnTick ──
+   // OBJPROP_STATE is set immediately on click (before OnChartEvent queues)
+   // This makes Start/Stop respond within the current tick, not next event cycle
+   if(ObjectGetInteger(0, OBJ_BOT_START_BTN, OBJPROP_STATE) != 0)
+   {
+      ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_STATE, false);
+      ToggleBotStart();
+   }
+
    // ── Cache ATR once per tick (avoid multiple CopyBuffer calls) ──
    {
       double atr[1];
