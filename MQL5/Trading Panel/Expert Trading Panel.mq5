@@ -1222,24 +1222,22 @@ void ToggleBotStart()
    if(g_activeBot == 1)
    {
       cc_enabled = !cc_enabled;
-      if(cc_enabled) { CC_UpdateSignalStates(); CC_UpdateCandleState(); }
       Print(StringFormat("[PANEL] CC Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 2)
    {
       ts_enabled = !ts_enabled;
-      if(ts_enabled) { TS_UpdateSignalStates(); TS_ShowChartEMA(); }
+      if(ts_enabled) { TS_ShowChartEMA(); }
       else { TS_HideChartEMA(); }
       Print(StringFormat("[PANEL] TS Bot %s", ts_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 3)
    {
       ns_enabled = !ns_enabled;
-      if(ns_enabled) { NS_ScanNextEvent(); }
       Print(StringFormat("[PANEL] NS Bot %s", ns_enabled ? "STARTED" : "STOPPED"));
    }
 
-   // Update Start/Stop button appearance
+   // Update Start/Stop button appearance immediately (heavy init deferred to next Timer)
    UpdateBotStartButton();
    UpdateBotButtonColors();
    ChartRedraw();
