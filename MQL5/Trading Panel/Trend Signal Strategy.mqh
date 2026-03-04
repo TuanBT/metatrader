@@ -11,6 +11,7 @@
 input group           "══ Trend Signal Bot ══"
 input int             InpTS_EMAFast     = 20;    // Trend Signal: EMA Fast period
 input int             InpTS_EMASlow     = 50;    // Trend Signal: EMA Slow period
+input int             InpTS_PauseBars   = 60;    // Trend Signal: Auto-resume after N bars (0 = manual)
 
 // ════════════════════════════════════════════════════════════════════
 // OBJECT NAMES (unique prefix)
@@ -41,6 +42,7 @@ int ts_emaFastHigh,  ts_emaSlowHigh;
 datetime ts_lastSignalBar = 0;
 bool     ts_enabled       = false;  // managed by Panel toggle
 bool     ts_paused        = false;
+datetime ts_pauseTime     = 0;
 
 // Trading signal states
 bool ts_highUp = false, ts_highDown = false;
@@ -291,6 +293,18 @@ void TS_Tick()
    if(!ts_enabled) return;
    if(!ts_warmupDone) return;  // Skip trading until indicators warmed up
 
+   // Auto-resume check
+   if(ts_paused && InpTS_PauseBars > 0 && ts_pauseTime > 0)
+   {
+      int barsSincePause = iBarShift(_Symbol, _Period, ts_pauseTime);
+      if(barsSincePause >= InpTS_PauseBars)
+      {
+         ts_paused = false;
+         ts_pauseTime = 0;
+         Print(StringFormat("[TREND SIGNAL] Auto-resumed after %d bars pause", barsSincePause));
+      }
+   }
+
    // Signal states updated by TS_Timer() — no need to repeat here
 
    if(ts_paused) return;
@@ -411,13 +425,18 @@ void TS_DrawEntryArrow(bool isBuy, double price, double lot)
 // ════════════════════════════════════════════════════════════════════
 // PAUSE
 // ════════════════════════════════════════════════════════════════════
-void TS_SetPaused(bool paused)
+void TS_SetPaused(datetime pauseTimestamp)
 {
-   ts_paused = paused;
-   if(paused)
-      Print("[TREND SIGNAL] Paused (Large SL)");
-   else
-      Print("[TREND SIGNAL] Pause cleared");
+   ts_paused = true;
+   ts_pauseTime = pauseTimestamp;
+   Print(StringFormat("[TREND SIGNAL] Paused | Resume after %d bars", InpTS_PauseBars));
+}
+
+void TS_ClearPause()
+{
+   ts_paused = false;
+   ts_pauseTime = 0;
+   Print("[TREND SIGNAL] Pause cleared");
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -492,7 +511,21 @@ void TS_UpdatePanel()
    }
    else if(ts_paused)
    {
-      ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "PAUSED (Large SL)");
+      if(InpTS_PauseBars > 0 && ts_pauseTime > 0)
+      {
+         int barsSincePause = iBarShift(_Symbol, _Period, ts_pauseTime);
+         int barsLeft = MathMax(0, InpTS_PauseBars - barsSincePause);
+         int secPerBar = PeriodSeconds(_Period);
+         int minsLeft = (barsLeft * secPerBar) / 60;
+         if(minsLeft >= 60)
+            ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT,
+               StringFormat("PAUSED | ~%dh%dm", minsLeft / 60, minsLeft % 60));
+         else
+            ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT,
+               StringFormat("PAUSED | ~%dm", minsLeft));
+      }
+      else
+         ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "PAUSED (Large SL)");
       ObjectSetInteger(0, TS_OBJ_STATUS, OBJPROP_COLOR, C'220,80,80');
    }
    else

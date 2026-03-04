@@ -10,7 +10,7 @@
 //|  • Auto TP: 50% partial close at 0.5 or 1 ATR                    |
 //|  • Grid DCA: auto DCA with ATR × mult spacing                    |
 //|  • Dark/Light chart themes                                      |
-//|  • Integrated bots: CC Bot, Trend Signal Bot (.mqh)              |
+//|  • Integrated bots: Candle Count Bot, Trend Signal Bot (.mqh)              |
 //|                                                                  |
 //| Usage:                                                           |
 //|  1. Attach EA to chart                                           |
@@ -18,10 +18,10 @@
 //|  3. Click BUY or SELL → order fires instantly                    |
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
-//|  6. Click CC/TS bot buttons on the right to enable bots          |
+//|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.16"
-#property version   "2.16"
+#property copyright "Tuan v2.17"
+#property version   "2.17"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -280,7 +280,7 @@ datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
 // Bot integration state
 double   g_panelLot       = 0;       // Calculated lot — shared with bots
-int      g_activeBot      = 0;       // 0=none, 1=CC Bot, 2=Trend Signal Bot, 3=News Straddle
+int      g_activeBot      = 0;       // 0=none, 1=Candle Count Bot, 2=Trend Signal Bot, 3=News Straddle
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -1222,14 +1222,14 @@ void ToggleBotStart()
    if(g_activeBot == 1)
    {
       cc_enabled = !cc_enabled;
-      Print(StringFormat("[PANEL] CC Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
+      Print(StringFormat("[PANEL] Candle Count Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 2)
    {
       ts_enabled = !ts_enabled;
       if(ts_enabled) { TS_CreateHandles(); TS_ShowChartEMA(); }  // Lazy: create indicators on first Start
       else { TS_HideChartEMA(); }
-      Print(StringFormat("[PANEL] TS Bot %s", ts_enabled ? "STARTED" : "STOPPED"));
+      Print(StringFormat("[PANEL] Trend Signal Bot %s", ts_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 3)
    {
@@ -1286,7 +1286,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.16";
+   string titleTxt = "Trading Panel v2.17";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2002,7 +2002,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.16";
+   string panelTitle = "Trading Panel v2.17";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3044,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.16 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.17 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3099,8 +3099,8 @@ void OnTick()
       {
          datetime pauseTs = (datetime)TimeCurrent();
          if(cc_enabled) CC_SetPaused(pauseTs);
-         if(ts_enabled) TS_SetPaused(true);
-         if(ns_enabled) NS_SetPaused(true);
+         if(ts_enabled) TS_SetPaused(pauseTs);
+         if(ns_enabled) NS_SetPaused(pauseTs);
          Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Bots paused",
                g_gridLevel, g_gridMaxLevel));
       }

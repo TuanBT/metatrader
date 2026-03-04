@@ -15,6 +15,7 @@ input double          InpNS_OffsetPips   = 15.0;  // News Straddle: Offset from 
 input double          InpNS_SLPips       = 30.0;  // News Straddle: Stop Loss (pips, 0 = Panel manages)
 input double          InpNS_TPPips       = 45.0;  // News Straddle: Take Profit (pips, 0 = Panel manages)
 input bool            InpNS_OnlyHigh     = true;  // News Straddle: Only HIGH importance events
+input int             InpNS_PauseBars    = 60;    // News Straddle: Auto-resume after N bars (0 = manual)
 
 // ════════════════════════════════════════════════════════════════════
 // OBJECT NAMES (unique prefix)
@@ -40,6 +41,7 @@ input bool            InpNS_OnlyHigh     = true;  // News Straddle: Only HIGH im
 // ════════════════════════════════════════════════════════════════════
 bool     ns_enabled       = false;  // managed by Panel toggle
 bool     ns_paused        = false;
+datetime ns_pauseTime     = 0;
 
 // Next event tracking
 string   ns_nextEventName = "";
@@ -330,6 +332,19 @@ void NS_Deinit()
 void NS_Tick()
 {
    if(!ns_enabled) return;
+
+   // Auto-resume check
+   if(ns_paused && InpNS_PauseBars > 0 && ns_pauseTime > 0)
+   {
+      int barsSincePause = iBarShift(_Symbol, _Period, ns_pauseTime);
+      if(barsSincePause >= InpNS_PauseBars)
+      {
+         ns_paused = false;
+         ns_pauseTime = 0;
+         Print(StringFormat("[NEWS STRADDLE] Auto-resumed after %d bars pause", barsSincePause));
+      }
+   }
+
    if(ns_paused) return;
 
    // Check if pending was triggered
@@ -395,13 +410,18 @@ void NS_Timer()
 // ════════════════════════════════════════════════════════════════════
 // PAUSE
 // ════════════════════════════════════════════════════════════════════
-void NS_SetPaused(bool val)
+void NS_SetPaused(datetime pauseTimestamp)
 {
-   ns_paused = val;
-   if(val)
-      Print("[NEWS STRADDLE] Paused (Large SL)");
-   else
-      Print("[NEWS STRADDLE] Pause cleared");
+   ns_paused = true;
+   ns_pauseTime = pauseTimestamp;
+   Print(StringFormat("[NEWS STRADDLE] Paused | Resume after %d bars", InpNS_PauseBars));
+}
+
+void NS_ClearPause()
+{
+   ns_paused = false;
+   ns_pauseTime = 0;
+   Print("[NEWS STRADDLE] Pause cleared");
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -470,7 +490,21 @@ void NS_UpdatePanel()
    }
    else if(ns_paused)
    {
-      ObjectSetString(0, NS_OBJ_STATUS, OBJPROP_TEXT, "PAUSED (Large SL)");
+      if(InpNS_PauseBars > 0 && ns_pauseTime > 0)
+      {
+         int barsSincePause = iBarShift(_Symbol, _Period, ns_pauseTime);
+         int barsLeft = MathMax(0, InpNS_PauseBars - barsSincePause);
+         int secPerBar = PeriodSeconds(_Period);
+         int minsLeft = (barsLeft * secPerBar) / 60;
+         if(minsLeft >= 60)
+            ObjectSetString(0, NS_OBJ_STATUS, OBJPROP_TEXT,
+               StringFormat("PAUSED | ~%dh%dm", minsLeft / 60, minsLeft % 60));
+         else
+            ObjectSetString(0, NS_OBJ_STATUS, OBJPROP_TEXT,
+               StringFormat("PAUSED | ~%dm", minsLeft));
+      }
+      else
+         ObjectSetString(0, NS_OBJ_STATUS, OBJPROP_TEXT, "PAUSED (Large SL)");
       ObjectSetInteger(0, NS_OBJ_STATUS, OBJPROP_COLOR, C'220,80,80');
    }
    else if(ns_triggered)

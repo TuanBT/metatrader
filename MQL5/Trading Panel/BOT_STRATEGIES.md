@@ -5,7 +5,7 @@
 
 ---
 
-## 1. Candle Counter Bot (CC Bot)
+## 1. Candle Counter Bot (Candle Count Bot)
 
 **Loại chiến lược:** Price Action — đếm nến liên tiếp + breakout
 
@@ -76,7 +76,7 @@ Pending state tự reset mỗi bar mới (nếu nến mới không thỏa mãn �
 
 ---
 
-## 2. Trend Signal Bot (TS Bot)
+## 2. Trend Signal Bot (Trend Signal Bot)
 
 **Loại chiến lược:** Multi-timeframe EMA trend-following
 
