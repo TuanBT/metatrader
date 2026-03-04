@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.11"
-#property version   "2.11"
+#property copyright "Tuan v2.12"
+#property version   "2.12"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1287,7 +1287,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = g_warmupDone ? "Trading Panel v2.11" : "Trading Panel v2.11 \x23F3";
+   string titleTxt = g_warmupDone ? "Trading Panel v2.12" : "Trading Panel v2.12 \x23F3";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -3044,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.11 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.12 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3235,7 +3235,7 @@ void OnTimer()
       if(CheckWarmupDone())
       {
          g_warmupDone = true;
-         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel v2.11");
+         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel v2.12");
          ChartRedraw();
          Print("[PANEL] Indicator warmup complete — all handles have data");
       }

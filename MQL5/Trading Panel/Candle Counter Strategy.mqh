@@ -119,14 +119,8 @@ bool CC_Init()
       cc_dispSlow[i] = iMA(_Symbol, cc_dispTF[i], 50, 0, MODE_EMA, PRICE_CLOSE);
    }
 
-   // Pre-warm: trigger MT5 to start downloading indicator data now
-   // Without this, first CopyBuffer on Start would block while data downloads
-   for(int i = 0; i < cc_numDisp; i++)
-   {
-      double tmp[1];
-      if(cc_dispFast[i] != INVALID_HANDLE) CopyBuffer(cc_dispFast[i], 0, 0, 1, tmp);
-      if(cc_dispSlow[i] != INVALID_HANDLE) CopyBuffer(cc_dispSlow[i], 0, 0, 1, tmp);
-   }
+   // NOTE: No CopyBuffer pre-warm here — it blocks OnInit for minutes on cold start.
+   // CheckWarmupDone() in OnTimer handles warmup + shows ⏳ on panel title.
 
    ArrayInitialize(cc_wickOK, false);
    ArrayInitialize(cc_atrOK, false);

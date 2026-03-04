@@ -151,21 +151,8 @@ bool TS_Init()
       ts_dispSlow[i] = iMA(_Symbol, ts_dispTF[i], InpTS_EMASlow, 0, MODE_EMA, PRICE_CLOSE);
    }
 
-   // Pre-warm: trigger MT5 to start downloading indicator data now
-   {
-      double tmp[1];
-      CopyBuffer(ts_emaFastEntry, 0, 0, 1, tmp);
-      CopyBuffer(ts_emaSlowEntry, 0, 0, 1, tmp);
-      CopyBuffer(ts_emaFastMid,   0, 0, 1, tmp);
-      CopyBuffer(ts_emaSlowMid,   0, 0, 1, tmp);
-      CopyBuffer(ts_emaFastHigh,  0, 0, 1, tmp);
-      CopyBuffer(ts_emaSlowHigh,  0, 0, 1, tmp);
-      for(int i = 0; i < ts_numDisp; i++)
-      {
-         if(ts_dispFast[i] != INVALID_HANDLE) CopyBuffer(ts_dispFast[i], 0, 0, 1, tmp);
-         if(ts_dispSlow[i] != INVALID_HANDLE) CopyBuffer(ts_dispSlow[i], 0, 0, 1, tmp);
-      }
-   }
+   // NOTE: No CopyBuffer pre-warm here — it blocks OnInit for minutes on cold start.
+   // CheckWarmupDone() in OnTimer handles warmup + shows ⏳ on panel title.
 
    // NOTE: EMA lines are NOT added to chart here.
    // They are shown only when bot is activated via TS_ShowChartEMA().
