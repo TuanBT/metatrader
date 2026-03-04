@@ -2003,6 +2003,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
+   string panelTitle = g_warmupDone ? "Trading Panel v2.12" : "Trading Panel v2.12 \x23F3";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -2011,7 +2012,7 @@ void UpdatePanel()
          double lock2 = GetLockedPnL();
          double lots2 = GetTotalLots();
          string dir2 = g_isBuy ? "LONG" : "SHORT";
-         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
+         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, panelTitle);
          ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
          // Info row left: lot + direction + P&L
          ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
@@ -2026,7 +2027,7 @@ void UpdatePanel()
       }
       else
       {
-         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
+         ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, panelTitle);
          ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
          ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT,
             StringFormat("Lot %.2f", avgLot));
@@ -2036,7 +2037,7 @@ void UpdatePanel()
    }
    else
    {
-      ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, "Trading Panel");
+      ObjectSetString(0, OBJ_TITLE, OBJPROP_TEXT, panelTitle);
       ObjectSetInteger(0, OBJ_TITLE, OBJPROP_COLOR, C'170,180,215');
       ObjectSetString(0, OBJ_TITLE_INFO, OBJPROP_TEXT, " ");
       ObjectSetString(0, OBJ_TITLE_LOCK, OBJPROP_TEXT, " ");
