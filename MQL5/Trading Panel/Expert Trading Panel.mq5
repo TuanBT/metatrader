@@ -1070,6 +1070,23 @@ void ToggleSettings()
    UpdatePanel();
 }
 
+//+------------------------------------------------------------------+
+//| Lightweight mode-button color update (no panel rebuild)          |
+//+------------------------------------------------------------------+
+void UpdateModeColors()
+{
+   // $ button: green if $Fixed mode, gray if %Auto
+   color dBg  = g_riskPctMode ? C'50,50,70'    : C'0,100,60';
+   color dTxt = g_riskPctMode ? C'140,140,160'  : C'255,255,255';
+   ObjectSetInteger(0, OBJ_SET_MODE_DOLLAR, OBJPROP_BGCOLOR, dBg);
+   ObjectSetInteger(0, OBJ_SET_MODE_DOLLAR, OBJPROP_COLOR,   dTxt);
+   // % button: green if %Auto mode, gray if $Fixed
+   color pBg  = g_riskPctMode ? C'0,100,60'    : C'50,50,70';
+   color pTxt = g_riskPctMode ? C'255,255,255'  : C'140,140,160';
+   ObjectSetInteger(0, OBJ_SET_MODE_PCT, OBJPROP_BGCOLOR, pBg);
+   ObjectSetInteger(0, OBJ_SET_MODE_PCT, OBJPROP_COLOR,   pTxt);
+}
+
 // ════════════════════════════════════════════════════════════════════
 // BOT STRATEGY INCLUDES
 // ════════════════════════════════════════════════════════════════════
@@ -3261,8 +3278,7 @@ void OnChartEvent(const int id,
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
-         // Rebuild to update mode button colors
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
          return;
       }
@@ -3277,7 +3293,7 @@ void OnChartEvent(const int id,
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
          return;
       }
@@ -3293,7 +3309,7 @@ void OnChartEvent(const int id,
          if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
          return;
       }
@@ -3310,7 +3326,7 @@ void OnChartEvent(const int id,
          if(bal > 0) g_riskMoney = MathMax(minR, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
          return;
       }
@@ -3319,7 +3335,7 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_SET_MODE_DOLLAR, OBJPROP_STATE, false);
          g_riskPctMode = false;
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
          return;
       }
@@ -3331,7 +3347,7 @@ void OnChartEvent(const int id,
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
          return;
       }
@@ -3828,7 +3844,7 @@ void OnChartEvent(const int id,
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
       }
       else if(sparam == OBJ_SET_PCT_EDT)
@@ -3845,7 +3861,7 @@ void OnChartEvent(const int id,
             ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          }
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
-         DestroyPanel(); CreatePanel();
+         UpdateModeColors();
          UpdatePanel();
       }
       else if(sparam == OBJ_SET_ATR_EDT)
