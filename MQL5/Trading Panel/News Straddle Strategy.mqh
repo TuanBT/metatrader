@@ -449,7 +449,6 @@ void NS_CreatePanel(int x, int y, int w)
    MakeLabel(NS_OBJ_IL5, x + pad, row, "", C'120,125,145', 7, "Consolas");
 
    NS_UpdatePanel();
-   ChartRedraw();
 }
 
 void NS_DestroyPanel()
@@ -588,8 +587,6 @@ void NS_UpdatePanel()
                    InpNS_TPPips > 0 ? StringFormat("%.0f pips", InpNS_TPPips) : "Panel"));
    ObjectSetString(0, NS_OBJ_IL5, OBJPROP_TEXT,
       StringFormat("Filter: %s only", InpNS_OnlyHigh ? "HIGH" : "HIGH+MED"));
-
-   ChartRedraw();
 }
 
 // ════════════════════════════════════════════════════════════════════

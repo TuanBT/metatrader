@@ -1662,9 +1662,7 @@ void UpdateTrailParamDisplay()
    double val = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
    ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TEXT, lbl);
    ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TEXT, StringFormat("%.1fx", val));
-   // Update trail start line on chart immediately
-   UpdateTPGridLines();
-   ChartRedraw(0);
+   // Note: ChartRedraw + UpdateTPGridLines handled by caller (UpdatePanel or button handler)
 }
 
 //+------------------------------------------------------------------+
@@ -1747,8 +1745,13 @@ void SyncButtonAppearance()
       }
    }
 
-   // ── Trail parameter display refresh ──
-   UpdateTrailParamDisplay();
+   // ── Trail parameter display refresh (label text only, no ChartRedraw) ──
+   {
+      string tLbl = (g_trailRef == TRAIL_BE) ? "BE Start:" : "Min Dist:";
+      double tVal = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
+      ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TEXT, tLbl);
+      ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TEXT, StringFormat("%.1fx", tVal));
+   }
 
    // ── Grid DCA button ──
    if(g_gridEnabled)
@@ -3157,10 +3160,10 @@ void OnTick()
    if(curBar != g_lastBar)
       g_lastBar = curBar;
 
-   // Throttled panel update (every 500 ms)
+   // Throttled panel update (every 1000 ms — avoid starving OnChartEvent)
    static uint lastMs = 0;
    uint now = GetTickCount();
-   if(now - lastMs >= 500)
+   if(now - lastMs >= 1000)
    {
       UpdatePanel();
       lastMs = now;
@@ -3500,7 +3503,6 @@ void OnChartEvent(const int id,
          Print(StringFormat("[PANEL] Trail SL %s (mode: %s)",
                g_trailEnabled ? "ENABLED" : "DISABLED",
                EnumToString(g_trailRef)));
-         SyncButtonAppearance();
       }
       // ── Trail mode: Close ──
       else if(sparam == OBJ_TM_CLOSE)
@@ -3509,7 +3511,6 @@ void OnChartEvent(const int id,
          g_trailRef = TRAIL_CLOSE;
          Print(StringFormat("[TRAIL] Mode → Close (bar[1] wick, min %.1f ATR)", g_trailMinDist));
          UpdateTrailParamDisplay();
-         SyncButtonAppearance();
       }
       // ── Trail mode: Swing ──
       else if(sparam == OBJ_TM_SWING)
@@ -3518,7 +3519,6 @@ void OnChartEvent(const int id,
          g_trailRef = TRAIL_SWING;
          Print(StringFormat("[TRAIL] Mode → Swing (nearest swing low/high, min %.1f ATR)", g_trailMinDist));
          UpdateTrailParamDisplay();
-         SyncButtonAppearance();
       }
       // ── Trail mode: BE ──
       else if(sparam == OBJ_TM_BE)
@@ -3529,7 +3529,6 @@ void OnChartEvent(const int id,
          g_beStepLevel = 0;
          Print(StringFormat("[TRAIL] Mode → BE (start %.1fx ATR, then step 1 ATR)", g_beStartMult));
          UpdateTrailParamDisplay();
-         SyncButtonAppearance();
       }
       // ── Trail param: minus ──
       else if(sparam == OBJ_TRAIL_MINUS)
@@ -3540,7 +3539,6 @@ void OnChartEvent(const int id,
          else
          { g_trailMinDist = MathMax(0.1, g_trailMinDist - 0.1); }
          UpdateTrailParamDisplay();
-         SyncButtonAppearance();
       }
       // ── Trail param: plus ──
       else if(sparam == OBJ_TRAIL_PLUS)
@@ -3551,7 +3549,6 @@ void OnChartEvent(const int id,
          else
          { g_trailMinDist = MathMin(3.0, g_trailMinDist + 0.1); }
          UpdateTrailParamDisplay();
-         SyncButtonAppearance();
       }
       // ── Grid DCA toggle ──
       else if(sparam == OBJ_GRID_BTN)

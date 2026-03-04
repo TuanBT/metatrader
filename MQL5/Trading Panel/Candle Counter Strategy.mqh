@@ -415,7 +415,6 @@ void CC_CreatePanel(int x, int y, int w)
    MakeLabel(CC_OBJ_IL5, x + pad, row, "", C'120,125,145', 8, "Consolas");
 
    CC_UpdatePanel();
-   ChartRedraw();
 }
 
 void CC_DestroyPanel()
@@ -558,8 +557,6 @@ void CC_UpdatePanel()
       StringFormat("ATR: %.1f | Min: %.1f (%.1fx)",
          g_cachedATR / _Point, minRange / _Point, InpCC_ATRMinMult));
    ObjectSetInteger(0, CC_OBJ_IL5, OBJPROP_COLOR, C'120,125,145');
-
-   ChartRedraw();
 }
 
 // ════════════════════════════════════════════════════════════════════

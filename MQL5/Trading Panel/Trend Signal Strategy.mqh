@@ -397,7 +397,6 @@ void TS_CreatePanel(int x, int y, int w)
    MakeLabel(TS_OBJ_IL5, x + pad, row, "", C'120,125,145', 7, "Consolas");
 
    TS_UpdatePanel();
-   ChartRedraw();
 }
 
 void TS_DestroyPanel()
@@ -470,8 +469,6 @@ void TS_UpdatePanel()
       "SELL: Cross dn + Mid\x25BC + High\x25BC");
    ObjectSetString(0, TS_OBJ_IL5, OBJPROP_TEXT,
       "Panel manages SL / TP / Trail");
-
-   ChartRedraw();
 }
 
 // ════════════════════════════════════════════════════════════════════
