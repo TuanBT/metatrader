@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.14"
-#property version   "2.14"
+#property copyright "Tuan v2.15"
+#property version   "2.15"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1286,7 +1286,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.14";
+   string titleTxt = "Trading Panel v2.15";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1559,8 +1559,8 @@ void CreatePanel()
    // Settings: Risk
    ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk $1 (chuyển sang $Fixed)\nMin = risk tối thiểu cho min lot");
    ObjectSetString(0, OBJ_SET_RISK_PLUS,  OBJPROP_TOOLTIP, "Tăng Risk $1 (chuyển sang $Fixed)");
-   ObjectSetString(0, OBJ_SET_PCT_MINUS,  OBJPROP_TOOLTIP, "Giảm Risk 10% (chuyển sang %Auto)");
-   ObjectSetString(0, OBJ_SET_PCT_PLUS,   OBJPROP_TOOLTIP, "Tăng Risk 10% (chuyển sang %Auto)");
+   ObjectSetString(0, OBJ_SET_PCT_MINUS,  OBJPROP_TOOLTIP, "Giảm Risk 1% (chuyển sang %Auto)");
+   ObjectSetString(0, OBJ_SET_PCT_PLUS,   OBJPROP_TOOLTIP, "Tăng Risk 1% (chuyển sang %Auto)");
    ObjectSetString(0, OBJ_SET_MODE_DOLLAR, OBJPROP_TOOLTIP,
       "$Fixed: Risk cố định theo số tiền.\nKhông tự thay đổi khi balance thay đổi.");
    ObjectSetString(0, OBJ_SET_MODE_PCT,   OBJPROP_TOOLTIP,
@@ -2002,7 +2002,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.14";
+   string panelTitle = "Trading Panel v2.15";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3044,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.14 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.15 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3306,13 +3306,12 @@ void OnChartEvent(const int id,
          UpdatePanel();
          return;
       }
-      // ── Settings: Risk % ±10 (snap to 10 step) → switch to %Auto mode ──
+      // ── Settings: Risk % ±1 → switch to %Auto mode ──
       if(sparam == OBJ_SET_PCT_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_PCT_PLUS, OBJPROP_STATE, false);
          g_riskPctMode = true;
-         // Snap up to next 10: 2→10, 10→20, 12→20
-         g_riskPct = MathMin(100.0, MathCeil(g_riskPct / 10.0 + 0.001) * 10.0);
+         g_riskPct = MathMin(100.0, MathFloor(g_riskPct + 1.0));
          // Sync $ from %
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
@@ -3326,9 +3325,7 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_SET_PCT_MINUS, OBJPROP_STATE, false);
          g_riskPctMode = true;
-         // Snap down to prev 10: 20→10, 12→10, 10→1(min)
-         double snapped = MathFloor((g_riskPct - 0.001) / 10.0) * 10.0;
-         g_riskPct = MathMax(1.0, snapped);
+         g_riskPct = MathMax(1.0, MathFloor(g_riskPct - 1.0));
          // Sync $ from %
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          double minR = CalcMinRisk();
