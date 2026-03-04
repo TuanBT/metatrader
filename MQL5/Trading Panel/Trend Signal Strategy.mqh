@@ -133,9 +133,15 @@ bool TS_Init()
 {
    TS_MapTimeframes();
 
-   // NOTE: iMA handles are NOT created here (lazy loading).
-   // They are created on-demand when the user presses Start → TS_CreateHandles().
+   // Display handles: created eagerly so TF arrows are viewable without Start
+   for(int i = 0; i < ts_numDisp; i++)
+   {
+      ts_dispFast[i] = iMA(_Symbol, ts_dispTF[i], InpTS_EMAFast, 0, MODE_EMA, PRICE_CLOSE);
+      ts_dispSlow[i] = iMA(_Symbol, ts_dispTF[i], InpTS_EMASlow, 0, MODE_EMA, PRICE_CLOSE);
+   }
 
+   // Core handles are NOT created here (lazy loading).
+   // They are created on-demand when the user presses Start → TS_CreateHandles().
    ts_handlesCreated = false;
    ts_warmupDone     = false;
 
@@ -145,7 +151,7 @@ bool TS_Init()
    return true;
 }
 
-// Create indicator handles on-demand (called from ToggleBotStart)
+// Create CORE indicator handles on-demand (called from ToggleBotStart)
 bool TS_CreateHandles()
 {
    if(ts_handlesCreated) return true;
@@ -161,40 +167,27 @@ bool TS_CreateHandles()
       ts_emaFastMid   == INVALID_HANDLE || ts_emaSlowMid   == INVALID_HANDLE ||
       ts_emaFastHigh  == INVALID_HANDLE || ts_emaSlowHigh  == INVALID_HANDLE)
    {
-      Print("[TREND SIGNAL] Failed to create indicator handles");
+      Print("[TREND SIGNAL] Failed to create core indicator handles");
       return false;
-   }
-
-   for(int i = 0; i < ts_numDisp; i++)
-   {
-      ts_dispFast[i] = iMA(_Symbol, ts_dispTF[i], InpTS_EMAFast, 0, MODE_EMA, PRICE_CLOSE);
-      ts_dispSlow[i] = iMA(_Symbol, ts_dispTF[i], InpTS_EMASlow, 0, MODE_EMA, PRICE_CLOSE);
    }
 
    ts_handlesCreated = true;
    ts_warmupDone     = false;
-   Print("[TREND SIGNAL] Indicator handles created — warming up...");
+   Print("[TREND SIGNAL] Core indicator handles created — warming up...");
    return true;
 }
 
-// Check if all TS indicator handles have cached data (non-blocking)
+// Check if CORE indicator handles have cached data (non-blocking)
 bool TS_CheckWarmup()
 {
    if(ts_warmupDone) return true;
    if(!ts_handlesCreated) return false;
-   // Core handles
    if(BarsCalculated(ts_emaFastEntry) <= 0) return false;
    if(BarsCalculated(ts_emaSlowEntry) <= 0) return false;
    if(BarsCalculated(ts_emaFastMid)   <= 0) return false;
    if(BarsCalculated(ts_emaSlowMid)   <= 0) return false;
    if(BarsCalculated(ts_emaFastHigh)  <= 0) return false;
    if(BarsCalculated(ts_emaSlowHigh)  <= 0) return false;
-   // Display handles
-   for(int i = 0; i < ts_numDisp; i++)
-   {
-      if(ts_dispFast[i] != INVALID_HANDLE && BarsCalculated(ts_dispFast[i]) <= 0) return false;
-      if(ts_dispSlow[i] != INVALID_HANDLE && BarsCalculated(ts_dispSlow[i]) <= 0) return false;
-   }
    ts_warmupDone = true;
    Print("[TREND SIGNAL] Warmup complete — ready to trade");
    return true;
@@ -222,6 +215,14 @@ void TS_Deinit()
    TS_DestroyPanel();
    TS_HideChartEMA();
 
+   // Release display handles (always created in Init)
+   for(int i = 0; i < ts_numDisp; i++)
+   {
+      if(ts_dispFast[i] != INVALID_HANDLE) IndicatorRelease(ts_dispFast[i]);
+      if(ts_dispSlow[i] != INVALID_HANDLE) IndicatorRelease(ts_dispSlow[i]);
+   }
+
+   // Release core handles (only if created via Start)
    if(ts_handlesCreated)
    {
       if(ts_emaFastEntry != INVALID_HANDLE) IndicatorRelease(ts_emaFastEntry);
@@ -230,11 +231,6 @@ void TS_Deinit()
       if(ts_emaSlowMid   != INVALID_HANDLE) IndicatorRelease(ts_emaSlowMid);
       if(ts_emaFastHigh  != INVALID_HANDLE) IndicatorRelease(ts_emaFastHigh);
       if(ts_emaSlowHigh  != INVALID_HANDLE) IndicatorRelease(ts_emaSlowHigh);
-      for(int i = 0; i < ts_numDisp; i++)
-      {
-         if(ts_dispFast[i] != INVALID_HANDLE) IndicatorRelease(ts_dispFast[i]);
-         if(ts_dispSlow[i] != INVALID_HANDLE) IndicatorRelease(ts_dispSlow[i]);
-      }
    }
    ts_handlesCreated = false;
    ts_warmupDone     = false;
@@ -244,7 +240,24 @@ void TS_Deinit()
 // ════════════════════════════════════════════════════════════════════
 // SIGNAL ANALYSIS
 // ════════════════════════════════════════════════════════════════════
-void TS_UpdateSignalStates()
+// Update display TF arrows (runs even when bot is stopped)
+void TS_UpdateDisplayStates()
+{
+   for(int i = 0; i < ts_numDisp; i++)
+   {
+      ts_dispUp[i]   = false;
+      ts_dispDown[i] = false;
+      if(ts_dispFast[i] == INVALID_HANDLE || ts_dispSlow[i] == INVALID_HANDLE) continue;
+      double f[1], s[1];
+      if(CopyBuffer(ts_dispFast[i], 0, 1, 1, f) != 1) continue;
+      if(CopyBuffer(ts_dispSlow[i], 0, 1, 1, s) != 1) continue;
+      ts_dispUp[i]   = (f[0] > s[0]);
+      ts_dispDown[i] = (f[0] < s[0]);
+   }
+}
+
+// Update core trading signals (only when bot is running + warmed up)
+void TS_UpdateCoreSignals()
 {
    double entryFast[2], entrySlow[2];
    double midFast[1], midSlow[1];
@@ -268,19 +281,6 @@ void TS_UpdateSignalStates()
    ts_entryDown = (entryFast[1] < entrySlow[1]);
    ts_crossUp   = (entryFast[0] <= entrySlow[0]) && (entryFast[1] > entrySlow[1]);
    ts_crossDown = (entryFast[0] >= entrySlow[0]) && (entryFast[1] < entrySlow[1]);
-
-   // Update display TF states
-   for(int i = 0; i < ts_numDisp; i++)
-   {
-      ts_dispUp[i]   = false;
-      ts_dispDown[i] = false;
-      if(ts_dispFast[i] == INVALID_HANDLE || ts_dispSlow[i] == INVALID_HANDLE) continue;
-      double f[1], s[1];
-      if(CopyBuffer(ts_dispFast[i], 0, 1, 1, f) != 1) continue;
-      if(CopyBuffer(ts_dispSlow[i], 0, 1, 1, s) != 1) continue;
-      ts_dispUp[i]   = (f[0] > s[0]);
-      ts_dispDown[i] = (f[0] < s[0]);
-   }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -321,25 +321,34 @@ void TS_Tick()
 // ════════════════════════════════════════════════════════════════════
 void TS_Timer()
 {
-   if(!ts_enabled) return;
-
-   // Warmup check: poll indicator data until all handles have cached data
-   if(!ts_warmupDone)
-   {
-      TS_CheckWarmup();
-      if(g_activeBot == 2) TS_UpdatePanel();
-      return;  // Skip trading logic during warmup
-   }
-
-   // Throttle heavy CopyBuffer to every 5s (signals only change on bar close)
-   static uint s_lastSignalMs = 0;
+   // Display signals: update when viewing TS tab (works even if bot is stopped)
+   static uint s_lastDispMs = 0;
    uint now = GetTickCount();
-   if(now - s_lastSignalMs >= 5000)
+   if(g_activeBot == 2 && now - s_lastDispMs >= 5000)
    {
-      TS_UpdateSignalStates();
-      s_lastSignalMs = now;
+      TS_UpdateDisplayStates();
+      s_lastDispMs = now;
    }
-   if(g_activeBot == 2) TS_UpdatePanel();  // Only update visible panel
+
+   // Trading logic: only when bot is running
+   if(ts_enabled)
+   {
+      if(!ts_warmupDone)
+      {
+         TS_CheckWarmup();
+      }
+      else
+      {
+         static uint s_lastCoreMs = 0;
+         if(now - s_lastCoreMs >= 5000)
+         {
+            TS_UpdateCoreSignals();
+            s_lastCoreMs = now;
+         }
+      }
+   }
+
+   if(g_activeBot == 2) TS_UpdatePanel();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -478,7 +487,7 @@ void TS_UpdatePanel()
    }
    else if(!ts_warmupDone)
    {
-      ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "\x23F3 Loading indicators...");
+      ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "\x23F3 Loading...");
       ObjectSetInteger(0, TS_OBJ_STATUS, OBJPROP_COLOR, C'255,180,50');
    }
    else if(ts_paused)

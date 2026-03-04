@@ -50,150 +50,34 @@ bool     cc_pendingSell  = false;
 double   cc_breakLevel   = 0;
 datetime cc_pendingBar   = 0;
 
-// Lazy loading state
-bool     cc_handlesCreated = false;
-bool     cc_warmupDone     = false;
-
-// Multi-TF display
-#define CC_MAX_DISP 8
-ENUM_TIMEFRAMES cc_dispTF[CC_MAX_DISP];
-string  cc_dispName[CC_MAX_DISP];
-int     cc_dispFast[CC_MAX_DISP];   // iMA EMA 20
-int     cc_dispSlow[CC_MAX_DISP];   // iMA EMA 50
-bool    cc_dispUp[CC_MAX_DISP];
-bool    cc_dispDown[CC_MAX_DISP];
-int     cc_numDisp  = 0;
-int     cc_entryIdx = -1;
-
 // Panel position (set by Panel when creating bot UI)
 int  cc_panelX = 0;
 int  cc_panelY = 0;
 int  cc_panelW = 220;
 
 // ════════════════════════════════════════════════════════════════════
-// TF HELPERS
-// ════════════════════════════════════════════════════════════════════
-string CC_TFShortName(ENUM_TIMEFRAMES tf)
-{
-   switch(tf)
-   {
-      case PERIOD_M1:  return "M1";
-      case PERIOD_M5:  return "M5";
-      case PERIOD_M15: return "M15";
-      case PERIOD_M30: return "M30";
-      case PERIOD_H1:  return "H1";
-      case PERIOD_H4:  return "H4";
-      case PERIOD_D1:  return "D1";
-      case PERIOD_W1:  return "W1";
-      case PERIOD_MN1: return "MN";
-      default:         return EnumToString(tf);
-   }
-}
-
-void CC_BuildDispTFs()
-{
-   ENUM_TIMEFRAMES allTF[] = { PERIOD_W1, PERIOD_D1, PERIOD_H4, PERIOD_H1,
-                                PERIOD_M30, PERIOD_M15, PERIOD_M5, PERIOD_M1 };
-   cc_numDisp = 0;
-   cc_entryIdx = -1;
-   for(int i = 0; i < ArraySize(allTF) && cc_numDisp < CC_MAX_DISP; i++)
-   {
-      cc_dispTF[cc_numDisp]   = allTF[i];
-      cc_dispName[cc_numDisp] = CC_TFShortName(allTF[i]);
-      cc_dispFast[cc_numDisp] = INVALID_HANDLE;
-      cc_dispSlow[cc_numDisp] = INVALID_HANDLE;
-      cc_dispUp[cc_numDisp]   = false;
-      cc_dispDown[cc_numDisp] = false;
-      if(allTF[i] == _Period) cc_entryIdx = cc_numDisp;
-      cc_numDisp++;
-   }
-}
-
-// ════════════════════════════════════════════════════════════════════
 // INIT / DEINIT
 // ════════════════════════════════════════════════════════════════════
 bool CC_Init()
 {
-   CC_BuildDispTFs();
-
-   // NOTE: iMA handles are NOT created here (lazy loading).
-   // They are created on-demand when the user presses Start → CC_CreateHandles().
-
    ArrayInitialize(cc_wickOK, false);
    ArrayInitialize(cc_atrOK, false);
    ArrayInitialize(cc_colorOK, false);
-
-   cc_handlesCreated = false;
-   cc_warmupDone     = false;
 
    Print(StringFormat("[CANDLE COUNTER] Initialized | %s | ATR MinMult=%.1f | PauseBars=%d",
          _Symbol, InpCC_ATRMinMult, InpCC_PauseBars));
    return true;
 }
 
-// Create indicator handles on-demand (called from ToggleBotStart)
-bool CC_CreateHandles()
-{
-   if(cc_handlesCreated) return true;
-   for(int i = 0; i < cc_numDisp; i++)
-   {
-      cc_dispFast[i] = iMA(_Symbol, cc_dispTF[i], 20, 0, MODE_EMA, PRICE_CLOSE);
-      cc_dispSlow[i] = iMA(_Symbol, cc_dispTF[i], 50, 0, MODE_EMA, PRICE_CLOSE);
-   }
-   cc_handlesCreated = true;
-   cc_warmupDone     = false;
-   Print("[CANDLE COUNTER] Indicator handles created — warming up...");
-   return true;
-}
-
-// Check if all CC indicator handles have cached data (non-blocking)
-bool CC_CheckWarmup()
-{
-   if(cc_warmupDone) return true;
-   if(!cc_handlesCreated) return false;
-   for(int i = 0; i < cc_numDisp; i++)
-   {
-      if(cc_dispFast[i] != INVALID_HANDLE && BarsCalculated(cc_dispFast[i]) <= 0) return false;
-      if(cc_dispSlow[i] != INVALID_HANDLE && BarsCalculated(cc_dispSlow[i]) <= 0) return false;
-   }
-   cc_warmupDone = true;
-   Print("[CANDLE COUNTER] Warmup complete — ready to trade");
-   return true;
-}
-
 void CC_Deinit()
 {
    CC_DestroyPanel();
-   if(cc_handlesCreated)
-   {
-      for(int i = 0; i < cc_numDisp; i++)
-      {
-         if(cc_dispFast[i] != INVALID_HANDLE) IndicatorRelease(cc_dispFast[i]);
-         if(cc_dispSlow[i] != INVALID_HANDLE) IndicatorRelease(cc_dispSlow[i]);
-      }
-   }
-   cc_handlesCreated = false;
-   cc_warmupDone     = false;
    Print("[CANDLE COUNTER] Deinitialized");
 }
 
 // ════════════════════════════════════════════════════════════════════
 // SIGNAL ANALYSIS
 // ════════════════════════════════════════════════════════════════════
-void CC_UpdateSignalStates()
-{
-   for(int i = 0; i < cc_numDisp; i++)
-   {
-      double fast[1], slow[1];
-      cc_dispUp[i] = cc_dispDown[i] = false;
-      if(cc_dispFast[i] == INVALID_HANDLE || cc_dispSlow[i] == INVALID_HANDLE) continue;
-      if(CopyBuffer(cc_dispFast[i], 0, 1, 1, fast) != 1) continue;
-      if(CopyBuffer(cc_dispSlow[i], 0, 1, 1, slow) != 1) continue;
-      cc_dispUp[i]   = (fast[0] > slow[0]);
-      cc_dispDown[i] = (fast[0] < slow[0]);
-   }
-}
-
 void CC_UpdateCandleState()
 {
    cc_countBull = cc_countBear = 0;
@@ -276,7 +160,6 @@ void CC_UpdateCandleState()
 void CC_Tick()
 {
    if(!cc_enabled) return;
-   if(!cc_warmupDone) return;  // Skip trading until indicators warmed up
 
    // Auto-resume check
    if(cc_paused && InpCC_PauseBars > 0 && cc_pauseTime > 0)
@@ -330,23 +213,6 @@ void CC_Tick()
 void CC_Timer()
 {
    if(!cc_enabled) return;
-
-   // Warmup check: poll indicator data until all handles have cached data
-   if(!cc_warmupDone)
-   {
-      CC_CheckWarmup();
-      if(g_activeBot == 1) CC_UpdatePanel();
-      return;  // Skip trading logic during warmup
-   }
-
-   // Throttle heavy CopyBuffer to every 5s (signals only change on bar close)
-   static uint s_lastSignalMs = 0;
-   uint now = GetTickCount();
-   if(now - s_lastSignalMs >= 5000)
-   {
-      CC_UpdateSignalStates();
-      s_lastSignalMs = now;
-   }
    CC_UpdateCandleState();
    if(g_activeBot == 1) CC_UpdatePanel();  // Only update visible panel
 }
@@ -446,18 +312,6 @@ void CC_CreatePanel(int x, int y, int w)
    MakeLabel(CC_OBJ_STATUS, x + pad, row, "Running", C'0,180,100', 8);
    row += 16;
 
-   // TF signal labels (8 columns)
-   int colW = (w - 2 * pad) / 8;
-   for(int i = 0; i < cc_numDisp && i < 8; i++)
-   {
-      string objTF  = CC_PREFIX + "TF" + IntegerToString(i);
-      string objSig = CC_PREFIX + "Sig" + IntegerToString(i);
-      MakeLabel(objTF,  x + pad + i * colW, row, cc_dispName[i], C'120,125,145', 8);
-      MakeLabel(objSig, x + pad + i * colW, row + 13,
-                (i == cc_entryIdx) ? "[-]" : "-", C'120,125,145', 9, "Consolas");
-   }
-   row += 28;
-
    // Position info
    MakeLabel(CC_OBJ_POS, x + pad, row, "No position", C'120,125,145', 8, "Consolas");
    row += 18;
@@ -487,11 +341,6 @@ void CC_UpdatePanel()
       ObjectSetString(0, CC_OBJ_STATUS, OBJPROP_TEXT, "Stopped");
       ObjectSetInteger(0, CC_OBJ_STATUS, OBJPROP_COLOR, C'120,125,145');
    }
-   else if(!cc_warmupDone)
-   {
-      ObjectSetString(0, CC_OBJ_STATUS, OBJPROP_TEXT, "\x23F3 Loading indicators...");
-      ObjectSetInteger(0, CC_OBJ_STATUS, OBJPROP_COLOR, C'255,180,50');
-   }
    else if(cc_paused)
    {
       if(InpCC_PauseBars > 0 && cc_pauseTime > 0)
@@ -515,24 +364,6 @@ void CC_UpdatePanel()
    {
       ObjectSetString(0, CC_OBJ_STATUS, OBJPROP_TEXT, "Running");
       ObjectSetInteger(0, CC_OBJ_STATUS, OBJPROP_COLOR, C'0,180,100');
-   }
-
-   // ── TF signal arrows ──
-   for(int i = 0; i < cc_numDisp && i < 8; i++)
-   {
-      string objSig = CC_PREFIX + "Sig" + IntegerToString(i);
-      string arrow;
-      color  clr;
-
-      if(cc_dispUp[i])       { arrow = "\x25B2"; clr = C'0,180,100'; }
-      else if(cc_dispDown[i]){ arrow = "\x25BC"; clr = C'220,80,80'; }
-      else                   { arrow = "-"; clr = C'120,125,145'; }
-
-      if(i == cc_entryIdx)
-         ObjectSetString(0, objSig, OBJPROP_TEXT, "[" + arrow + "]");
-      else
-         ObjectSetString(0, objSig, OBJPROP_TEXT, " " + arrow);
-      ObjectSetInteger(0, objSig, OBJPROP_COLOR, clr);
    }
 
    // ── Position info ──

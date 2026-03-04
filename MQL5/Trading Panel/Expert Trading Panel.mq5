@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.13"
-#property version   "2.13"
+#property copyright "Tuan v2.14"
+#property version   "2.14"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1222,7 +1222,6 @@ void ToggleBotStart()
    if(g_activeBot == 1)
    {
       cc_enabled = !cc_enabled;
-      if(cc_enabled) CC_CreateHandles();  // Lazy: create indicators on first Start
       Print(StringFormat("[PANEL] CC Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 2)
@@ -1287,7 +1286,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.13";
+   string titleTxt = "Trading Panel v2.14";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2003,7 +2002,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.13";
+   string panelTitle = "Trading Panel v2.14";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3045,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.13 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.14 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
