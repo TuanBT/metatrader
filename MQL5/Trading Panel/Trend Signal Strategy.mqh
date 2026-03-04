@@ -245,7 +245,7 @@ void TS_Tick()
 {
    if(!ts_enabled) return;
 
-   TS_UpdateSignalStates();
+   // Signal states updated by TS_Timer() — no need to repeat here
 
    if(ts_paused) return;
    if(HasOwnPosition()) return;
@@ -276,8 +276,15 @@ void TS_Tick()
 void TS_Timer()
 {
    if(!ts_enabled) return;
-   TS_UpdateSignalStates();
-   TS_UpdatePanel();
+   // Throttle heavy CopyBuffer to every 5s (signals only change on bar close)
+   static uint s_lastSignalMs = 0;
+   uint now = GetTickCount();
+   if(now - s_lastSignalMs >= 5000)
+   {
+      TS_UpdateSignalStates();
+      s_lastSignalMs = now;
+   }
+   if(g_activeBot == 2) TS_UpdatePanel();  // Only update visible panel
 }
 
 // ════════════════════════════════════════════════════════════════════

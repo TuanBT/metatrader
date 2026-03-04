@@ -291,9 +291,16 @@ void CC_Tick()
 void CC_Timer()
 {
    if(!cc_enabled) return;
-   CC_UpdateSignalStates();
+   // Throttle heavy CopyBuffer to every 5s (signals only change on bar close)
+   static uint s_lastSignalMs = 0;
+   uint now = GetTickCount();
+   if(now - s_lastSignalMs >= 5000)
+   {
+      CC_UpdateSignalStates();
+      s_lastSignalMs = now;
+   }
    CC_UpdateCandleState();
-   CC_UpdatePanel();
+   if(g_activeBot == 1) CC_UpdatePanel();  // Only update visible panel
 }
 
 // ════════════════════════════════════════════════════════════════════

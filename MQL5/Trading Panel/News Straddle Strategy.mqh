@@ -389,7 +389,7 @@ void NS_Timer()
       ns_lastScan = now;
    }
 
-   NS_UpdatePanel();
+   if(g_activeBot == 3) NS_UpdatePanel();  // Only update visible panel
 }
 
 // ════════════════════════════════════════════════════════════════════
