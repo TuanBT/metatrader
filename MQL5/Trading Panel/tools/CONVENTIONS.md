@@ -265,17 +265,28 @@ SL = 0, TP = 0 → Panel manages trailing, DCA, auto TP.
 
 ### 9.1 VPS
 
+**Powernet VPS** (`103.122.221.141`) — 2 MT5 instances:
+
+| Instance | Path |
+|----------|------|
+| Demo/Test | `C:\Users\administrator\AppData\Roaming\MetaQuotes\Terminal\53785E099C927DB68A545C249CDBCE06\MQL5\Experts\Trading Panel\` |
+| EXNESS Real | `C:\MetaTrader 5 EXNESS Real\MQL5\Experts\Trading Panel\` |
+
 | Item | Value |
 |------|-------|
 | Host | `103.122.221.141` |
 | User | `administrator` |
-| MT5 Path | `C:\Users\administrator\AppData\Roaming\MetaQuotes\Terminal\53785E099C927DB68A545C249CDBCE06\MQL5\Experts\Trading Panel\` |
+| SSH password | (see conversation context) |
+| SSH flags | `-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o KbdInteractiveAuthentication=no` |
+| Compile | `powershell -ExecutionPolicy Bypass -File C:\Temp\compile_tp.ps1` |
 
-### 9.2 Deploy Script
+**Vietnix VPS** (`14.225.217.152`) — hiện tại không dùng, tạm ngưng deploy.
 
-Dùng `tools/deploy.command` (double-click trên macOS):
-- Upload 3 files: Panel .mq5 + 2 .mqh
-- Compile via `C:\Temp\compile_tp.ps1`
+### 9.2 Deploy Flow
+
+1. SCP upload 4 files: Panel `.mq5` + 3 `.mqh` → **cả 2 MT5 paths** trên Powernet
+2. Compile via `C:\Temp\compile_tp.ps1` (compile 1 lần, cả 2 instance dùng chung binary? Hoặc compile riêng)
+3. Git add -A → commit → push
 
 ### 9.3 Git
 

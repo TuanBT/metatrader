@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Trend Signal Strategy.mqh — Trend Signal Bot v1.01                |
+//| Trend Signal Strategy.mqh — Trend Signal Bot v1.02                |
 //| Multi-TF EMA Cross trend-following                                 |
 //+------------------------------------------------------------------+
 #ifndef TREND_SIGNAL_STRATEGY_MQH
@@ -53,6 +53,10 @@ bool ts_crossUp = false, ts_crossDown = false;
 // Lazy loading state
 bool     ts_handlesCreated = false;
 bool     ts_warmupDone     = false;
+
+// Display warmup (history preload)
+bool     ts_dispWarmupDone     = false;
+int      ts_dispWarmupProgress = 0;
 
 // Multi-TF display
 #define TS_MAX_DISP 8
@@ -147,9 +151,12 @@ bool TS_Init()
    ts_handlesCreated = false;
    ts_warmupDone     = false;
 
-   Print(StringFormat("[TREND SIGNAL] Initialized | %s | EMA %d/%d | TF=%s/%s/%s",
-         _Symbol, InpTS_EMAFast, InpTS_EMASlow,
-         ts_tfEntryName, ts_tfMidName, ts_tfHighName));
+   // Display warmup: MT5 will download history in background for all TFs
+   ts_dispWarmupDone     = false;
+   ts_dispWarmupProgress = 0;
+
+   Print(StringFormat("[TREND SIGNAL] Initialized — loading history for %d timeframes | %s | EMA %d/%d",
+         ts_numDisp, _Symbol, InpTS_EMAFast, InpTS_EMASlow));
    return true;
 }
 
@@ -177,6 +184,30 @@ bool TS_CreateHandles()
    ts_warmupDone     = false;
    Print("[TREND SIGNAL] Core indicator handles created — warming up...");
    return true;
+}
+
+// Check if DISPLAY indicator handles have history data loaded (non-blocking)
+bool TS_CheckDisplayWarmup()
+{
+   if(ts_dispWarmupDone) return true;
+
+   int ready = 0;
+   for(int i = 0; i < ts_numDisp; i++)
+   {
+      if(ts_dispFast[i] == INVALID_HANDLE || ts_dispSlow[i] == INVALID_HANDLE) continue;
+      if(BarsCalculated(ts_dispFast[i]) > 0 && BarsCalculated(ts_dispSlow[i]) > 0)
+         ready++;
+   }
+
+   ts_dispWarmupProgress = ready;
+
+   if(ready >= ts_numDisp)
+   {
+      ts_dispWarmupDone = true;
+      Print(StringFormat("[TREND SIGNAL] History loaded — all %d TFs ready", ts_numDisp));
+      return true;
+   }
+   return false;
 }
 
 // Check if CORE indicator handles have cached data (non-blocking)
@@ -236,6 +267,8 @@ void TS_Deinit()
    }
    ts_handlesCreated = false;
    ts_warmupDone     = false;
+   ts_dispWarmupDone     = false;
+   ts_dispWarmupProgress = 0;
    Print("[TREND SIGNAL] Deinitialized");
 }
 
@@ -335,10 +368,17 @@ void TS_Tick()
 // ════════════════════════════════════════════════════════════════════
 void TS_Timer()
 {
-   // Display signals: update when viewing TS tab (works even if bot is stopped)
-   static uint s_lastDispMs = 0;
    uint now = GetTickCount();
-   if(g_activeBot == 2 && now - s_lastDispMs >= 5000)
+
+   // Display warmup: poll progress every timer tick
+   if(!ts_dispWarmupDone)
+   {
+      TS_CheckDisplayWarmup();
+   }
+
+   // Display signals: update when viewing TS tab + warmup done
+   static uint s_lastDispMs = 0;
+   if(g_activeBot == 2 && ts_dispWarmupDone && now - s_lastDispMs >= 5000)
    {
       TS_UpdateDisplayStates();
       s_lastDispMs = now;
@@ -451,7 +491,7 @@ void TS_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(TS_OBJ_TITLE, x + pad, row + 4, "Trend Signal Bot v1.01",
+   MakeLabel(TS_OBJ_TITLE, x + pad, row + 4, "Trend Signal Bot v1.02",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 
@@ -499,7 +539,13 @@ void TS_UpdatePanel()
    if(g_activeBot != 2) return;   // skip if not viewing
 
    // ── Status ──
-   if(!ts_enabled)
+   if(!ts_dispWarmupDone)
+   {
+      ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT,
+         StringFormat("\x23F3 Loading history %d/%d TFs...", ts_dispWarmupProgress, ts_numDisp));
+      ObjectSetInteger(0, TS_OBJ_STATUS, OBJPROP_COLOR, C'255,180,50');
+   }
+   else if(!ts_enabled)
    {
       ObjectSetString(0, TS_OBJ_STATUS, OBJPROP_TEXT, "Stopped");
       ObjectSetInteger(0, TS_OBJ_STATUS, OBJPROP_COLOR, C'120,125,145');
