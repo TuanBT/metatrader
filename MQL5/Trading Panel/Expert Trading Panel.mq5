@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/TS bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.15"
-#property version   "2.15"
+#property copyright "Tuan v2.16"
+#property version   "2.16"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1286,7 +1286,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.15";
+   string titleTxt = "Trading Panel v2.16";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1350,7 +1350,7 @@ void CreatePanel()
          rx += 26;
          // % edit
          MakeEdit(OBJ_SET_PCT_EDT, rx, y, 52, 22,
-                  StringFormat("%.0f", g_riskPct),
+                  StringFormat("%.1f", g_riskPct),
                   COL_WHITE, COL_EDIT_BG, COL_EDIT_BD);
          rx += 54;
          // [-] [+] for %
@@ -1859,7 +1859,7 @@ void UpdatePanel()
       // $Fixed mode: sync % display from current $
       double bal = AccountInfoDouble(ACCOUNT_BALANCE);
       if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
-      ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+      ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
    }
    if(g_riskMoney <= 0) g_riskMoney = InpDefaultRisk;
 
@@ -1889,7 +1889,7 @@ void UpdatePanel()
    // ── Row 2: Risk | ATR | Spread ──
    double spread = (ask - bid) / _Point;
    ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TEXT,
-      StringFormat("Risk $%d (%.0f%%) | ATR %.1fx | Spread %.0f", (int)g_riskMoney, g_riskPct, g_atrMult, spread));
+      StringFormat("Risk $%d (%.1f%%) | ATR %.1fx | Spread %.0f", (int)g_riskMoney, g_riskPct, g_atrMult, spread));
    ObjectSetInteger(0, OBJ_SPRD_LBL, OBJPROP_COLOR, COL_DIM);
 
    // ── Row 1: Position status ──
@@ -2002,7 +2002,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.15";
+   string panelTitle = "Trading Panel v2.16";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3044,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.15 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.16 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3286,7 +3286,7 @@ void OnChartEvent(const int id,
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
-         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
          UpdatePanel();
          return;
@@ -3301,7 +3301,7 @@ void OnChartEvent(const int id,
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
-         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
          UpdatePanel();
          return;
@@ -3316,7 +3316,7 @@ void OnChartEvent(const int id,
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
-         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
          UpdatePanel();
          return;
@@ -3331,7 +3331,7 @@ void OnChartEvent(const int id,
          double minR = CalcMinRisk();
          if(bal > 0) g_riskMoney = MathMax(minR, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
-         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
          UpdatePanel();
          return;
@@ -3849,7 +3849,7 @@ void OnChartEvent(const int id,
          g_riskPctMode = false;
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
-         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
          UpdatePanel();
       }
@@ -3866,7 +3866,7 @@ void OnChartEvent(const int id,
             if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
             ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          }
-         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.0f", g_riskPct));
+         ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
          UpdatePanel();
       }
