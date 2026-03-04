@@ -146,16 +146,15 @@ bool CC_CreateHandles()
    return true;
 }
 
-// Check if all CC indicator handles have cached data
+// Check if all CC indicator handles have cached data (non-blocking)
 bool CC_CheckWarmup()
 {
    if(cc_warmupDone) return true;
    if(!cc_handlesCreated) return false;
-   double tmp[1];
    for(int i = 0; i < cc_numDisp; i++)
    {
-      if(cc_dispFast[i] != INVALID_HANDLE && CopyBuffer(cc_dispFast[i], 0, 0, 1, tmp) < 1) return false;
-      if(cc_dispSlow[i] != INVALID_HANDLE && CopyBuffer(cc_dispSlow[i], 0, 0, 1, tmp) < 1) return false;
+      if(cc_dispFast[i] != INVALID_HANDLE && BarsCalculated(cc_dispFast[i]) <= 0) return false;
+      if(cc_dispSlow[i] != INVALID_HANDLE && BarsCalculated(cc_dispSlow[i]) <= 0) return false;
    }
    cc_warmupDone = true;
    Print("[CANDLE COUNTER] Warmup complete — ready to trade");

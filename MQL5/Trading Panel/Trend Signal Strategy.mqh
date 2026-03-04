@@ -177,24 +177,23 @@ bool TS_CreateHandles()
    return true;
 }
 
-// Check if all TS indicator handles have cached data
+// Check if all TS indicator handles have cached data (non-blocking)
 bool TS_CheckWarmup()
 {
    if(ts_warmupDone) return true;
    if(!ts_handlesCreated) return false;
-   double tmp[1];
    // Core handles
-   if(CopyBuffer(ts_emaFastEntry, 0, 0, 1, tmp) < 1) return false;
-   if(CopyBuffer(ts_emaSlowEntry, 0, 0, 1, tmp) < 1) return false;
-   if(CopyBuffer(ts_emaFastMid,   0, 0, 1, tmp) < 1) return false;
-   if(CopyBuffer(ts_emaSlowMid,   0, 0, 1, tmp) < 1) return false;
-   if(CopyBuffer(ts_emaFastHigh,  0, 0, 1, tmp) < 1) return false;
-   if(CopyBuffer(ts_emaSlowHigh,  0, 0, 1, tmp) < 1) return false;
+   if(BarsCalculated(ts_emaFastEntry) <= 0) return false;
+   if(BarsCalculated(ts_emaSlowEntry) <= 0) return false;
+   if(BarsCalculated(ts_emaFastMid)   <= 0) return false;
+   if(BarsCalculated(ts_emaSlowMid)   <= 0) return false;
+   if(BarsCalculated(ts_emaFastHigh)  <= 0) return false;
+   if(BarsCalculated(ts_emaSlowHigh)  <= 0) return false;
    // Display handles
    for(int i = 0; i < ts_numDisp; i++)
    {
-      if(ts_dispFast[i] != INVALID_HANDLE && CopyBuffer(ts_dispFast[i], 0, 0, 1, tmp) < 1) return false;
-      if(ts_dispSlow[i] != INVALID_HANDLE && CopyBuffer(ts_dispSlow[i], 0, 0, 1, tmp) < 1) return false;
+      if(ts_dispFast[i] != INVALID_HANDLE && BarsCalculated(ts_dispFast[i]) <= 0) return false;
+      if(ts_dispSlow[i] != INVALID_HANDLE && BarsCalculated(ts_dispSlow[i]) <= 0) return false;
    }
    ts_warmupDone = true;
    Print("[TREND SIGNAL] Warmup complete — ready to trade");
