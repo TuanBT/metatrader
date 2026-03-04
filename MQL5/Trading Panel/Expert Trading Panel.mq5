@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.17"
-#property version   "2.17"
+#property copyright "Tuan v2.18"
+#property version   "2.18"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1286,7 +1286,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.17";
+   string titleTxt = "Trading Panel v2.18";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2002,7 +2002,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.17";
+   string panelTitle = "Trading Panel v2.18";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3044,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.17 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.18 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));

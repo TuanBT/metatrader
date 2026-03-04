@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Trend Signal Strategy.mqh — Trend Signal Bot v1.00                |
+//| Trend Signal Strategy.mqh — Trend Signal Bot v1.01                |
 //| Multi-TF EMA Cross trend-following                                 |
 //+------------------------------------------------------------------+
 #ifndef TREND_SIGNAL_STRATEGY_MQH
@@ -451,7 +451,7 @@ void TS_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(TS_OBJ_TITLE, x + pad, row + 4, "Trend Signal Bot v1.00",
+   MakeLabel(TS_OBJ_TITLE, x + pad, row + 4, "Trend Signal Bot v1.01",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 

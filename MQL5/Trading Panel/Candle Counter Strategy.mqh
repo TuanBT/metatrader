@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Candle Counter Strategy.mqh — Candle Counter Bot v1.00            |
+//| Candle Counter Strategy.mqh — Candle Counter Bot v1.01            |
 //| 2-candle pattern + breakout entry logic                           |
 //+------------------------------------------------------------------+
 #ifndef CANDLE_COUNTER_STRATEGY_MQH
@@ -304,7 +304,7 @@ void CC_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.00",
+   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.01",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 

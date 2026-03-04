@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| News Straddle Strategy.mqh — News Straddle Bot v1.00              |
+//| News Straddle Strategy.mqh — News Straddle Bot v1.01              |
 //| Straddle pending orders around high-impact news events             |
 //+------------------------------------------------------------------+
 #ifndef NEWS_STRADDLE_STRATEGY_MQH
@@ -437,7 +437,7 @@ void NS_CreatePanel(int x, int y, int w)
    int row = y + 4;  // inside bot_bg
 
    // Title
-   MakeLabel(NS_OBJ_TITLE, x + pad, row + 4, "News Straddle Bot v1.00",
+   MakeLabel(NS_OBJ_TITLE, x + pad, row + 4, "News Straddle Bot v1.01",
              C'170,180,215', 9, "Segoe UI Semibold");
    row += 22;
 
