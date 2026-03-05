@@ -1316,14 +1316,17 @@ void CreateBotPanel()
    ObjectSetString(0, OBJ_BOT_START_BTN, OBJPROP_TOOLTIP,
       "Start/Stop bot hiện tại.\nBot chạy nền ngay cả khi xem bot khác.");
 
-   // Auto‐Regime toggle button (next to Start/Stop)
-   color autoBg  = g_autoRegime ? C'120,80,0' : C'50,50,70';
-   color autoTxt = g_autoRegime ? C'255,255,255' : C'140,140,160';
-   string autoLbl = g_autoRegime ? "\x2699 Auto ON" : "\x2699 Auto";
-   MakeButton(OBJ_BOT_AUTO_BTN, BOT_PANEL_X + 68, BOT_CONTENT_Y + 4, 64, 20,
-              autoLbl, autoTxt, autoBg, 8);
-   ObjectSetString(0, OBJ_BOT_AUTO_BTN, OBJPROP_TOOLTIP,
-      "Auto Regime — Python tự điều chỉnh params.\nĐọc config INI mỗi 60s.");
+   // Auto‐Regime toggle button (only for CC bot)
+   if(g_activeBot == 1)
+   {
+      color autoBg  = g_autoRegime ? C'120,80,0' : C'50,50,70';
+      color autoTxt = g_autoRegime ? C'255,255,255' : C'140,140,160';
+      string autoLbl = g_autoRegime ? "\x2699 Auto ON" : "\x2699 Auto";
+      MakeButton(OBJ_BOT_AUTO_BTN, BOT_PANEL_X + 68, BOT_CONTENT_Y + 4, 64, 20,
+                 autoLbl, autoTxt, autoBg, 8);
+      ObjectSetString(0, OBJ_BOT_AUTO_BTN, OBJPROP_TOOLTIP,
+         "Auto Regime — Python tự điều chỉnh params.\nĐọc config INI mỗi 60s.");
+   }
 
    int contentStartY = BOT_CONTENT_Y + 28;  // Below start button
 
