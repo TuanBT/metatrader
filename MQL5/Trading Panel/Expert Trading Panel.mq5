@@ -10,7 +10,7 @@
 //|  • Auto TP: 50% partial close at 0.5 or 1 ATR                    |
 //|  • Grid DCA: auto DCA with ATR × mult spacing                    |
 //|  • Dark/Light chart themes                                      |
-//|  • Integrated bots: Candle Count Bot, Trend Signal Bot (.mqh)              |
+//|  • Integrated bots: Candle Count Bot, News Straddle Bot (.mqh)             |
 //|                                                                  |
 //| Usage:                                                           |
 //|  1. Attach EA to chart                                           |
@@ -18,10 +18,10 @@
 //|  3. Click BUY or SELL → order fires instantly                    |
 //|  4. Trailing SL manages the trade automatically                  |
 //|  5. Use "CLOSE ALL" to close all positions                      |
-//|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
+//|  6. Click CC/NS Bot buttons on the right to enable bots                    |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.25"
-#property version   "2.25"
+#property copyright "Tuan v2.26"
+#property version   "2.26"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -197,7 +197,6 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 // Bot toggle buttons (right side of panel)
 #define OBJ_BOT_BG        PREFIX "bot_bg"
 #define OBJ_BOT_CC_BTN    PREFIX "bot_cc"
-#define OBJ_BOT_TS_BTN    PREFIX "bot_ts"
 #define OBJ_BOT_NS_BTN    PREFIX "bot_ns"
 #define OBJ_BOT_START_BTN PREFIX "bot_start"  // Start/Stop inside bot panel
 #define OBJ_BOT_AUTO_BTN  PREFIX "bot_auto"   // Auto‐Regime toggle
@@ -283,7 +282,7 @@ datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
 // Bot integration state
 double   g_panelLot       = 0;       // Calculated lot — shared with bots
-int      g_activeBot      = 0;       // 0=none, 1=Candle Count Bot, 2=Trend Signal Bot, 3=News Straddle
+int      g_activeBot      = 0;       // 0=none, 1=Candle Count Bot, 2=News Straddle
 
 // Regime Analyzer (Python → INI → MQL5)
 bool     g_autoRegime     = false;   // Auto‐regime mode ON/OFF
@@ -1046,15 +1045,13 @@ void TogglePanelCollapse()
    // Hide/show bot buttons + bot panel when collapsing
    bool showBot = !g_panelCollapsed;
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_BG, OBJPROP_TIMEFRAMES,
       (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_TIMEFRAMES,
       (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    if(g_activeBot == 1) CC_SetVisible(showBot);
-   if(g_activeBot == 2) TS_SetVisible(showBot);
-   if(g_activeBot == 3) NS_SetVisible(showBot);
+   if(g_activeBot == 2) NS_SetVisible(showBot);
    
    ChartRedraw();
 }
@@ -1249,7 +1246,6 @@ void ReadConfigINI()
 // BOT STRATEGY INCLUDES
 // ════════════════════════════════════════════════════════════════════
 #include "Candle Counter Strategy.mqh"
-#include "Trend Signal Strategy.mqh"
 #include "News Straddle Strategy.mqh"
 
 // ════════════════════════════════════════════════════════════════════
@@ -1260,22 +1256,17 @@ void CreateBotButtons()
    int x = BOT_PANEL_X;
    int y = BOT_PANEL_Y;
 
-   // [Candle Count] [Trend Signal] [News Straddle] buttons
+   // [Candle Count] [News Straddle] buttons
    // Color: green=running, blue=viewing (not running), dark=inactive
-   color ccBg, tsBg, nsBg, ccTxt, tsTxt, nsTxt;
+   color ccBg, nsBg, ccTxt, nsTxt;
    GetBotButtonColors(1, ccBg, ccTxt);
-   GetBotButtonColors(2, tsBg, tsTxt);
-   GetBotButtonColors(3, nsBg, nsTxt);
+   GetBotButtonColors(2, nsBg, nsTxt);
 
    MakeButton(OBJ_BOT_CC_BTN, x, y, BOT_BTN_W, BOT_BTN_H,
               "Candle Count", ccTxt, ccBg, 8);
    ObjectSetString(0, OBJ_BOT_CC_BTN, OBJPROP_TOOLTIP,
       "Candle Counter — đếm nến + ATR filter.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
-   MakeButton(OBJ_BOT_TS_BTN, x + BOT_BTN_W + 2, y, BOT_BTN_W, BOT_BTN_H,
-              "Trend Signal", tsTxt, tsBg, 8);
-   ObjectSetString(0, OBJ_BOT_TS_BTN, OBJPROP_TOOLTIP,
-      "Trend Signal — EMA cross + multi-TF.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
-   MakeButton(OBJ_BOT_NS_BTN, x + (BOT_BTN_W + 2) * 2, y, BOT_BTN_W, BOT_BTN_H,
+   MakeButton(OBJ_BOT_NS_BTN, x + BOT_BTN_W + 2, y, BOT_BTN_W, BOT_BTN_H,
               "News Straddle", nsTxt, nsBg, 8);
    ObjectSetString(0, OBJ_BOT_NS_BTN, OBJPROP_TOOLTIP,
       "News Straddle — pending order trước tin.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
@@ -1286,8 +1277,7 @@ void GetBotButtonColors(int botId, color &bg, color &txt)
 {
    bool running = false;
    if(botId == 1) running = cc_enabled;
-   if(botId == 2) running = ts_enabled;
-   if(botId == 3) running = ns_enabled;
+   if(botId == 2) running = ns_enabled;
 
    if(running)
    {
@@ -1316,8 +1306,7 @@ void CreateBotPanel()
    // Start/Stop button at top of bot content area
    bool running = false;
    if(g_activeBot == 1) running = cc_enabled;
-   if(g_activeBot == 2) running = ts_enabled;
-   if(g_activeBot == 3) running = ns_enabled;
+   if(g_activeBot == 2) running = ns_enabled;
 
    color startBg  = running ? C'180,40,40' : C'0,100,60';  // Red=stop, Green=start
    color startTxt = C'255,255,255';
@@ -1341,15 +1330,12 @@ void CreateBotPanel()
    if(g_activeBot == 1)
       CC_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
    else if(g_activeBot == 2)
-      TS_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
-   else if(g_activeBot == 3)
       NS_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
 }
 
 void DestroyBotPanel()
 {
    CC_DestroyPanel();
-   TS_DestroyPanel();
    NS_DestroyPanel();
    ObjectDelete(0, OBJ_BOT_START_BTN);
    ObjectDelete(0, OBJ_BOT_AUTO_BTN);
@@ -1358,7 +1344,7 @@ void DestroyBotPanel()
 
 void ToggleBot(int botId)
 {
-   // botId: 1=CC, 2=TS, 3=NS
+   // botId: 1=CC, 2=NS
    // Only switches VIEW — does NOT start/stop the bot
 
    if(g_activeBot == botId)
@@ -1394,13 +1380,6 @@ void ToggleBotStart()
    }
    else if(g_activeBot == 2)
    {
-      ts_enabled = !ts_enabled;
-      if(ts_enabled) { TS_CreateHandles(); TS_ShowChartEMA(); }  // Lazy: create indicators on first Start
-      else { TS_HideChartEMA(); }
-      Print(StringFormat("[PANEL] Trend Signal Bot %s", ts_enabled ? "STARTED" : "STOPPED"));
-   }
-   else if(g_activeBot == 3)
-   {
       ns_enabled = !ns_enabled;
       Print(StringFormat("[PANEL] NS Bot %s", ns_enabled ? "STARTED" : "STOPPED"));
    }
@@ -1417,8 +1396,7 @@ void UpdateBotStartButton()
 
    bool running = false;
    if(g_activeBot == 1) running = cc_enabled;
-   if(g_activeBot == 2) running = ts_enabled;
-   if(g_activeBot == 3) running = ns_enabled;
+   if(g_activeBot == 2) running = ns_enabled;
 
    color bg  = running ? C'180,40,40' : C'0,100,60';
    string label = running ? "\x25A0 Stop" : "\x25B6 Start";
@@ -1435,10 +1413,6 @@ void UpdateBotButtonColors()
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_BORDER_COLOR, bg);
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_COLOR, txt);
    GetBotButtonColors(2, bg, txt);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BGCOLOR, bg);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_BORDER_COLOR, bg);
-   ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_COLOR, txt);
-   GetBotButtonColors(3, bg, txt);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BGCOLOR, bg);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BORDER_COLOR, bg);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_COLOR, txt);
@@ -1454,7 +1428,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.25";
+   string titleTxt = "Trading Panel v2.26";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2188,7 +2162,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.25";
+   string panelTitle = "Trading Panel v2.26";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3217,7 +3191,6 @@ int OnInit()
    g_activeBot      = 1;   // Show CC panel by default
    // Bots start stopped — user presses Start
    cc_enabled       = false;
-   ts_enabled       = false;
    ns_enabled       = false;
 
    // Recover if EA restarted with open position
@@ -3232,13 +3205,12 @@ int OnInit()
 
    // ── Initialize integrated bots ──
    CC_Init();
-   TS_Init();
    NS_Init();
 
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.25 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.26 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3250,7 +3222,6 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    CC_Deinit();
-   TS_Deinit();
    NS_Deinit();
    DestroyPanel();
    EventKillTimer();
@@ -3295,7 +3266,6 @@ void OnTick()
       {
          datetime pauseTs = (datetime)TimeCurrent();
          if(cc_enabled) CC_SetPaused(pauseTs);
-         if(ts_enabled) TS_SetPaused(pauseTs);
          if(ns_enabled) NS_SetPaused(pauseTs);
          Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Bots paused",
                g_gridLevel, g_gridMaxLevel));
@@ -3305,7 +3275,6 @@ void OnTick()
       {
          datetime pauseTs = (datetime)TimeCurrent();
          if(cc_enabled) CC_SetPaused(pauseTs);
-         if(ts_enabled) TS_SetPaused(pauseTs);
          if(ns_enabled) NS_SetPaused(pauseTs);
          Print("[PANEL] ⚠ SL hit (no Grid, SL unmoved) — Bots paused");
       }
@@ -3403,7 +3372,6 @@ void OnTick()
 
    // ── Dispatch to ALL running bots (independent of view) ──
    if(cc_enabled) CC_Tick();
-   if(ts_enabled) TS_Tick();
    if(ns_enabled) NS_Tick();
 }
 
@@ -3418,12 +3386,10 @@ void OnTimer()
 
    // ── Dispatch to ALL running bots + update viewed bot panel ──
    if(cc_enabled) CC_Timer();
-   if(ts_enabled) TS_Timer();
    if(ns_enabled) NS_Timer();
    // If viewing a non-running bot, still update its panel display
    if(g_activeBot == 1 && !cc_enabled) CC_UpdatePanel();
-   if(g_activeBot == 2 && !ts_enabled) TS_UpdatePanel();
-   if(g_activeBot == 3 && !ns_enabled) NS_UpdatePanel();
+   if(g_activeBot == 2 && !ns_enabled) NS_UpdatePanel();
 
    // ── Auto‐Regime: check config file every 60s ──
    if(g_autoRegime)
@@ -3467,16 +3433,10 @@ void OnChartEvent(const int id,
          ToggleBot(1);
          return;
       }
-      if(sparam == OBJ_BOT_TS_BTN)
-      {
-         ObjectSetInteger(0, OBJ_BOT_TS_BTN, OBJPROP_STATE, false);
-         ToggleBot(2);
-         return;
-      }
       if(sparam == OBJ_BOT_NS_BTN)
       {
          ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_STATE, false);
-         ToggleBot(3);
+         ToggleBot(2);
          return;
       }
       // ── Bot Start/Stop button ──
