@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.20"
-#property version   "2.20"
+#property copyright "Tuan v2.21"
+#property version   "2.21"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -37,10 +37,12 @@ enum ENUM_SL_MODE
 
 enum ENUM_TRAIL_MODE
 {
-   TRAIL_CLOSE  = 1,  // bar[1] wick (low/high), min 0.5 ATR
-   TRAIL_SWING  = 2,  // nearest swing low/high (support/resistance)
-   TRAIL_BE     = 4,  // Breakeven first, then step 1 ATR
-   TRAIL_NONE   = 5,  // No auto trail
+   TRAIL_CLOSE     = 1,  // Close (bar[1] wick)
+   TRAIL_SWING     = 2,  // Swing (swing low/high)
+   TRAIL_BE_CLOSE  = 3,  // BE → then Close
+   TRAIL_BE        = 4,  // BE only (step ATR)
+   TRAIL_NONE      = 5,  // No trail
+   TRAIL_BE_SWING  = 6,  // BE → then Swing
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -252,7 +254,8 @@ double   g_atrMult    = 0;
 double   g_cachedATR  = 0;        // ATR cached per bar (refreshed on new bar)
 int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
 bool     g_trailEnabled = false;
-ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail mode (changeable from panel)
+ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail method (Close/Swing/None)
+bool     g_beEnabled      = false;   // BE modifier toggle (combinable with Close/Swing)
 double   g_beStartMult    = 1.0;   // BE mode: start breakeven when profit >= N × ATR input (0.1-3.0)
 double   g_trailMinDist   = 0.5;   // Close/Swing mode: min SL distance as factor of ATR input (0.1-3.0)
 bool     g_beReached    = false;   // BE trail: whether SL has been moved to breakeven
@@ -792,7 +795,7 @@ void UpdateTPGridLines()
       HideHLine(OBJ_TP1_LINE);
 
    // ── Trail Start: line showing where trail SL begins ──
-   if(g_trailEnabled && g_hasPos && g_cachedATR > 0 && g_trailRef != TRAIL_NONE)
+   if(g_trailEnabled && g_hasPos && g_cachedATR > 0 && (g_trailRef != TRAIL_NONE || g_beEnabled))
    {
       double avgEntry = GetAvgEntry();
       if(avgEntry <= 0) avgEntry = g_entryPx;
@@ -802,25 +805,31 @@ void UpdateTPGridLines()
       string trailLbl = "";
       bool alreadyActive = false;
 
-      switch(g_trailRef)
+      if(g_beEnabled && !g_beReached)
       {
-         case TRAIL_BE:
-            trailStartDist = g_beStartMult * g_cachedATR * g_atrMult;
-            trailLbl = StringFormat("Trail BE (%.1fx)", g_beStartMult);
-            alreadyActive = g_beReached;
-            break;
-         case TRAIL_CLOSE:
-         case TRAIL_SWING:
+         // BE Phase 1: show BE trigger distance
+         trailStartDist = g_beStartMult * g_cachedATR * g_atrMult;
+         string methodLbl = (g_trailRef == TRAIL_CLOSE) ? "→Close" :
+                            (g_trailRef == TRAIL_SWING) ? "→Swing" : "";
+         trailLbl = StringFormat("Trail BE%s (%.1fx)", methodLbl, g_beStartMult);
+         alreadyActive = false;
+      }
+      else if(g_trailRef == TRAIL_CLOSE || g_trailRef == TRAIL_SWING)
+      {
+         // Close/Swing: show profit gate distance (or already active if post-BE)
+         if(g_beEnabled && g_beReached)
+         {
+            alreadyActive = true;  // post-BE: trail is live
+         }
+         else
          {
             trailStartDist = g_tpATRFactor * g_cachedATR * g_atrMult;
             string mName = (g_trailRef == TRAIL_CLOSE) ? "Close" : "Swing";
             trailLbl = StringFormat("Trail %s Start", mName);
-            // Active once profit gate met
             double cur = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
                                  : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
             double move = g_isBuy ? (cur - avgEntry) : (avgEntry - cur);
             alreadyActive = (move >= trailStartDist);
-            break;
          }
       }
 
@@ -1286,7 +1295,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.20";
+   string titleTxt = "Trading Panel v2.21";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1478,8 +1487,8 @@ void CreatePanel()
 
    // ── Trail parameter line (contextual: BE Start / Min Dist / hidden) ──
    {
-      string tpLbl = (g_trailRef == TRAIL_BE) ? "BE Start:" : "Min Dist:";
-      double tpVal = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
+      string tpLbl = g_beEnabled ? "BE Start:" : "Min Dist:";
+      double tpVal = g_beEnabled ? g_beStartMult : g_trailMinDist;
       MakeLabel(OBJ_TRAIL_LBL, PX + 8, y + 4, tpLbl, C'140,140,160', 8, "Segoe UI");
       MakeLabel(OBJ_TRAIL_VAL, PX + 70, y + 4,
                 StringFormat("%.1fx", tpVal), C'220,225,240', 8, "Consolas");
@@ -1587,22 +1596,23 @@ void CreatePanel()
       "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
 
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
-      "CLOSE — Theo râu nến bar[1]\n"
+      "CLOSE — Theo r\xE2u nến bar[1]\n"
       "BUY: SL = Low[1] | SELL: SL = High[1]\n"
-      "Min Dist: khoảng cách tối thiểu (chỉnh [-][+])\n"
-      "Kích hoạt sau giá >= TP factor × ATR.");
+      "Click lần nữa để tắt.\n"
+      "Kết hợp +BE: BE trước → rồi Close (bỏ profit gate).");
 
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "SWING — Theo chân sóng gần nhất\n"
+      "SWING — Theo ch\xE2n sóng gần nhất\n"
       "BUY: SL = Swing Low | SELL: SL = Swing High\n"
-      "Min Dist: khoảng cách tối thiểu (chỉnh [-][+])\n"
-      "Kích hoạt sau giá >= TP factor × ATR.");
+      "Click lần nữa để tắt.\n"
+      "Kết hợp +BE: BE trước → rồi Swing (bỏ profit gate).");
 
    ObjectSetString(0, OBJ_TM_BE, OBJPROP_TOOLTIP,
-      "BE — Dời SL về entry rồi bước theo ATR\n"
+      "BE — Toggle bật/tắt (kết hợp với Close/Swing)\n"
       "B1: Giá >= BE Start × ATR → SL về entry\n"
-      "B2: Mỗi +1 ATR tiếp → SL nhảy lên 1 ATR\n"
-      "BE Start: chỉnh bằng [-][+] bên dưới.");
+      "B2: Nếu có Close/Swing → chạy theo nến (không cần profit gate)\n"
+      "    Nếu chỉ BE → bước nhảy +1 ATR mỗi level\n"
+      "Cam = bật chờ | Xanh = đã về BE | Xám = tắt");
 
    // Grid DCA
    ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TOOLTIP,
@@ -1674,8 +1684,8 @@ void DestroyPanel()
 //+------------------------------------------------------------------+
 void UpdateTrailParamDisplay()
 {
-   string lbl = (g_trailRef == TRAIL_BE) ? "BE Start:" : "Min Dist:";
-   double val = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
+   string lbl = g_beEnabled ? "BE Start:" : "Min Dist:";
+   double val = g_beEnabled ? g_beStartMult : g_trailMinDist;
    ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TEXT, lbl);
    ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TEXT, StringFormat("%.1fx", val));
    // Note: ChartRedraw + UpdateTPGridLines handled by caller (UpdatePanel or button handler)
@@ -1702,16 +1712,14 @@ void SyncButtonAppearance()
       ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, C'180,180,200');
    }
 
-   // ── Trail mode buttons (radio-style highlight) ──
-   // Blue = selected but waiting for activation
-   // Green = selected AND actively trailing
-   // Gray = not selected
-   string modeObjs[] = {OBJ_TM_CLOSE, OBJ_TM_SWING, OBJ_TM_BE};
-   ENUM_TRAIL_MODE modes[] = {TRAIL_CLOSE, TRAIL_SWING, TRAIL_BE};
+   // ── Trail mode buttons: Close/Swing (radio) + BE (toggle) ──
+   // Close/Swing: Blue = selected, Green = active, Gray = not selected
+   // BE: Orange = ON, Green = active (beReached), Gray = OFF
 
-   // Determine if trail is actively tracking (conditions met)
-   bool trailActive = false;
-   if(g_hasPos && g_trailEnabled && g_trailRef != TRAIL_NONE)
+   // Determine if trail is actively tracking
+   bool closeSwingActive = false;
+   bool beActive = false;
+   if(g_hasPos && g_trailEnabled)
    {
       double refEntry = (g_gridEnabled && g_gridLevel > 0) ? GetAvgEntry() : g_entryPx;
       if(refEntry <= 0) refEntry = g_entryPx;
@@ -1719,52 +1727,75 @@ void SyncButtonAppearance()
                             : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double move = g_isBuy ? (cur2 - refEntry) : (refEntry - cur2);
 
-      switch(g_trailRef)
+      // Close/Swing active: profit gate met (or BE reached → no gate)
+      if(g_trailRef == TRAIL_CLOSE || g_trailRef == TRAIL_SWING)
       {
-         case TRAIL_CLOSE:
-         case TRAIL_SWING:
-            trailActive = (move >= g_cachedATR * g_tpATRFactor * g_atrMult);  // profit gate = TP dist
-            break;
-         case TRAIL_BE:
-         {
-            trailActive = g_beReached || (g_cachedATR > 0 && move >= g_beStartMult * g_cachedATR * g_atrMult);
-            break;
-         }
+         if(g_beEnabled && g_beReached)
+            closeSwingActive = true;  // post-BE: always active
+         else if(!g_beEnabled)
+            closeSwingActive = (move >= g_cachedATR * g_tpATRFactor * g_atrMult);
       }
+
+      // BE active: reached or about to trigger
+      if(g_beEnabled)
+         beActive = g_beReached || (g_cachedATR > 0 && move >= g_beStartMult * g_cachedATR * g_atrMult);
    }
 
-   for(int i = 0; i < 3; i++)
+   // Close button
+   if(g_trailRef == TRAIL_CLOSE)
    {
-      if(g_trailRef == modes[i])
-      {
-         if(trailActive)
-         {
-            // Active: green — trail is live
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'0,100,60');
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'0,140,80');
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
-         }
-         else
-         {
-            // Selected but not yet active: blue
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'30,80,140');
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'50,120,200');
-            ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, COL_WHITE);
-         }
-      }
+      if(closeSwingActive)
+      { ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, C'0,100,60');
+        ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BORDER_COLOR, C'0,140,80');
+        ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_WHITE); }
       else
-      {
-         // Inactive mode: dim
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_BGCOLOR, C'50,50,70');
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_BORDER_COLOR, C'50,50,70');
-         ObjectSetInteger(0, modeObjs[i], OBJPROP_COLOR, C'140,140,160');
-      }
+      { ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, C'30,80,140');
+        ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BORDER_COLOR, C'50,120,200');
+        ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_WHITE); }
    }
+   else
+   { ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, C'50,50,70');
+     ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BORDER_COLOR, C'50,50,70');
+     ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, C'140,140,160'); }
+
+   // Swing button
+   if(g_trailRef == TRAIL_SWING)
+   {
+      if(closeSwingActive)
+      { ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, C'0,100,60');
+        ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BORDER_COLOR, C'0,140,80');
+        ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_WHITE); }
+      else
+      { ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, C'30,80,140');
+        ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BORDER_COLOR, C'50,120,200');
+        ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_WHITE); }
+   }
+   else
+   { ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, C'50,50,70');
+     ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BORDER_COLOR, C'50,50,70');
+     ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, C'140,140,160'); }
+
+   // BE button (toggle: orange=ON, green=active, gray=OFF)
+   if(g_beEnabled)
+   {
+      if(beActive)
+      { ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_BGCOLOR, C'0,100,60');
+        ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_BORDER_COLOR, C'0,140,80');
+        ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_COLOR, COL_WHITE); }
+      else
+      { ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_BGCOLOR, C'160,100,20');
+        ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_BORDER_COLOR, C'200,130,30');
+        ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_COLOR, COL_WHITE); }
+   }
+   else
+   { ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_BGCOLOR, C'50,50,70');
+     ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_BORDER_COLOR, C'50,50,70');
+     ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_COLOR, C'140,140,160'); }
 
    // ── Trail parameter display refresh (label text only, no ChartRedraw) ──
    {
-      string tLbl = (g_trailRef == TRAIL_BE) ? "BE Start:" : "Min Dist:";
-      double tVal = (g_trailRef == TRAIL_BE) ? g_beStartMult : g_trailMinDist;
+      string tLbl = g_beEnabled ? "BE Start:" : "Min Dist:";
+      double tVal = g_beEnabled ? g_beStartMult : g_trailMinDist;
       ObjectSetString(0, OBJ_TRAIL_LBL, OBJPROP_TEXT, tLbl);
       ObjectSetString(0, OBJ_TRAIL_VAL, OBJPROP_TEXT, StringFormat("%.1fx", tVal));
    }
@@ -2002,7 +2033,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.20";
+   string panelTitle = "Trading Panel v2.21";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -2378,14 +2409,16 @@ void CheckTrailOverridesGrid()
          DoubleToString(nextDCA, _Digits)));
 }
 
-// Trail SL: dispatches based on g_trailRef (runtime-selectable)
-// Price/Step/BE-Phase1: per-tick (throttled ~3s) — react to live price
-// Close/Swing/BE-Phase2: per-bar — reference only changes on new candle
+// Trail SL: dispatches based on g_trailRef (Close/Swing) + g_beEnabled (BE modifier)
+// BE Phase 1 (per-tick throttled): Move SL to breakeven
+// BE Phase 2 (per-tick): Step ATR (when BE only, no Close/Swing)
+// Close/Swing (per-bar): trail based on candle structure
+// After BE reached, Close/Swing skip profit gate (already safe at breakeven)
 void ManageTrail()
 {
    if(!g_hasPos) return;
    if(!g_trailEnabled) return;
-   if(g_trailRef == TRAIL_NONE) return;
+   if(g_trailRef == TRAIL_NONE && !g_beEnabled) return;
 
    if(g_cachedATR <= 0) return;
 
@@ -2406,49 +2439,52 @@ void ManageTrail()
    double moveFromEntry = g_isBuy ? (cur - refEntry) : (refEntry - cur);
 
    // ═══════════════════════════════════════
-   // TRAIL_BE: Breakeven first, then step 1 ATR input
-   // Phase 1 (per-tick): Move SL to breakeven when profit >= g_beStartMult × ATR input
-   // Phase 2 (per-tick): Step SL in ATR input increments
+   // BE PHASE 1: Move SL to breakeven (when g_beEnabled, not yet reached)
    // ═══════════════════════════════════════
-   if(g_trailRef == TRAIL_BE)
+   if(g_beEnabled && !g_beReached)
    {
-      if(!tickAllowed) return;  // throttle per-tick for both phases
+      if(!tickAllowed) return;
 
-      double fullATR = g_cachedATR * g_atrMult;  // ATR input = raw ATR × mult
+      double fullATR = g_cachedATR * g_atrMult;
       if(fullATR <= 0) return;
 
-      // Phase 1: Move to breakeven when profit >= g_beStartMult × ATR input
-      if(!g_beReached)
+      if(moveFromEntry >= g_beStartMult * fullATR)
       {
-         if(moveFromEntry >= g_beStartMult * fullATR)
+         double beSL = NormPrice(refEntry);
+         bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
+         if(advance)
          {
-            double beSL = NormPrice(refEntry);
-            bool advance = g_isBuy ? (beSL > g_currentSL) : (beSL < g_currentSL);
-            if(advance)
-            {
-               if(g_isBuy  && beSL >= bid2) return;
-               if(!g_isBuy && beSL <= ask2) return;
-               g_beReached = true;
-               g_beStepLevel = 0;
-               s_lastTrailMs = nowMs;
-               Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= %.1f × ATR input)",
-                     DoubleToString(beSL, _Digits), g_beStartMult));
-               ModifySL(beSL);
-            }
-            else
-            {
-               g_beReached = true;
-               g_beStepLevel = 0;
-               Print("[TRAIL-BE] SL already past breakeven — entering Phase 2");
-            }
+            if(g_isBuy  && beSL >= bid2) return;
+            if(!g_isBuy && beSL <= ask2) return;
+            g_beReached = true;
+            g_beStepLevel = 0;
+            s_lastTrailMs = nowMs;
+            string phase2Lbl = (g_trailRef == TRAIL_CLOSE) ? "→ Close" :
+                               (g_trailRef == TRAIL_SWING) ? "→ Swing" : "→ Step ATR";
+            Print(StringFormat("[TRAIL-BE] Phase 1: SL → breakeven %s (profit >= %.1f × ATR) | Next: %s",
+                  DoubleToString(beSL, _Digits), g_beStartMult, phase2Lbl));
+            ModifySL(beSL);
          }
-         return;
+         else
+         {
+            g_beReached = true;
+            g_beStepLevel = 0;
+            Print("[TRAIL-BE] SL already past breakeven — entering Phase 2");
+         }
       }
+      return;  // Wait for BE before proceeding to Close/Swing
+   }
 
-      // Phase 2: Step SL in ATR input increments
-      // Level 1 reached (price +2.0 ATR input from entry) → SL = entry + 1 ATR input
-      // Level 2 reached (price +3.0 ATR input)            → SL = entry + 2 ATR input
-      // Level N reached (price +(N+1) ATR input)           → SL = entry + N ATR input
+   // ═══════════════════════════════════════
+   // BE PHASE 2 (BE only, no Close/Swing): Step SL in ATR increments
+   // ═══════════════════════════════════════
+   if(g_beEnabled && g_beReached && g_trailRef != TRAIL_CLOSE && g_trailRef != TRAIL_SWING)
+   {
+      if(!tickAllowed) return;
+
+      double fullATR = g_cachedATR * g_atrMult;
+      if(fullATR <= 0) return;
+
       int reachedLevel = (int)MathFloor((moveFromEntry - fullATR) / fullATR);
       if(reachedLevel <= 0) reachedLevel = 0;
       if(reachedLevel <= g_beStepLevel) return;
@@ -2464,27 +2500,28 @@ void ManageTrail()
       if(!g_isBuy && newSL <= ask2) return;
 
       s_lastTrailMs = nowMs;
-      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%d ATR input from entry)",
+      Print(StringFormat("[TRAIL-BE] Phase 2: Step %d → SL=%s (+%d ATR from entry)",
             g_beStepLevel, DoubleToString(newSL, _Digits), g_beStepLevel));
       ModifySL(newSL);
       return;
    }
 
    // ═══════════════════════════════════════
-   // TRAIL_CLOSE (per-bar): SL = bar[1] wick (low for BUY, high for SELL)
-   // TRAIL_SWING (per-bar): SL = nearest swing low/high (support/resistance)
-   // Both: min 0.5 × ATR input from current price, profit gate = TP factor × ATR input
+   // TRAIL_CLOSE / TRAIL_SWING (per-bar)
+   // If BE reached → skip profit gate (already safe at breakeven)
+   // If no BE → require profit gate (TP factor × ATR)
    // ═══════════════════════════════════════
-
-   // Both CLOSE and SWING: per-bar only
+   if(g_trailRef != TRAIL_CLOSE && g_trailRef != TRAIL_SWING) return;
    if(!isNewBar) return;
 
-   // Minimum profit gate: don't trail until price moved >= TP ATR factor from entry
-   // Matches Auto TP distance so trail activates right after TP1 fires
-   if(moveFromEntry < g_cachedATR * g_tpATRFactor * g_atrMult)
-      return;
+   // Profit gate: skip if BE already reached (SL at breakeven = safe zone)
+   if(!(g_beEnabled && g_beReached))
+   {
+      if(moveFromEntry < g_cachedATR * g_tpATRFactor * g_atrMult)
+         return;
+   }
 
-   double minDist = g_cachedATR * g_atrMult * g_trailMinDist;  // minimum trail distance
+   double minDist = g_cachedATR * g_atrMult * g_trailMinDist;
    if(minDist <= 0) return;
 
    double newSL = 0;
@@ -2493,44 +2530,37 @@ void ManageTrail()
    {
       case TRAIL_CLOSE:
       {
-         // SL at bar[1] wick: low for BUY, high for SELL
-         // Skip if distance from current price < 0.5 ATR (candle too short)
          if(g_isBuy)
          {
             newSL = NormPrice(iLow(_Symbol, _Period, 1));
-            if((bid2 - newSL) < minDist) return;  // too close, skip
+            if((bid2 - newSL) < minDist) return;
          }
          else
          {
             newSL = NormPrice(iHigh(_Symbol, _Period, 1));
-            if((newSL - ask2) < minDist) return;   // too close, skip
+            if((newSL - ask2) < minDist) return;
          }
          break;
       }
       case TRAIL_SWING:
       {
-         // Find nearest swing low/high (wave trough/crest)
-         // Swing low = bar where low < both neighbors (confirmed from bar[2])
-         // Fallback: nearest bearish candle's low (BUY) / bullish candle's high (SELL)
          int N = InpTrailLookback;
          if(N < 3) N = 5;
          double swingPrice = 0;
 
          if(g_isBuy)
          {
-            // Search for swing low from bar[2] backwards (bar[2] has bar[1] as right neighbor)
             for(int i = 2; i <= N; i++)
             {
                double lo  = iLow(_Symbol, _Period, i);
-               double loL = iLow(_Symbol, _Period, i - 1);  // right neighbor (newer)
-               double loR = iLow(_Symbol, _Period, i + 1);  // left neighbor (older)
+               double loL = iLow(_Symbol, _Period, i - 1);
+               double loR = iLow(_Symbol, _Period, i + 1);
                if(lo < loL && lo < loR)
                {
                   swingPrice = lo;
                   break;
                }
             }
-            // Fallback: nearest bearish candle's low
             if(swingPrice <= 0)
             {
                for(int i = 1; i <= N; i++)
@@ -2544,23 +2574,21 @@ void ManageTrail()
             }
             if(swingPrice <= 0) return;
             newSL = NormPrice(swingPrice);
-            if((bid2 - newSL) < minDist) return;  // too close, skip
+            if((bid2 - newSL) < minDist) return;
          }
          else
          {
-            // Search for swing high from bar[2] backwards
             for(int i = 2; i <= N; i++)
             {
                double hi  = iHigh(_Symbol, _Period, i);
-               double hiL = iHigh(_Symbol, _Period, i - 1);  // right neighbor
-               double hiR = iHigh(_Symbol, _Period, i + 1);  // left neighbor
+               double hiL = iHigh(_Symbol, _Period, i - 1);
+               double hiR = iHigh(_Symbol, _Period, i + 1);
                if(hi > hiL && hi > hiR)
                {
                   swingPrice = hi;
                   break;
                }
             }
-            // Fallback: nearest bullish candle's high
             if(swingPrice <= 0)
             {
                for(int i = 1; i <= N; i++)
@@ -2574,7 +2602,7 @@ void ManageTrail()
             }
             if(swingPrice <= 0) return;
             newSL = NormPrice(swingPrice);
-            if((newSL - ask2) < minDist) return;  // too close, skip
+            if((newSL - ask2) < minDist) return;
          }
          break;
       }
@@ -3019,7 +3047,17 @@ int OnInit()
    g_gridMaxLevel   = 2;
    g_gridDelay      = 5;
    g_trailEnabled   = true;
-   g_trailRef       = TRAIL_SWING;
+   // Map input trail mode to internal state (method + BE toggle)
+   switch(InpTrailMode)
+   {
+      case TRAIL_CLOSE:    g_trailRef = TRAIL_CLOSE; g_beEnabled = false; break;
+      case TRAIL_SWING:    g_trailRef = TRAIL_SWING; g_beEnabled = false; break;
+      case TRAIL_BE_CLOSE: g_trailRef = TRAIL_CLOSE; g_beEnabled = true;  break;
+      case TRAIL_BE_SWING: g_trailRef = TRAIL_SWING; g_beEnabled = true;  break;
+      case TRAIL_BE:       g_trailRef = TRAIL_NONE;  g_beEnabled = true;  break;
+      case TRAIL_NONE:     g_trailRef = TRAIL_NONE;  g_beEnabled = false; break;
+      default:             g_trailRef = TRAIL_SWING; g_beEnabled = false; break;
+   }
    g_activeBot      = 1;   // Show CC panel by default
    // Bots start stopped — user presses Start
    cc_enabled       = false;
@@ -3044,10 +3082,11 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.20 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.21 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
-      EnumToString(InpTrailMode)));
+      EnumToString(g_trailRef),
+      g_beEnabled ? "+BE" : ""));
 
    return INIT_SUCCEEDED;
 }
@@ -3533,41 +3572,56 @@ void OnChartEvent(const int id,
       {
          g_trailEnabled = !g_trailEnabled;
          ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_STATE, false);
+         string modeLbl = (g_trailRef == TRAIL_CLOSE) ? "Close" :
+                          (g_trailRef == TRAIL_SWING) ? "Swing" : "None";
+         if(g_beEnabled) modeLbl = "BE+" + modeLbl;
          Print(StringFormat("[PANEL] Trail SL %s (mode: %s)",
-               g_trailEnabled ? "ENABLED" : "DISABLED",
-               EnumToString(g_trailRef)));
+               g_trailEnabled ? "ENABLED" : "DISABLED", modeLbl));
       }
-      // ── Trail mode: Close ──
+      // ── Trail method: Close (toggle — click again to deselect) ──
       else if(sparam == OBJ_TM_CLOSE)
       {
          ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_STATE, false);
-         g_trailRef = TRAIL_CLOSE;
-         Print(StringFormat("[TRAIL] Mode → Close (bar[1] wick, min %.1f ATR)", g_trailMinDist));
+         if(g_trailRef == TRAIL_CLOSE)
+            g_trailRef = TRAIL_NONE;   // deselect
+         else
+            g_trailRef = TRAIL_CLOSE;  // select (deselects Swing)
+         Print(StringFormat("[TRAIL] Method → %s%s",
+               (g_trailRef == TRAIL_CLOSE) ? "Close" : "None",
+               g_beEnabled ? " (+BE)" : ""));
          UpdateTrailParamDisplay();
       }
-      // ── Trail mode: Swing ──
+      // ── Trail method: Swing (toggle — click again to deselect) ──
       else if(sparam == OBJ_TM_SWING)
       {
          ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_STATE, false);
-         g_trailRef = TRAIL_SWING;
-         Print(StringFormat("[TRAIL] Mode → Swing (nearest swing low/high, min %.1f ATR)", g_trailMinDist));
+         if(g_trailRef == TRAIL_SWING)
+            g_trailRef = TRAIL_NONE;   // deselect
+         else
+            g_trailRef = TRAIL_SWING;  // select (deselects Close)
+         Print(StringFormat("[TRAIL] Method → %s%s",
+               (g_trailRef == TRAIL_SWING) ? "Swing" : "None",
+               g_beEnabled ? " (+BE)" : ""));
          UpdateTrailParamDisplay();
       }
-      // ── Trail mode: BE ──
+      // ── Trail modifier: BE (toggle on/off, combinable with Close/Swing) ──
       else if(sparam == OBJ_TM_BE)
       {
          ObjectSetInteger(0, OBJ_TM_BE, OBJPROP_STATE, false);
-         g_trailRef = TRAIL_BE;
-         g_beReached = false;  // Reset BE state on mode change
+         g_beEnabled = !g_beEnabled;
+         g_beReached = false;
          g_beStepLevel = 0;
-         Print(StringFormat("[TRAIL] Mode → BE (start %.1fx ATR, then step 1 ATR)", g_beStartMult));
+         string methodLbl = (g_trailRef == TRAIL_CLOSE) ? "+Close" :
+                            (g_trailRef == TRAIL_SWING) ? "+Swing" : " only";
+         Print(StringFormat("[TRAIL] BE %s%s (start %.1fx ATR)",
+               g_beEnabled ? "ON" : "OFF", g_beEnabled ? methodLbl : "", g_beStartMult));
          UpdateTrailParamDisplay();
       }
       // ── Trail param: minus ──
       else if(sparam == OBJ_TRAIL_MINUS)
       {
          ObjectSetInteger(0, OBJ_TRAIL_MINUS, OBJPROP_STATE, false);
-         if(g_trailRef == TRAIL_BE)
+         if(g_beEnabled)
          { g_beStartMult = MathMax(0.1, g_beStartMult - 0.1); }
          else
          { g_trailMinDist = MathMax(0.1, g_trailMinDist - 0.1); }
@@ -3577,7 +3631,7 @@ void OnChartEvent(const int id,
       else if(sparam == OBJ_TRAIL_PLUS)
       {
          ObjectSetInteger(0, OBJ_TRAIL_PLUS, OBJPROP_STATE, false);
-         if(g_trailRef == TRAIL_BE)
+         if(g_beEnabled)
          { g_beStartMult = MathMin(3.0, g_beStartMult + 0.1); }
          else
          { g_trailMinDist = MathMin(3.0, g_trailMinDist + 0.1); }
