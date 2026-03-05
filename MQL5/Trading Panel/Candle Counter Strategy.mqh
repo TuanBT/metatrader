@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Candle Counter Strategy.mqh — Candle Counter Bot v1.03            |
+//| Candle Counter Strategy.mqh — Candle Counter Bot v1.04            |
 //| 2-candle pattern + breakout entry logic                           |
 //+------------------------------------------------------------------+
 #ifndef CANDLE_COUNTER_STRATEGY_MQH
@@ -28,6 +28,14 @@ input int             InpCC_PauseBars   = 60;    // Candle Counter: Auto-resume 
 #define CC_OBJ_IL4    CC_PREFIX "IL4"
 #define CC_OBJ_IL5    CC_PREFIX "IL5"
 #define CC_OBJ_IL6    CC_PREFIX "IL6"
+#define CC_OBJ_IL7    CC_PREFIX "IL7"
+#define CC_OBJ_IL8    CC_PREFIX "IL8"
+#define CC_OBJ_IL9    CC_PREFIX "IL9"
+#define CC_OBJ_IL10   CC_PREFIX "IL10"
+#define CC_OBJ_IL11   CC_PREFIX "IL11"
+#define CC_OBJ_IL12   CC_PREFIX "IL12"
+#define CC_OBJ_IL13   CC_PREFIX "IL13"
+#define CC_OBJ_IL14   CC_PREFIX "IL14"
 
 #define CC_OBJ_POS    CC_PREFIX "PosInfo"
 
@@ -320,7 +328,7 @@ void CC_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.03",
+   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.04",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 
@@ -338,7 +346,17 @@ void CC_CreatePanel(int x, int y, int w)
    MakeLabel(CC_OBJ_IL3, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
    MakeLabel(CC_OBJ_IL4, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
    MakeLabel(CC_OBJ_IL5, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
-   MakeLabel(CC_OBJ_IL6, x + pad, row, "", C'120,125,145', 8, "Consolas");
+   MakeLabel(CC_OBJ_IL6, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 18;
+
+   // Regime display (4 regimes × 2 lines each)
+   MakeLabel(CC_OBJ_IL7,  x + pad, row, "", C'80,80,100', 8, "Consolas"); row += 14;
+   MakeLabel(CC_OBJ_IL8,  x + pad, row, "", C'80,80,100', 7, "Consolas"); row += 16;
+   MakeLabel(CC_OBJ_IL9,  x + pad, row, "", C'80,80,100', 8, "Consolas"); row += 14;
+   MakeLabel(CC_OBJ_IL10, x + pad, row, "", C'80,80,100', 7, "Consolas"); row += 16;
+   MakeLabel(CC_OBJ_IL11, x + pad, row, "", C'80,80,100', 8, "Consolas"); row += 14;
+   MakeLabel(CC_OBJ_IL12, x + pad, row, "", C'80,80,100', 7, "Consolas"); row += 16;
+   MakeLabel(CC_OBJ_IL13, x + pad, row, "", C'80,80,100', 8, "Consolas"); row += 14;
+   MakeLabel(CC_OBJ_IL14, x + pad, row, "", C'80,80,100', 7, "Consolas");
 
    CC_UpdatePanel();
 }
@@ -484,16 +502,71 @@ void CC_UpdatePanel()
             g_cachedATR / _Point, minRange / _Point, cc_atrMinMult));
    ObjectSetInteger(0, CC_OBJ_IL5, OBJPROP_COLOR, C'120,125,145');
 
-   // Line 6: Regime info (when auto‐regime is active)
+   // Line 6: Regime header
    if(g_autoRegime && g_regimeName != "")
    {
       ObjectSetString(0, CC_OBJ_IL6, OBJPROP_TEXT,
          StringFormat("Regime: %s (%.0f%%)", g_regimeName, g_regimeConf * 100));
       ObjectSetInteger(0, CC_OBJ_IL6, OBJPROP_COLOR, C'200,160,60');
    }
+   else if(g_autoRegime)
+   {
+      ObjectSetString(0, CC_OBJ_IL6, OBJPROP_TEXT, "Regime: waiting...");
+      ObjectSetInteger(0, CC_OBJ_IL6, OBJPROP_COLOR, C'120,125,145');
+   }
    else
    {
       ObjectSetString(0, CC_OBJ_IL6, OBJPROP_TEXT, "");
+   }
+
+   // Lines 7-14: 4 regimes × 2 lines (line1=name+panel params, line2=CC params)
+   // Regime data: name, atr_mult, be_start, trail_min, tp_factor, cc_min, cc_brk
+   string rNames[4]  = {"STRONG","WEAK","RANGE","VOLAT"};
+   string rKeys[4]   = {"trending_strong","trending_weak","ranging","high_volatile"};
+   double rATR[4]    = {1.5, 1.5, 2.0, 2.5};
+   double rBE[4]     = {0.8, 1.0, 1.5, 1.2};
+   double rTrail[4]  = {0.3, 0.5, 0.8, 0.5};
+   double rTP[4]     = {1.0, 1.0, 0.5, 1.0};
+   double rCCMin[4]  = {0.3, 0.4, 0.5, 0.3};
+   double rCCBrk[4]  = {0.05, 0.10, 0.15, 0.10};
+
+   string ilLine1[4] = {CC_OBJ_IL7, CC_OBJ_IL9, CC_OBJ_IL11, CC_OBJ_IL13};
+   string ilLine2[4] = {CC_OBJ_IL8, CC_OBJ_IL10, CC_OBJ_IL12, CC_OBJ_IL14};
+
+   for(int r = 0; r < 4; r++)
+   {
+      bool isActive = (g_autoRegime && g_regimeName == rKeys[r]);
+      string marker = isActive ? "\x25B6 " : "  ";
+      color clr1 = isActive ? C'255,255,255' : C'80,80,100';
+      color clr2 = isActive ? C'200,200,220' : C'65,65,85';
+
+      if(g_autoRegime)
+      {
+         ObjectSetString(0, ilLine1[r], OBJPROP_TEXT,
+            StringFormat("%s%-7s ATR:%.1f  BE:%.1f  MinDist:%.1f  TP:%.1f",
+               marker, rNames[r], rATR[r], rBE[r], rTrail[r], rTP[r]));
+         ObjectSetInteger(0, ilLine1[r], OBJPROP_COLOR, clr1);
+         // Line 2: CC params (only show for active, hide for inactive)
+         if(isActive)
+         {
+            ObjectSetString(0, ilLine2[r], OBJPROP_TEXT,
+               StringFormat("         CCMin:%.2f  CCBrk:%.2f", rCCMin[r], rCCBrk[r]));
+            ObjectSetInteger(0, ilLine2[r], OBJPROP_COLOR, clr2);
+         }
+         else
+         {
+            ObjectSetString(0, ilLine2[r], OBJPROP_TEXT, "");
+         }
+      }
+      else
+      {
+         // Auto OFF: show all regimes dimmed, no details
+         ObjectSetString(0, ilLine1[r], OBJPROP_TEXT,
+            StringFormat("  %-7s ATR:%.1f  BE:%.1f  MinDist:%.1f  TP:%.1f",
+               rNames[r], rATR[r], rBE[r], rTrail[r], rTP[r]));
+         ObjectSetInteger(0, ilLine1[r], OBJPROP_COLOR, C'65,65,85');
+         ObjectSetString(0, ilLine2[r], OBJPROP_TEXT, "");
+      }
    }
 }
 
