@@ -6,7 +6,7 @@ echo ============================================
 echo.
 
 :: Them symbol: sua dong duoi, cach nhau bang dau phay (EXNESS dung 'm' suffix)
-"C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --all --symbols XAUUSDm,USDJPYm,BTCUSDm,EURUSDm,GBPUSDm,AUDUSDm --timeframes M15
+"C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --all --symbols XAUUSDm,USDJPYm,BTCUSDm,EURUSDm,GBPUSDm,AUDUSDm --timeframes M1
 
 echo.
 echo ============================================
