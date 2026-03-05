@@ -1221,6 +1221,15 @@ void ReadConfigINI()
 
    Print(StringFormat("[REGIME] Applied %d params | regime=%s conf=%.2f | atrM=%.2f ccMin=%.2f ccBrk=%.2f",
       applied, g_regimeName, g_regimeConf, g_atrMult, cc_atrMinMult, cc_breakMult));
+
+   // Refresh Settings panel UI with new values
+   if(applied > 0)
+   {
+      ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
+      ObjectSetString(0, OBJ_SET_PCT_EDT,  OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
+      ObjectSetString(0, OBJ_SET_ATR_EDT,  OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
+      ChartRedraw(0);
+   }
 }
 
 // ════════════════════════════════════════════════════════════════════
