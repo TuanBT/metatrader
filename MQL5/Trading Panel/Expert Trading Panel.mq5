@@ -398,18 +398,15 @@ double CalcMinRisk()
    return MathCeil(minLot * (slDist / tickSz) * tickVal);  // round up to nearest $1
 }
 
-// Calculate the risk $ step that corresponds to one VOLUME_STEP (0.01 lot)
-// Used for +/- buttons to ensure each click changes lot by exactly 1 step
-double CalcRiskStep()
+// Calculate the risk $ needed for a specific lot size at current ATR SL
+double CalcRiskForLot(double targetLot)
 {
-   if(g_cachedATR <= 0) return 1;
+   if(g_cachedATR <= 0 || targetLot <= 0) return 1;
    double slDist  = g_cachedATR * g_atrMult;
    double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    if(tickSz <= 0 || tickVal <= 0) return 1;
-   double volStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   double stepCost = MathCeil(volStep * (slDist / tickSz) * tickVal);
-   return MathMax(1, stepCost);  // min $1
+   return MathCeil(targetLot * (slDist / tickSz) * tickVal);
 }
 
 // Calculate TRUE projected max risk for Grid DCA (accounts for min-lot clipping)
@@ -3336,13 +3333,16 @@ void OnChartEvent(const int id,
          ToggleSettings();
          return;
       }
-      // ── Settings: Risk $ ± (step = 0.01 lot worth) → switch to $Fixed mode ──
+      // ── Settings: Risk $ ± (jump to next/prev 0.01 lot level) → switch to $Fixed mode ──
       if(sparam == OBJ_SET_RISK_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_RISK_PLUS, OBJPROP_STATE, false);
          g_riskPctMode = false;
-         double step = CalcRiskStep();
-         g_riskMoney = MathMax(1, g_riskMoney + step);
+         double slDist   = g_cachedATR * g_atrMult;
+         double curLot   = CalcLot(slDist);
+         double volStep  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+         double nextLot  = curLot + volStep;
+         g_riskMoney = CalcRiskForLot(nextLot);
          // Sync % from $
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
@@ -3356,9 +3356,12 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_SET_RISK_MINUS, OBJPROP_STATE, false);
          g_riskPctMode = false;
-         double step = CalcRiskStep();
-         double minR = CalcMinRisk();
-         g_riskMoney = MathMax(minR, g_riskMoney - step);
+         double slDist   = g_cachedATR * g_atrMult;
+         double curLot   = CalcLot(slDist);
+         double volStep  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+         double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+         double prevLot  = MathMax(minLot, curLot - volStep);
+         g_riskMoney = CalcRiskForLot(prevLot);
          // Sync % from $
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
@@ -3368,17 +3371,20 @@ void OnChartEvent(const int id,
          UpdatePanel();
          return;
       }
-      // ── Settings: Risk % ± (step = 0.01 lot worth in %) → switch to %Auto mode ──
+      // ── Settings: Risk % ± (jump to next/prev 0.01 lot level) → switch to %Auto mode ──
       if(sparam == OBJ_SET_PCT_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_PCT_PLUS, OBJPROP_STATE, false);
          g_riskPctMode = true;
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-         double step = CalcRiskStep();
-         double stepPct = (bal > 0) ? MathMax(0.1, NormalizeDouble(step / bal * 100.0, 1)) : 1.0;
-         g_riskPct = MathMin(100.0, NormalizeDouble(g_riskPct + stepPct, 1));
-         // Sync $ from %
-         if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+         double slDist   = g_cachedATR * g_atrMult;
+         double curLot   = CalcLot(slDist);
+         double volStep  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+         double nextLot  = curLot + volStep;
+         double targetRisk = CalcRiskForLot(nextLot);
+         g_riskMoney = targetRisk;
+         // Sync % from $
+         if(bal > 0) g_riskPct = MathMin(100.0, NormalizeDouble(g_riskMoney / bal * 100.0, 1));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
@@ -3390,12 +3396,15 @@ void OnChartEvent(const int id,
          ObjectSetInteger(0, OBJ_SET_PCT_MINUS, OBJPROP_STATE, false);
          g_riskPctMode = true;
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-         double step = CalcRiskStep();
-         double stepPct = (bal > 0) ? MathMax(0.1, NormalizeDouble(step / bal * 100.0, 1)) : 1.0;
-         double minR = CalcMinRisk();
-         g_riskPct = MathMax(0.1, NormalizeDouble(g_riskPct - stepPct, 1));
-         // Sync $ from %
-         if(bal > 0) g_riskMoney = MathMax(minR, MathFloor(bal * g_riskPct / 100.0));
+         double slDist   = g_cachedATR * g_atrMult;
+         double curLot   = CalcLot(slDist);
+         double volStep  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+         double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+         double prevLot  = MathMax(minLot, curLot - volStep);
+         double targetRisk = CalcRiskForLot(prevLot);
+         g_riskMoney = targetRisk;
+         // Sync % from $
+         if(bal > 0) g_riskPct = MathMax(0.1, NormalizeDouble(g_riskMoney / bal * 100.0, 1));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
          UpdateModeColors();
