@@ -1379,11 +1379,21 @@ void ToggleBotStart()
    if(g_activeBot == 1)
    {
       cc_enabled = !cc_enabled;
+      if(cc_enabled)
+      {
+         cc_paused = false;
+         cc_pauseTime = 0;
+      }
       Print(StringFormat("[PANEL] Candle Count Bot %s", cc_enabled ? "STARTED" : "STOPPED"));
    }
    else if(g_activeBot == 2)
    {
       ns_enabled = !ns_enabled;
+      if(ns_enabled)
+      {
+         ns_paused = false;
+         ns_pauseTime = 0;
+      }
       Print(StringFormat("[PANEL] NS Bot %s", ns_enabled ? "STARTED" : "STOPPED"));
    }
 
