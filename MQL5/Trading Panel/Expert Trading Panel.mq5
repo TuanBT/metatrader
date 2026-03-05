@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.24"
-#property version   "2.24"
+#property copyright "Tuan v2.25"
+#property version   "2.25"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -200,6 +200,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BOT_TS_BTN    PREFIX "bot_ts"
 #define OBJ_BOT_NS_BTN    PREFIX "bot_ns"
 #define OBJ_BOT_START_BTN PREFIX "bot_start"  // Start/Stop inside bot panel
+#define OBJ_BOT_AUTO_BTN  PREFIX "bot_auto"   // Auto‐Regime toggle
 
 // Bot panel layout constants
 #define BOT_PANEL_X       (PX + PW + 5)
@@ -283,6 +284,13 @@ datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 // Bot integration state
 double   g_panelLot       = 0;       // Calculated lot — shared with bots
 int      g_activeBot      = 0;       // 0=none, 1=Candle Count Bot, 2=Trend Signal Bot, 3=News Straddle
+
+// Regime Analyzer (Python → INI → MQL5)
+bool     g_autoRegime     = false;   // Auto‐regime mode ON/OFF
+string   g_regimeName     = "";      // e.g. "trending_strong"
+double   g_regimeConf     = 0;       // confidence 0..1
+datetime g_lastConfigRead = 0;       // last time config was read
+long     g_lastConfigMod  = 0;       // file modification time
 
 // ════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -1107,6 +1115,115 @@ void UpdateModeColors()
 }
 
 // ════════════════════════════════════════════════════════════════════
+// REGIME AUTO‐CONFIG (Python → INI → MQL5)
+// ════════════════════════════════════════════════════════════════════
+//  File: MQL5/Files/config_<SYMBOL>_<TF>.ini
+//  Format: key=value (one per line), # comments
+//  Keys: regime, confidence, atr_mult, atr_min_mult, break_mult, risk_pct
+//
+void ReadConfigINI()
+{
+   // Build filename:  config_XAUUSDm_M15.ini
+   string tf = EnumToString(_Period);     // e.g. "PERIOD_M15"
+   StringReplace(tf, "PERIOD_", "");      // → "M15"
+   string fname = "config_" + _Symbol + "_" + tf + ".ini";
+
+   // Check if file exists
+   if(!FileIsExist(fname))
+      return;
+
+   // Check modification time to avoid re-reading unchanged file
+   long modTime = (long)FileGetInteger(fname, FILE_MODIFY_DATE);
+   if(modTime == g_lastConfigMod)
+      return;   // file not changed since last read
+
+   int handle = FileOpen(fname, FILE_READ | FILE_TXT | FILE_ANSI);
+   if(handle == INVALID_HANDLE)
+   {
+      Print("[REGIME] Cannot open ", fname, " error=", GetLastError());
+      return;
+   }
+
+   Print("[REGIME] Reading config: ", fname);
+   int applied = 0;
+
+   while(!FileIsEnding(handle))
+   {
+      string line = FileReadString(handle);
+      StringTrimLeft(line);
+      StringTrimRight(line);
+      if(StringLen(line) == 0 || StringGetCharacter(line, 0) == '#')
+         continue;
+
+      int eq = StringFind(line, "=");
+      if(eq <= 0) continue;
+
+      string key = StringSubstr(line, 0, eq);
+      string val = StringSubstr(line, eq + 1);
+      StringTrimLeft(key);  StringTrimRight(key);
+      StringTrimLeft(val);  StringTrimRight(val);
+
+      if(key == "regime")
+      {
+         g_regimeName = val;
+         applied++;
+      }
+      else if(key == "confidence")
+      {
+         g_regimeConf = StringToDouble(val);
+         applied++;
+      }
+      else if(key == "atr_mult")
+      {
+         double v = StringToDouble(val);
+         if(v >= 0.5 && v <= 5.0)
+         {
+            g_atrMult = v;
+            applied++;
+         }
+      }
+      else if(key == "atr_min_mult")
+      {
+         double v = StringToDouble(val);
+         if(v >= 0 && v <= 2.0)
+         {
+            cc_atrMinMult = v;
+            applied++;
+         }
+      }
+      else if(key == "break_mult")
+      {
+         double v = StringToDouble(val);
+         if(v >= 0 && v <= 1.0)
+         {
+            cc_breakMult = v;
+            applied++;
+         }
+      }
+      else if(key == "risk_pct")
+      {
+         double v = StringToDouble(val);
+         if(v >= 0.1 && v <= 10.0)
+         {
+            g_riskPct = v;
+            g_riskPctMode = true;
+            double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+            if(bal > 0)
+               g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+            applied++;
+         }
+      }
+   }
+
+   FileClose(handle);
+   g_lastConfigMod = modTime;
+   g_lastConfigRead = TimeCurrent();
+
+   Print(StringFormat("[REGIME] Applied %d params | regime=%s conf=%.2f | atrM=%.2f ccMin=%.2f ccBrk=%.2f",
+      applied, g_regimeName, g_regimeConf, g_atrMult, cc_atrMinMult, cc_breakMult));
+}
+
+// ════════════════════════════════════════════════════════════════════
 // BOT STRATEGY INCLUDES
 // ════════════════════════════════════════════════════════════════════
 #include "Candle Counter Strategy.mqh"
@@ -1188,6 +1305,15 @@ void CreateBotPanel()
    ObjectSetString(0, OBJ_BOT_START_BTN, OBJPROP_TOOLTIP,
       "Start/Stop bot hiện tại.\nBot chạy nền ngay cả khi xem bot khác.");
 
+   // Auto‐Regime toggle button (next to Start/Stop)
+   color autoBg  = g_autoRegime ? C'120,80,0' : C'50,50,70';
+   color autoTxt = g_autoRegime ? C'255,255,255' : C'140,140,160';
+   string autoLbl = g_autoRegime ? "\x2699 Auto ON" : "\x2699 Auto";
+   MakeButton(OBJ_BOT_AUTO_BTN, BOT_PANEL_X + 68, BOT_CONTENT_Y + 4, 64, 20,
+              autoLbl, autoTxt, autoBg, 8);
+   ObjectSetString(0, OBJ_BOT_AUTO_BTN, OBJPROP_TOOLTIP,
+      "Auto Regime — Python tự điều chỉnh params.\nĐọc config INI mỗi 60s.");
+
    int contentStartY = BOT_CONTENT_Y + 28;  // Below start button
 
    if(g_activeBot == 1)
@@ -1204,6 +1330,7 @@ void DestroyBotPanel()
    TS_DestroyPanel();
    NS_DestroyPanel();
    ObjectDelete(0, OBJ_BOT_START_BTN);
+   ObjectDelete(0, OBJ_BOT_AUTO_BTN);
    ObjectDelete(0, OBJ_BOT_BG);
 }
 
@@ -1305,7 +1432,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.24";
+   string titleTxt = "Trading Panel v2.25";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2039,7 +2166,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.24";
+   string panelTitle = "Trading Panel v2.25";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3089,7 +3216,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.24 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.25 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3275,6 +3402,18 @@ void OnTimer()
    if(g_activeBot == 1 && !cc_enabled) CC_UpdatePanel();
    if(g_activeBot == 2 && !ts_enabled) TS_UpdatePanel();
    if(g_activeBot == 3 && !ns_enabled) NS_UpdatePanel();
+
+   // ── Auto‐Regime: check config file every 60s ──
+   if(g_autoRegime)
+   {
+      static uint s_lastRegimeMs = 0;
+      uint nowMs = GetTickCount();
+      if(nowMs - s_lastRegimeMs >= 60000 || s_lastRegimeMs == 0)
+      {
+         ReadConfigINI();
+         s_lastRegimeMs = nowMs;
+      }
+   }
 }
 
 void OnChartEvent(const int id,
@@ -3323,6 +3462,37 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_STATE, false);
          ToggleBotStart();
+         return;
+      }
+      // ── Auto‐Regime toggle ──
+      if(sparam == OBJ_BOT_AUTO_BTN)
+      {
+         ObjectSetInteger(0, OBJ_BOT_AUTO_BTN, OBJPROP_STATE, false);
+         g_autoRegime = !g_autoRegime;
+         if(g_autoRegime)
+         {
+            g_lastConfigMod = 0;   // force re-read
+            ReadConfigINI();
+            Print("[REGIME] Auto‐regime ON");
+         }
+         else
+         {
+            // Reset shadows to input defaults
+            cc_atrMinMult = InpCC_ATRMinMult;
+            cc_breakMult  = InpCC_BreakMult;
+            g_atrMult     = InpATRMult;
+            g_regimeName  = "";
+            g_regimeConf  = 0;
+            Print("[REGIME] Auto‐regime OFF — params reset to inputs");
+         }
+         // Refresh auto button appearance
+         color autoBg  = g_autoRegime ? C'120,80,0' : C'50,50,70';
+         color autoTxt = g_autoRegime ? C'255,255,255' : C'140,140,160';
+         string autoLbl = g_autoRegime ? "\x2699 Auto ON" : "\x2699 Auto";
+         ObjectSetString(0, OBJ_BOT_AUTO_BTN, OBJPROP_TEXT, autoLbl);
+         ObjectSetInteger(0, OBJ_BOT_AUTO_BTN, OBJPROP_BGCOLOR, autoBg);
+         ObjectSetInteger(0, OBJ_BOT_AUTO_BTN, OBJPROP_COLOR, autoTxt);
+         ChartRedraw(0);
          return;
       }
 

@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Candle Counter Strategy.mqh — Candle Counter Bot v1.02            |
+//| Candle Counter Strategy.mqh — Candle Counter Bot v1.03            |
 //| 2-candle pattern + breakout entry logic                           |
 //+------------------------------------------------------------------+
 #ifndef CANDLE_COUNTER_STRATEGY_MQH
@@ -27,6 +27,7 @@ input int             InpCC_PauseBars   = 60;    // Candle Counter: Auto-resume 
 #define CC_OBJ_IL3    CC_PREFIX "IL3"
 #define CC_OBJ_IL4    CC_PREFIX "IL4"
 #define CC_OBJ_IL5    CC_PREFIX "IL5"
+#define CC_OBJ_IL6    CC_PREFIX "IL6"
 
 #define CC_OBJ_POS    CC_PREFIX "PosInfo"
 
@@ -37,6 +38,10 @@ datetime cc_lastSignalBar = 0;
 bool     cc_enabled       = false;  // managed by Panel toggle
 bool     cc_paused        = false;
 datetime cc_pauseTime     = 0;
+
+// Shadow globals — initialized from input, can be overridden by config
+double   cc_atrMinMult    = 0;   // shadow of InpCC_ATRMinMult
+double   cc_breakMult     = 0;   // shadow of InpCC_BreakMult
 
 // Candle state
 int    cc_countBull = 0;
@@ -65,8 +70,12 @@ bool CC_Init()
    ArrayInitialize(cc_atrOK, false);
    ArrayInitialize(cc_colorOK, false);
 
+   // Initialize shadow globals from inputs
+   cc_atrMinMult = InpCC_ATRMinMult;
+   cc_breakMult  = InpCC_BreakMult;
+
    Print(StringFormat("[CANDLE COUNTER] Initialized | %s | ATR MinMult=%.1f | BreakMult=%.2f | PauseBars=%d",
-         _Symbol, InpCC_ATRMinMult, InpCC_BreakMult, InpCC_PauseBars));
+         _Symbol, cc_atrMinMult, cc_breakMult, InpCC_PauseBars));
    return true;
 }
 
@@ -101,10 +110,10 @@ void CC_UpdateCandleState()
    bool bar2Bear = (c2 < o2);
 
    // ATR filter — uses Panel's g_cachedATR
-   if(InpCC_ATRMinMult > 0 && g_cachedATR > 0)
+   if(cc_atrMinMult > 0 && g_cachedATR > 0)
    {
-      cc_atrOK[1] = ((h1 - l1) >= InpCC_ATRMinMult * g_cachedATR);
-      cc_atrOK[2] = ((h2 - l2) >= InpCC_ATRMinMult * g_cachedATR);
+      cc_atrOK[1] = ((h1 - l1) >= cc_atrMinMult * g_cachedATR);
+      cc_atrOK[2] = ((h2 - l2) >= cc_atrMinMult * g_cachedATR);
    }
    else
    {
@@ -186,8 +195,8 @@ void CC_Tick()
    if(HasOwnPosition()) return;
 
    // Per-tick breakout check (with optional ATR buffer)
-   double breakBuf = (InpCC_BreakMult > 0 && g_cachedATR > 0)
-                     ? InpCC_BreakMult * g_cachedATR : 0;
+   double breakBuf = (cc_breakMult > 0 && g_cachedATR > 0)
+                     ? cc_breakMult * g_cachedATR : 0;
    if(cc_pendingBuy && cc_breakLevel > 0)
    {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -311,7 +320,7 @@ void CC_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.02",
+   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.03",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 
@@ -328,7 +337,8 @@ void CC_CreatePanel(int x, int y, int w)
    MakeLabel(CC_OBJ_IL2, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
    MakeLabel(CC_OBJ_IL3, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
    MakeLabel(CC_OBJ_IL4, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
-   MakeLabel(CC_OBJ_IL5, x + pad, row, "", C'120,125,145', 8, "Consolas");
+   MakeLabel(CC_OBJ_IL5, x + pad, row, "", C'120,125,145', 8, "Consolas"); row += 16;
+   MakeLabel(CC_OBJ_IL6, x + pad, row, "", C'120,125,145', 8, "Consolas");
 
    CC_UpdatePanel();
 }
@@ -437,8 +447,8 @@ void CC_UpdatePanel()
    // Line 4: Breakout level (with buffer)
    if(isPending)
    {
-      double brkBuf = (InpCC_BreakMult > 0 && g_cachedATR > 0)
-                      ? InpCC_BreakMult * g_cachedATR : 0;
+      double brkBuf = (cc_breakMult > 0 && g_cachedATR > 0)
+                      ? cc_breakMult * g_cachedATR : 0;
       double trigger = cc_pendingBuy ? cc_breakLevel + brkBuf
                                      : cc_breakLevel - brkBuf;
       if(brkBuf > 0)
@@ -461,18 +471,30 @@ void CC_UpdatePanel()
    }
 
    // Line 5: ATR info
-   double minRange = g_cachedATR * InpCC_ATRMinMult;
-   double brkRange = g_cachedATR * InpCC_BreakMult;
-   if(InpCC_BreakMult > 0)
+   double minRange = g_cachedATR * cc_atrMinMult;
+   double brkRange = g_cachedATR * cc_breakMult;
+   if(cc_breakMult > 0)
       ObjectSetString(0, CC_OBJ_IL5, OBJPROP_TEXT,
          StringFormat("ATR: %.0f | Min: %.0f (%.1fx) | Brk: %.0f (%.1fx)",
-            g_cachedATR / _Point, minRange / _Point, InpCC_ATRMinMult,
-            brkRange / _Point, InpCC_BreakMult));
+            g_cachedATR / _Point, minRange / _Point, cc_atrMinMult,
+            brkRange / _Point, cc_breakMult));
    else
       ObjectSetString(0, CC_OBJ_IL5, OBJPROP_TEXT,
          StringFormat("ATR: %.0f | Min: %.0f (%.1fx)",
-            g_cachedATR / _Point, minRange / _Point, InpCC_ATRMinMult));
+            g_cachedATR / _Point, minRange / _Point, cc_atrMinMult));
    ObjectSetInteger(0, CC_OBJ_IL5, OBJPROP_COLOR, C'120,125,145');
+
+   // Line 6: Regime info (when auto‐regime is active)
+   if(g_autoRegime && g_regimeName != "")
+   {
+      ObjectSetString(0, CC_OBJ_IL6, OBJPROP_TEXT,
+         StringFormat("Regime: %s (%.0f%%)", g_regimeName, g_regimeConf * 100));
+      ObjectSetInteger(0, CC_OBJ_IL6, OBJPROP_COLOR, C'200,160,60');
+   }
+   else
+   {
+      ObjectSetString(0, CC_OBJ_IL6, OBJPROP_TEXT, "");
+   }
 }
 
 // ════════════════════════════════════════════════════════════════════
