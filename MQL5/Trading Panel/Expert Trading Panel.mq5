@@ -206,7 +206,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define BOT_PANEL_Y       PY
 #define BOT_BTN_W         80
 #define BOT_BTN_H         24
-#define BOT_CONTENT_W     340
+#define BOT_CONTENT_W     400
 #define BOT_CONTENT_Y     (PY + BOT_BTN_H + 4)
 #define OBJ_SET_RISK_LBL  PREFIX "set_risk_lbl"
 #define OBJ_SET_RISK_EDT  PREFIX "set_risk_edt"
