@@ -5,8 +5,8 @@ echo  Regime Analyzer - Phan tich 1 lan
 echo ============================================
 echo.
 
-:: Instance 2 = EXNESS Real (doi --instance 1 neu can Demo)
-"C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --instance 2 --symbols XAUUSDm --timeframes M15
+:: --all = ca 2 instances (Demo + EXNESS Real)
+"C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --all --symbols XAUUSDm --timeframes M15
 
 echo.
 echo ============================================
