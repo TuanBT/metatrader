@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Candle Counter Strategy.mqh — Candle Counter Bot v1.04            |
+//| Candle Counter Strategy.mqh — Candle Counter Bot v1.05            |
 //| 2-candle pattern + breakout entry logic                           |
 //+------------------------------------------------------------------+
 #ifndef CANDLE_COUNTER_STRATEGY_MQH
@@ -11,7 +11,7 @@
 input group           "══ Candle Counter Bot ══"
 input double          InpCC_ATRMinMult  = 0.3;   // Candle Counter: Min candle range × ATR (0 = off)
 input double          InpCC_BreakMult   = 0.1;   // Candle Counter: Break buffer × ATR (0 = off)
-input int             InpCC_PauseBars   = 60;    // Candle Counter: Auto-resume after N bars (0 = manual)
+input int             InpCC_PauseBars   = 15;    // Candle Counter: Auto-resume after N bars (0 = manual)
 
 // ════════════════════════════════════════════════════════════════════
 // OBJECT NAMES (unique prefix avoids Panel/TS conflicts)
@@ -328,7 +328,7 @@ void CC_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.04",
+   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.05",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 
