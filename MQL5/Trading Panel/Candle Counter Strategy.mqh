@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Candle Counter Strategy.mqh — Candle Counter Bot v1.01            |
+//| Candle Counter Strategy.mqh — Candle Counter Bot v1.02            |
 //| 2-candle pattern + breakout entry logic                           |
 //+------------------------------------------------------------------+
 #ifndef CANDLE_COUNTER_STRATEGY_MQH
@@ -10,6 +10,7 @@
 // ════════════════════════════════════════════════════════════════════
 input group           "══ Candle Counter Bot ══"
 input double          InpCC_ATRMinMult  = 0.3;   // Candle Counter: Min candle range × ATR (0 = off)
+input double          InpCC_BreakMult   = 0.1;   // Candle Counter: Break buffer × ATR (0 = off)
 input int             InpCC_PauseBars   = 60;    // Candle Counter: Auto-resume after N bars (0 = manual)
 
 // ════════════════════════════════════════════════════════════════════
@@ -64,8 +65,8 @@ bool CC_Init()
    ArrayInitialize(cc_atrOK, false);
    ArrayInitialize(cc_colorOK, false);
 
-   Print(StringFormat("[CANDLE COUNTER] Initialized | %s | ATR MinMult=%.1f | PauseBars=%d",
-         _Symbol, InpCC_ATRMinMult, InpCC_PauseBars));
+   Print(StringFormat("[CANDLE COUNTER] Initialized | %s | ATR MinMult=%.1f | BreakMult=%.2f | PauseBars=%d",
+         _Symbol, InpCC_ATRMinMult, InpCC_BreakMult, InpCC_PauseBars));
    return true;
 }
 
@@ -184,13 +185,17 @@ void CC_Tick()
    if(cc_paused) return;
    if(HasOwnPosition()) return;
 
-   // Per-tick breakout check
+   // Per-tick breakout check (with optional ATR buffer)
+   double breakBuf = (InpCC_BreakMult > 0 && g_cachedATR > 0)
+                     ? InpCC_BreakMult * g_cachedATR : 0;
    if(cc_pendingBuy && cc_breakLevel > 0)
    {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      if(ask > cc_breakLevel)
+      double triggerLevel = cc_breakLevel + breakBuf;
+      if(ask > triggerLevel)
       {
-         Print(StringFormat("[CANDLE COUNTER] Breakout BUY! Price %.5f > %.5f", ask, cc_breakLevel));
+         Print(StringFormat("[CANDLE COUNTER] Breakout BUY! Price %.5f > %.5f (buf %.1fp)",
+               ask, triggerLevel, breakBuf / _Point));
          cc_pendingBuy = false;
          CC_OpenTrade(true);
       }
@@ -198,9 +203,11 @@ void CC_Tick()
    else if(cc_pendingSell && cc_breakLevel > 0)
    {
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      if(bid < cc_breakLevel)
+      double triggerLevel = cc_breakLevel - breakBuf;
+      if(bid < triggerLevel)
       {
-         Print(StringFormat("[CANDLE COUNTER] Breakout SELL! Price %.5f < %.5f", bid, cc_breakLevel));
+         Print(StringFormat("[CANDLE COUNTER] Breakout SELL! Price %.5f < %.5f (buf %.1fp)",
+               bid, triggerLevel, breakBuf / _Point));
          cc_pendingSell = false;
          CC_OpenTrade(false);
       }
@@ -304,7 +311,7 @@ void CC_CreatePanel(int x, int y, int w)
    int row = y;
 
    // Title
-   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.01",
+   MakeLabel(CC_OBJ_TITLE, x + pad, row + 4, "Candle Counter Bot v1.02",
              C'170,180,215', 10, "Segoe UI Semibold");
    row += 22;
 
@@ -427,13 +434,24 @@ void CC_UpdatePanel()
          (cc_colorOK[b] && cc_wickOK[b] && cc_atrOK[b]) ? C'0,180,100' : C'120,125,145');
    }
 
-   // Line 4: Breakout level
+   // Line 4: Breakout level (with buffer)
    if(isPending)
    {
-      ObjectSetString(0, CC_OBJ_IL4, OBJPROP_TEXT,
-         StringFormat("Break: %s %s",
-            cc_pendingBuy ? "Ask >" : "Bid <",
-            DoubleToString(cc_breakLevel, _Digits)));
+      double brkBuf = (InpCC_BreakMult > 0 && g_cachedATR > 0)
+                      ? InpCC_BreakMult * g_cachedATR : 0;
+      double trigger = cc_pendingBuy ? cc_breakLevel + brkBuf
+                                     : cc_breakLevel - brkBuf;
+      if(brkBuf > 0)
+         ObjectSetString(0, CC_OBJ_IL4, OBJPROP_TEXT,
+            StringFormat("Break: %s %s (+%.0fp)",
+               cc_pendingBuy ? "Ask >" : "Bid <",
+               DoubleToString(trigger, _Digits),
+               brkBuf / _Point));
+      else
+         ObjectSetString(0, CC_OBJ_IL4, OBJPROP_TEXT,
+            StringFormat("Break: %s %s",
+               cc_pendingBuy ? "Ask >" : "Bid <",
+               DoubleToString(trigger, _Digits)));
       ObjectSetInteger(0, CC_OBJ_IL4, OBJPROP_COLOR, C'200,180,80');
    }
    else
@@ -444,9 +462,16 @@ void CC_UpdatePanel()
 
    // Line 5: ATR info
    double minRange = g_cachedATR * InpCC_ATRMinMult;
-   ObjectSetString(0, CC_OBJ_IL5, OBJPROP_TEXT,
-      StringFormat("ATR: %.1f | Min: %.1f (%.1fx)",
-         g_cachedATR / _Point, minRange / _Point, InpCC_ATRMinMult));
+   double brkRange = g_cachedATR * InpCC_BreakMult;
+   if(InpCC_BreakMult > 0)
+      ObjectSetString(0, CC_OBJ_IL5, OBJPROP_TEXT,
+         StringFormat("ATR: %.0f | Min: %.0f (%.1fx) | Brk: %.0f (%.1fx)",
+            g_cachedATR / _Point, minRange / _Point, InpCC_ATRMinMult,
+            brkRange / _Point, InpCC_BreakMult));
+   else
+      ObjectSetString(0, CC_OBJ_IL5, OBJPROP_TEXT,
+         StringFormat("ATR: %.0f | Min: %.0f (%.1fx)",
+            g_cachedATR / _Point, minRange / _Point, InpCC_ATRMinMult));
    ObjectSetInteger(0, CC_OBJ_IL5, OBJPROP_COLOR, C'120,125,145');
 }
 
