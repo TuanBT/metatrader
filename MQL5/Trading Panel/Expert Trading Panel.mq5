@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.23"
-#property version   "2.23"
+#property copyright "Tuan v2.24"
+#property version   "2.24"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -396,6 +396,20 @@ double CalcMinRisk()
    if(tickSz <= 0 || tickVal <= 0) return 1;
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    return MathCeil(minLot * (slDist / tickSz) * tickVal);  // round up to nearest $1
+}
+
+// Calculate the risk $ step that corresponds to one VOLUME_STEP (0.01 lot)
+// Used for +/- buttons to ensure each click changes lot by exactly 1 step
+double CalcRiskStep()
+{
+   if(g_cachedATR <= 0) return 1;
+   double slDist  = g_cachedATR * g_atrMult;
+   double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   if(tickSz <= 0 || tickVal <= 0) return 1;
+   double volStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   double stepCost = MathCeil(volStep * (slDist / tickSz) * tickVal);
+   return MathMax(1, stepCost);  // min $1
 }
 
 // Calculate TRUE projected max risk for Grid DCA (accounts for min-lot clipping)
@@ -1294,7 +1308,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.23";
+   string titleTxt = "Trading Panel v2.24";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1561,11 +1575,11 @@ void CreatePanel()
    ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TOOLTIP,
       "Nhập hệ số ATR (Average True Range).\nVD: 1.5 = SL cách giá vào 1.5 lần biên độ dao động.");
 
-   // Settings: Risk
-   ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk $1 (chuyển sang $Fixed)\nMin = risk tối thiểu cho min lot");
-   ObjectSetString(0, OBJ_SET_RISK_PLUS,  OBJPROP_TOOLTIP, "Tăng Risk $1 (chuyển sang $Fixed)");
-   ObjectSetString(0, OBJ_SET_PCT_MINUS,  OBJPROP_TOOLTIP, "Giảm Risk 1% (chuyển sang %Auto)");
-   ObjectSetString(0, OBJ_SET_PCT_PLUS,   OBJPROP_TOOLTIP, "Tăng Risk 1% (chuyển sang %Auto)");
+   // Settings: Risk (step = $ per 0.01 lot at current ATR SL)
+   ObjectSetString(0, OBJ_SET_RISK_MINUS, OBJPROP_TOOLTIP, "Giảm Risk (theo 0.01 lot step)\nChuyển sang $Fixed. Min = risk tối thiểu cho min lot");
+   ObjectSetString(0, OBJ_SET_RISK_PLUS,  OBJPROP_TOOLTIP, "Tăng Risk (theo 0.01 lot step)\nChuyển sang $Fixed");
+   ObjectSetString(0, OBJ_SET_PCT_MINUS,  OBJPROP_TOOLTIP, "Giảm Risk % (theo 0.01 lot step)\nChuyển sang %Auto");
+   ObjectSetString(0, OBJ_SET_PCT_PLUS,   OBJPROP_TOOLTIP, "Tăng Risk % (theo 0.01 lot step)\nChuyển sang %Auto");
    ObjectSetString(0, OBJ_SET_MODE_DOLLAR, OBJPROP_TOOLTIP,
       "$Fixed: Risk cố định theo số tiền.\nKhông tự thay đổi khi balance thay đổi.");
    ObjectSetString(0, OBJ_SET_MODE_PCT,   OBJPROP_TOOLTIP,
@@ -2028,7 +2042,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.23";
+   string panelTitle = "Trading Panel v2.24";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3078,7 +3092,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.23 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.24 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3322,12 +3336,13 @@ void OnChartEvent(const int id,
          ToggleSettings();
          return;
       }
-      // ── Settings: Risk $ ±1 → switch to $Fixed mode ──
+      // ── Settings: Risk $ ± (step = 0.01 lot worth) → switch to $Fixed mode ──
       if(sparam == OBJ_SET_RISK_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_RISK_PLUS, OBJPROP_STATE, false);
          g_riskPctMode = false;
-         g_riskMoney = MathMax(1, g_riskMoney + 1);
+         double step = CalcRiskStep();
+         g_riskMoney = MathMax(1, g_riskMoney + step);
          // Sync % from $
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
@@ -3341,8 +3356,9 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_SET_RISK_MINUS, OBJPROP_STATE, false);
          g_riskPctMode = false;
+         double step = CalcRiskStep();
          double minR = CalcMinRisk();
-         g_riskMoney = MathMax(minR, g_riskMoney - 1);
+         g_riskMoney = MathMax(minR, g_riskMoney - step);
          // Sync % from $
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
@@ -3352,14 +3368,16 @@ void OnChartEvent(const int id,
          UpdatePanel();
          return;
       }
-      // ── Settings: Risk % ±1 → switch to %Auto mode ──
+      // ── Settings: Risk % ± (step = 0.01 lot worth in %) → switch to %Auto mode ──
       if(sparam == OBJ_SET_PCT_PLUS)
       {
          ObjectSetInteger(0, OBJ_SET_PCT_PLUS, OBJPROP_STATE, false);
          g_riskPctMode = true;
-         g_riskPct = MathMin(100.0, MathFloor(g_riskPct + 1.0));
-         // Sync $ from %
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         double step = CalcRiskStep();
+         double stepPct = (bal > 0) ? MathMax(0.1, NormalizeDouble(step / bal * 100.0, 1)) : 1.0;
+         g_riskPct = MathMin(100.0, NormalizeDouble(g_riskPct + stepPct, 1));
+         // Sync $ from %
          if(bal > 0) g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
@@ -3371,10 +3389,12 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_SET_PCT_MINUS, OBJPROP_STATE, false);
          g_riskPctMode = true;
-         g_riskPct = MathMax(1.0, MathFloor(g_riskPct - 1.0));
-         // Sync $ from %
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         double step = CalcRiskStep();
+         double stepPct = (bal > 0) ? MathMax(0.1, NormalizeDouble(step / bal * 100.0, 1)) : 1.0;
          double minR = CalcMinRisk();
+         g_riskPct = MathMax(0.1, NormalizeDouble(g_riskPct - stepPct, 1));
+         // Sync $ from %
          if(bal > 0) g_riskMoney = MathMax(minR, MathFloor(bal * g_riskPct / 100.0));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
          ObjectSetString(0, OBJ_SET_PCT_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
