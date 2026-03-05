@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.21"
-#property version   "2.21"
+#property copyright "Tuan v2.22"
+#property version   "2.22"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -147,7 +147,6 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_SEC_TRADE  PREFIX "sec_trade"
 #define OBJ_SEC_ORDER  PREFIX "sec_order"
 // ORDER MANAGEMENT buttons
-#define OBJ_TRAIL_BTN  PREFIX "trail_btn"
 #define OBJ_TM_CLOSE   PREFIX "tm_close"
 #define OBJ_TM_SWING   PREFIX "tm_swing"
 #define OBJ_TM_BE      PREFIX "tm_be"
@@ -1295,7 +1294,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.21";
+   string titleTxt = "Trading Panel v2.22";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1464,21 +1463,18 @@ void CreatePanel()
               StringFormat("%dm", g_gridDelay), C'200,180,255', C'50,40,80', 8);
    y += 30;
 
-   // ── Trail SL toggle + mode buttons (1 row) ──
-   //   Modes: Close | Swing | BE
+   // ── Trail method buttons (1 row): Trail Close | Trail Swing | BE ──
+   //   Close/Swing: toggle (click again to deselect)
+   //   BE: toggle modifier (combinable with Close/Swing)
    {
       int bx = PX + 5;
-      int tw = 78;   // trail toggle width
       int gp = 2;    // gap between buttons
-      int mw = (IW - 2 - tw - 4 * gp) / 3;  // mode button width (3 modes)
-      MakeButton(OBJ_TRAIL_BTN, bx, y, tw, 26,
-                 "Trail: OFF", C'180,180,200', C'60,60,85', 8);
-      bx += tw + gp;
+      int mw = (IW - 2 - 2 * gp) / 3;  // 3 equal-width buttons
       MakeButton(OBJ_TM_CLOSE, bx, y, mw, 26,
-                 "Close", C'140,140,160', C'50,50,70', 7);
+                 "Trail Close", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_SWING, bx, y, mw, 26,
-                 "Swing", C'140,140,160', C'50,50,70', 7);
+                 "Trail Swing", C'140,140,160', C'50,50,70', 7);
       bx += mw + gp;
       MakeButton(OBJ_TM_BE, bx, y, mw, 26,
                  "BE", C'140,140,160', C'50,50,70', 7);
@@ -1590,11 +1586,6 @@ void CreatePanel()
       "Lệnh chờ BÁN: Click 1 lần tạo đường giá → kéo đến vị trí → click lần 2 xác nhận.");
 
    // Trail SL
-   ObjectSetString(0, OBJ_TRAIL_BTN, OBJPROP_TOOLTIP,
-      "Trailing Stop Loss — Bật/Tắt\n"
-      "Chỉ dời SL mà không đóng lệnh.\n"
-      "Chuyển mode bất cứ lúc nào, kể cả đang có lệnh.");
-
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
       "CLOSE — Theo r\xE2u nến bar[1]\n"
       "BUY: SL = Low[1] | SELL: SL = High[1]\n"
@@ -1696,23 +1687,10 @@ void UpdateTrailParamDisplay()
 //+------------------------------------------------------------------+
 void SyncButtonAppearance()
 {
-   // ── Trail SL button ──
-   if(g_trailEnabled)
-   {
-      ObjectSetString (0, OBJ_TRAIL_BTN, OBJPROP_TEXT, "Trail SL: ON");
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, C'0,100,60');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, C'0,100,60');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, COL_WHITE);
-   }
-   else
-   {
-      ObjectSetString (0, OBJ_TRAIL_BTN, OBJPROP_TEXT, "Trail SL: OFF");
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BORDER_COLOR, C'60,60,85');
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR, C'180,180,200');
-   }
+   // ── Derive g_trailEnabled from button states ──
+   g_trailEnabled = (g_trailRef != TRAIL_NONE || g_beEnabled);
 
-   // ── Trail mode buttons: Close/Swing (radio) + BE (toggle) ──
+   // ── Trail mode buttons: Close/Swing (toggle) + BE (toggle) ──
    // Close/Swing: Blue = selected, Green = active, Gray = not selected
    // BE: Orange = ON, Green = active (beReached), Gray = OFF
 
@@ -2033,7 +2011,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.21";
+   string panelTitle = "Trading Panel v2.22";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3046,8 +3024,8 @@ int OnInit()
    g_gridUserEnabled = true;
    g_gridMaxLevel   = 2;
    g_gridDelay      = 5;
-   g_trailEnabled   = true;
    // Map input trail mode to internal state (method + BE toggle)
+   // g_trailEnabled is derived in SyncButtonAppearance()
    switch(InpTrailMode)
    {
       case TRAIL_CLOSE:    g_trailRef = TRAIL_CLOSE; g_beEnabled = false; break;
@@ -3058,6 +3036,7 @@ int OnInit()
       case TRAIL_NONE:     g_trailRef = TRAIL_NONE;  g_beEnabled = false; break;
       default:             g_trailRef = TRAIL_SWING; g_beEnabled = false; break;
    }
+   g_trailEnabled = (g_trailRef != TRAIL_NONE || g_beEnabled);
    g_activeBot      = 1;   // Show CC panel by default
    // Bots start stopped — user presses Start
    cc_enabled       = false;
@@ -3082,7 +3061,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.21 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.22 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3566,17 +3545,6 @@ void OnChartEvent(const int id,
             ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
             Print("[PENDING] Line created – drag to price, click SELL PENDING again to confirm");
          }
-      }
-      // ── Trail SL toggle ──
-      else if(sparam == OBJ_TRAIL_BTN)
-      {
-         g_trailEnabled = !g_trailEnabled;
-         ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_STATE, false);
-         string modeLbl = (g_trailRef == TRAIL_CLOSE) ? "Close" :
-                          (g_trailRef == TRAIL_SWING) ? "Swing" : "None";
-         if(g_beEnabled) modeLbl = "BE+" + modeLbl;
-         Print(StringFormat("[PANEL] Trail SL %s (mode: %s)",
-               g_trailEnabled ? "ENABLED" : "DISABLED", modeLbl));
       }
       // ── Trail method: Close (toggle — click again to deselect) ──
       else if(sparam == OBJ_TM_CLOSE)
