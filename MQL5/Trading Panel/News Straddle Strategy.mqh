@@ -404,7 +404,7 @@ void NS_Timer()
       ns_lastScan = now;
    }
 
-   if(g_activeBot == 3) NS_UpdatePanel();  // Only update visible panel
+   if(g_activeBot == 2) NS_UpdatePanel();  // Only update visible panel
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -478,7 +478,7 @@ void NS_DestroyPanel()
 
 void NS_UpdatePanel()
 {
-   if(g_activeBot != 3) return;   // skip if not viewing
+   if(g_activeBot != 2) return;   // skip if not viewing
 
    datetime now = TimeCurrent();
 
