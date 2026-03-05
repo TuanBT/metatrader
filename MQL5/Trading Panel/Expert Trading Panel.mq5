@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.22"
-#property version   "2.22"
+#property copyright "Tuan v2.23"
+#property version   "2.23"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1294,7 +1294,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.22";
+   string titleTxt = "Trading Panel v2.23";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1980,8 +1980,25 @@ void UpdatePanel()
          ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, COL_DIM);
       }
       ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TEXT, " ");
-      ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT, " ");
-      ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT, " ");
+
+      // ── Row 1b: Margin info (repurpose Lock row when no position) ──
+      {
+         double reqMargin = 0;
+         double freeMgn   = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+         // Calculate required margin for BUY at current lot (representative)
+         if(!OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, avgLot, ask, reqMargin))
+            reqMargin = 0;
+         ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT,
+            StringFormat("Margin $%.2f", reqMargin));
+         ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT,
+            StringFormat("Free $%.0f", freeMgn));
+         // Red warning if can't afford, otherwise dim
+         bool marginOK = (freeMgn >= reqMargin && reqMargin > 0) || reqMargin == 0;
+         ObjectSetInteger(0, OBJ_LOCK_LBL, OBJPROP_COLOR,
+            marginOK ? COL_DIM : C'220,80,80');
+         ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR,
+            marginOK ? COL_DIM : C'220,80,80');
+      }
       ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
 
       // Refresh Grid DCA projected risk (risk$ may have changed)
@@ -2011,7 +2028,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.22";
+   string panelTitle = "Trading Panel v2.23";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3061,7 +3078,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.22 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.23 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
