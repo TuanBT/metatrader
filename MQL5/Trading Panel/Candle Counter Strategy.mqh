@@ -536,14 +536,14 @@ void CC_UpdatePanel()
    for(int r = 0; r < 4; r++)
    {
       bool isActive = (g_autoRegime && g_regimeName == rKeys[r]);
-      string marker = isActive ? "\x25B6 " : "  ";
+      string marker = isActive ? ">> " : "   ";
       color clr1 = isActive ? C'255,255,255' : C'80,80,100';
       color clr2 = isActive ? C'200,200,220' : C'65,65,85';
 
       if(g_autoRegime)
       {
          ObjectSetString(0, ilLine1[r], OBJPROP_TEXT,
-            StringFormat("%s%-7s ATR:%.1f  BE:%.1f  MinDist:%.1f  TP:%.1f",
+            StringFormat("%s%-7s ATR:%.1f  BE:%.1f  MinD:%.1f  TP:%.1f",
                marker, rNames[r], rATR[r], rBE[r], rTrail[r], rTP[r]));
          ObjectSetInteger(0, ilLine1[r], OBJPROP_COLOR, clr1);
          // Line 2: CC params (only show for active, hide for inactive)
@@ -555,17 +555,17 @@ void CC_UpdatePanel()
          }
          else
          {
-            ObjectSetString(0, ilLine2[r], OBJPROP_TEXT, "");
+            ObjectSetString(0, ilLine2[r], OBJPROP_TEXT, " ");
          }
       }
       else
       {
          // Auto OFF: show all regimes dimmed, no details
          ObjectSetString(0, ilLine1[r], OBJPROP_TEXT,
-            StringFormat("  %-7s ATR:%.1f  BE:%.1f  MinDist:%.1f  TP:%.1f",
+            StringFormat("   %-7s ATR:%.1f  BE:%.1f  MinD:%.1f  TP:%.1f",
                rNames[r], rATR[r], rBE[r], rTrail[r], rTP[r]));
          ObjectSetInteger(0, ilLine1[r], OBJPROP_COLOR, C'65,65,85');
-         ObjectSetString(0, ilLine2[r], OBJPROP_TEXT, "");
+         ObjectSetString(0, ilLine2[r], OBJPROP_TEXT, " ");
       }
    }
 }

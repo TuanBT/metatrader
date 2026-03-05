@@ -21,7 +21,7 @@
 //|  6. Click CC/NS Bot buttons on the right to enable bots                    |
 //+------------------------------------------------------------------+
 #property copyright "Tuan v2.27"
-#property version   "2.26"
+#property version   "2.27"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -206,7 +206,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define BOT_PANEL_Y       PY
 #define BOT_BTN_W         80
 #define BOT_BTN_H         24
-#define BOT_CONTENT_W     246
+#define BOT_CONTENT_W     340
 #define BOT_CONTENT_Y     (PY + BOT_BTN_H + 4)
 #define OBJ_SET_RISK_LBL  PREFIX "set_risk_lbl"
 #define OBJ_SET_RISK_EDT  PREFIX "set_risk_edt"
