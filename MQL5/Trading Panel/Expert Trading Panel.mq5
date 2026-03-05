@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/Trend Signal Bot buttons on the right to enable bots          |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.19"
-#property version   "2.19"
+#property copyright "Tuan v2.20"
+#property version   "2.20"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1286,7 +1286,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.19";
+   string titleTxt = "Trading Panel v2.20";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2002,7 +2002,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.19";
+   string panelTitle = "Trading Panel v2.20";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3044,7 +3044,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.19 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.20 | %s | Risk=$%.2f | SL=ATR | Trail=%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(InpTrailMode)));
@@ -3088,13 +3088,14 @@ void OnTick()
    // Detect position closed externally (SL hit, etc.)
    if(g_hasPos && !HasOwnPosition())
    {
-      // ── Detect "Large SL" = Grid DCA fully exhausted + closed at loss ──
+      // ── Detect loss scenarios that should pause bots ──
       // Check BEFORE resetting state
       bool wasGridMax = (g_gridEnabled && g_gridLevel >= g_gridMaxLevel);
       bool wasTrailProfit = g_beReached || (g_isBuy ? (g_currentSL > g_entryPx) : (g_currentSL < g_entryPx && g_currentSL > 0));
+      bool noGridEffect = (!g_gridEnabled || g_gridLevel == 0);
+      bool slUnmoved = (g_origSL > 0 && MathAbs(g_currentSL - g_origSL) < _Point);
 
-      // If Grid DCA was maxed out AND trailing hadn't locked profit → "Large SL"
-      // Directly pause integrated bots (no GV needed)
+      // Case 1: Grid DCA maxed out + loss → "Large SL"
       if(wasGridMax && !wasTrailProfit)
       {
          datetime pauseTs = (datetime)TimeCurrent();
@@ -3104,10 +3105,20 @@ void OnTick()
          Print(StringFormat("[PANEL] ⚠ LARGE SL detected — Grid DCA %d/%d maxed | Bots paused",
                g_gridLevel, g_gridMaxLevel));
       }
+      // Case 2: No Grid + SL never moved + no trailing profit → "Plain SL hit"
+      else if(noGridEffect && slUnmoved && !wasTrailProfit)
+      {
+         datetime pauseTs = (datetime)TimeCurrent();
+         if(cc_enabled) CC_SetPaused(pauseTs);
+         if(ts_enabled) TS_SetPaused(pauseTs);
+         if(ns_enabled) NS_SetPaused(pauseTs);
+         Print("[PANEL] ⚠ SL hit (no Grid, SL unmoved) — Bots paused");
+      }
       else
       {
-         Print(StringFormat("[PANEL] Position closed — Grid=%d/%d, TrailProfit=%s",
-               g_gridLevel, g_gridMaxLevel, wasTrailProfit ? "Yes" : "No"));
+         Print(StringFormat("[PANEL] Position closed — Grid=%d/%d, TrailProfit=%s, SLMoved=%s",
+               g_gridLevel, g_gridMaxLevel, wasTrailProfit ? "Yes" : "No",
+               slUnmoved ? "No" : "Yes"));
       }
 
       g_hasPos    = false;
