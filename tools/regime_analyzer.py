@@ -52,30 +52,39 @@ EMA_SLOW     = 50
 
 # ── Regime → parameter mapping ──────────────────────────────────────
 #   Each regime maps to recommended EA parameters.
+#   Risk is NOT changed (user controls risk $ manually).
 REGIME_PARAMS = {
     "trending_strong": {
-        "atr_mult":      1.5,
-        "atr_min_mult":  0.3,
-        "break_mult":    0.05,
-        "risk_pct":      1.0,
+        "atr_mult":       1.5,
+        "atr_min_mult":   0.3,
+        "break_mult":     0.05,
+        "be_start_mult":  0.8,    # BE trigger tighter
+        "trail_min_dist": 0.3,    # trail closer
+        "tp_atr_factor":  1.0,    # TP at 1× ATR
     },
     "trending_weak": {
-        "atr_mult":      1.5,
-        "atr_min_mult":  0.4,
-        "break_mult":    0.10,
-        "risk_pct":      0.8,
+        "atr_mult":       1.5,
+        "atr_min_mult":   0.4,
+        "break_mult":     0.10,
+        "be_start_mult":  1.0,
+        "trail_min_dist": 0.5,
+        "tp_atr_factor":  1.0,
     },
     "ranging": {
-        "atr_mult":      2.0,
-        "atr_min_mult":  0.5,
-        "break_mult":    0.15,
-        "risk_pct":      0.5,
+        "atr_mult":       2.0,
+        "atr_min_mult":   0.5,
+        "break_mult":     0.15,
+        "be_start_mult":  1.5,    # BE trigger wider (avoid chop)
+        "trail_min_dist": 0.8,    # trail wider
+        "tp_atr_factor":  0.5,    # TP at 0.5× ATR (quick exit)
     },
     "high_volatile": {
-        "atr_mult":      2.5,
-        "atr_min_mult":  0.3,
-        "break_mult":    0.10,
-        "risk_pct":      0.5,
+        "atr_mult":       2.5,
+        "atr_min_mult":   0.3,
+        "break_mult":     0.10,
+        "be_start_mult":  1.2,
+        "trail_min_dist": 0.5,
+        "tp_atr_factor":  1.0,
     },
 }
 
@@ -202,7 +211,9 @@ def write_config(files_dir: str, symbol: str, timeframe: str,
         f"atr_mult={params['atr_mult']:.2f}",
         f"atr_min_mult={params['atr_min_mult']:.2f}",
         f"break_mult={params['break_mult']:.2f}",
-        f"risk_pct={params['risk_pct']:.1f}",
+        f"be_start_mult={params['be_start_mult']:.2f}",
+        f"trail_min_dist={params['trail_min_dist']:.2f}",
+        f"tp_atr_factor={params['tp_atr_factor']:.2f}",
     ]
 
     os.makedirs(files_dir, exist_ok=True)
@@ -210,8 +221,9 @@ def write_config(files_dir: str, symbol: str, timeframe: str,
         f.write("\n".join(lines) + "\n")
 
     print(f"  [OK] {fname}  regime={regime}  conf={confidence:.2f}  "
-          f"atr_m={params['atr_mult']}  ccMin={params['atr_min_mult']}  "
-          f"ccBrk={params['break_mult']}  risk={params['risk_pct']}%")
+          f"atrM={params['atr_mult']}  ccMin={params['atr_min_mult']}  "
+          f"ccBrk={params['break_mult']}  BE={params['be_start_mult']}  "
+          f"trD={params['trail_min_dist']}  TP={params['tp_atr_factor']}")
 
 
 # ═════════════════════════════════════════════════════════════════════

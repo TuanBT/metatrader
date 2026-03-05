@@ -1200,16 +1200,30 @@ void ReadConfigINI()
             applied++;
          }
       }
-      else if(key == "risk_pct")
+      else if(key == "be_start_mult")
       {
          double v = StringToDouble(val);
-         if(v >= 0.1 && v <= 10.0)
+         if(v >= 0.1 && v <= 3.0)
          {
-            g_riskPct = v;
-            g_riskPctMode = true;
-            double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-            if(bal > 0)
-               g_riskMoney = MathMax(1, MathFloor(bal * g_riskPct / 100.0));
+            g_beStartMult = v;
+            applied++;
+         }
+      }
+      else if(key == "trail_min_dist")
+      {
+         double v = StringToDouble(val);
+         if(v >= 0.1 && v <= 3.0)
+         {
+            g_trailMinDist = v;
+            applied++;
+         }
+      }
+      else if(key == "tp_atr_factor")
+      {
+         double v = StringToDouble(val);
+         if(v >= 0.5 && v <= 3.0)
+         {
+            g_tpATRFactor = v;
             applied++;
          }
       }
@@ -1219,15 +1233,14 @@ void ReadConfigINI()
    g_lastConfigMod = modTime;
    g_lastConfigRead = TimeCurrent();
 
-   Print(StringFormat("[REGIME] Applied %d params | regime=%s conf=%.2f | atrM=%.2f ccMin=%.2f ccBrk=%.2f",
-      applied, g_regimeName, g_regimeConf, g_atrMult, cc_atrMinMult, cc_breakMult));
+   Print(StringFormat("[REGIME] Applied %d params | regime=%s conf=%.2f | atrM=%.2f ccMin=%.2f ccBrk=%.2f beS=%.1f trD=%.1f tp=%.1f",
+      applied, g_regimeName, g_regimeConf, g_atrMult, cc_atrMinMult, cc_breakMult,
+      g_beStartMult, g_trailMinDist, g_tpATRFactor));
 
    // Refresh Settings panel UI with new values
    if(applied > 0)
    {
-      ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
-      ObjectSetString(0, OBJ_SET_PCT_EDT,  OBJPROP_TEXT, StringFormat("%.1f", g_riskPct));
-      ObjectSetString(0, OBJ_SET_ATR_EDT,  OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
+      ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
       ChartRedraw(0);
    }
 }
@@ -3487,11 +3500,15 @@ void OnChartEvent(const int id,
          else
          {
             // Reset shadows to input defaults
-            cc_atrMinMult = InpCC_ATRMinMult;
-            cc_breakMult  = InpCC_BreakMult;
-            g_atrMult     = InpATRMult;
-            g_regimeName  = "";
-            g_regimeConf  = 0;
+            cc_atrMinMult  = InpCC_ATRMinMult;
+            cc_breakMult   = InpCC_BreakMult;
+            g_atrMult      = InpATRMult;
+            g_beStartMult  = 1.0;
+            g_trailMinDist = 0.5;
+            g_tpATRFactor  = 1.0;
+            g_regimeName   = "";
+            g_regimeConf   = 0;
+            ObjectSetString(0, OBJ_SET_ATR_EDT, OBJPROP_TEXT, StringFormat("%.1f", g_atrMult));
             Print("[REGIME] Auto‐regime OFF — params reset to inputs");
          }
          // Refresh auto button appearance
