@@ -5,8 +5,8 @@ echo  Regime Analyzer - Phan tich 1 lan
 echo ============================================
 echo.
 
-:: --all = ca 2 instances (Demo + EXNESS Real)
-"C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --all --symbols XAUUSDm --timeframes M15
+:: Them symbol: sua dong duoi, cach nhau bang dau phay (EXNESS dung 'm' suffix)
+"C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --all --symbols XAUUSDm,USDJPYm --timeframes M15
 
 echo.
 echo ============================================

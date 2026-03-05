@@ -6,7 +6,7 @@ echo  Nhan Ctrl+C de dung
 echo ============================================
 echo.
 
-:: --all = ca 2 instances (Demo + EXNESS Real)
+:: Them symbol: sua dong duoi, cach nhau bang dau phay (EXNESS dung 'm' suffix)
 :: --loop 300 = chay lai moi 300 giay (5 phut)
 "C:\Program Files\Python312\python.exe" C:\Temp\regime_analyzer.py --all --symbols XAUUSDm --timeframes M15 --loop 300
 
