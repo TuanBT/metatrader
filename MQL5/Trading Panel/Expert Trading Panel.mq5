@@ -20,8 +20,8 @@
 //|  5. Use "CLOSE ALL" to close all positions                      |
 //|  6. Click CC/NS Bot buttons on the right to enable bots                    |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.28"
-#property version   "2.28"
+#property copyright "Tuan v2.29"
+#property version   "2.29"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -1441,7 +1441,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.28";
+   string titleTxt = "Trading Panel v2.29";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2175,7 +2175,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.28";
+   string panelTitle = "Trading Panel v2.29";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3223,7 +3223,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.28 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.29 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3530,7 +3530,13 @@ void OnChartEvent(const int id,
          double volStep  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
          double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
          double prevLot  = MathMax(minLot, curLot - volStep);
-         g_riskMoney = CalcRiskForLot(prevLot);
+         // Use MathFloor (not MathCeil) so risk actually decreases for the smaller lot
+         double tickSz   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+         double tickVal  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+         if(tickSz > 0 && tickVal > 0 && slDist > 0)
+            g_riskMoney = MathMax(1, MathFloor(prevLot * (slDist / tickSz) * tickVal));
+         else
+            g_riskMoney = MathMax(1, g_riskMoney - 1);
          // Sync % from $
          double bal = AccountInfoDouble(ACCOUNT_BALANCE);
          if(bal > 0) g_riskPct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
@@ -3570,8 +3576,13 @@ void OnChartEvent(const int id,
          double volStep  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
          double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
          double prevLot  = MathMax(minLot, curLot - volStep);
-         double targetRisk = CalcRiskForLot(prevLot);
-         g_riskMoney = targetRisk;
+         // Use MathFloor so risk actually decreases
+         double tickSz   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+         double tickVal  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+         if(tickSz > 0 && tickVal > 0 && slDist > 0)
+            g_riskMoney = MathMax(1, MathFloor(prevLot * (slDist / tickSz) * tickVal));
+         else
+            g_riskMoney = MathMax(1, g_riskMoney - 1);
          // Sync % from $
          if(bal > 0) g_riskPct = MathMax(0.1, NormalizeDouble(g_riskMoney / bal * 100.0, 1));
          ObjectSetString(0, OBJ_SET_RISK_EDT, OBJPROP_TEXT, IntegerToString((int)g_riskMoney));
