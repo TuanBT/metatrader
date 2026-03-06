@@ -119,7 +119,6 @@ double g_origSL       = 0;
 
 // Management toggles
 ENUM_TRAIL_MODE g_trailRef = TRAIL_NONE;
-bool   g_trailEnabled = false;  // derived: g_trailRef != TRAIL_NONE
 bool   g_beEnabled    = false;
 bool   g_beReached    = false;
 bool   g_autoTPEnabled = false;
@@ -764,25 +763,40 @@ void CreatePanel()
 
    // Tooltips
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
-      "CLOSE \x2014 Theo r\xE2u n\x1EBFn bar[1]\n"
+      "Trail CLOSE: SL = bar[1] wick\n"
       "BUY: SL = Low[1] | SELL: SL = High[1]\n"
-      "Click l\x1EA7n n\x1EEFa \x111\x1EC3 t\x1EAFt.\n"
-      "K\x1EBFt h\x1EE3p +BE: BE tr\x01B0\x1EDCc \x2192 r\x1ED3i Close.");
+      "Min distance: 0.5 x ATR\n"
+      "Click again to turn OFF");
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "SWING \x2014 Theo ch\xE2n s\xF3ng g\x1EA7n nh\x1EA5t\n"
+      "Trail SWING: SL = swing low/high\n"
       "BUY: SL = Swing Low | SELL: SL = Swing High\n"
       "Lookback: " + IntegerToString(InpTrailLookback) + " bars\n"
-      "Click l\x1EA7n n\x1EEFa \x111\x1EC3 t\x1EAFt.\n"
-      "K\x1EBFt h\x1EE3p +BE: BE tr\x01B0\x1EDCc \x2192 r\x1ED3i Swing.");
+      "Click again to turn OFF");
    ObjectSetString(0, OBJ_BE_BTN, OBJPROP_TOOLTIP,
-      "BE \x2014 D\x1EDDi SL v\x1EC1 entry khi l\x1EE3i >= 1 ATR\n"
-      "K\x1EBFt h\x1EE3p v\x1EDBi Close/Swing: BE tr\x01B0\x1EDCc, r\x1ED3i trail\n"
-      "Cam = b\x1EADt ch\x1EDD | Xanh = \x111\xE3 v\x1EC1 BE | X\xE1m = t\x1EAFt");
+      "BE: Move SL to breakeven at >= 1 ATR profit\n"
+      "Combine with Close/Swing: BE first, then trail\n"
+      "Green = reached | Orange = waiting | Gray = off");
    ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TOOLTIP,
-      "Auto TP \x2014 \x110\xF3ng 50% kh\x1ED1i l\x01B0\x1EE3ng khi l\x1EE3i \x111\x1EA1t m\x1EE5c ti\xEAu\n"
-      "N\x1EBFu lot = min \x2192 b\x1ECF qua (kh\xF4ng \x111\xF3ng \x111\x01B0\x1EE3c)");
+      "Auto TP: Close 50% at 1:1 RR (SL distance)\n"
+      "If lot = min, cannot partial close");
    ObjectSetString(0, OBJ_CLOSE_BTN, OBJPROP_TOOLTIP,
-      "\x110\xF3ng T\x1EA4T C\x1EA2 c\xE1c l\x1EC7nh \x111ang m\x1EDF. Kh\xF4ng th\x1EC3 ho\xE0n t\xE1c!");
+      "Close ALL positions immediately. Cannot undo!");
+   ObjectSetString(0, OBJ_BUY_BTN, OBJPROP_TOOLTIP,
+      "Market BUY at Ask. SL auto = 1 ATR below");
+   ObjectSetString(0, OBJ_SELL_BTN, OBJPROP_TOOLTIP,
+      "Market SELL at Bid. SL auto = 1 ATR above");
+   ObjectSetString(0, OBJ_BUY_STOP, OBJPROP_TOOLTIP,
+      "Buy Stop: Pending buy above market\nDrag Entry + SL lines on chart");
+   ObjectSetString(0, OBJ_SELL_STOP, OBJPROP_TOOLTIP,
+      "Sell Stop: Pending sell below market\nDrag Entry + SL lines on chart");
+   ObjectSetString(0, OBJ_BUY_LMT, OBJPROP_TOOLTIP,
+      "Buy Limit: Pending buy below market\nDrag Entry + SL lines on chart");
+   ObjectSetString(0, OBJ_SELL_LMT, OBJPROP_TOOLTIP,
+      "Sell Limit: Pending sell above market\nDrag Entry + SL lines on chart");
+   ObjectSetString(0, OBJ_EXECUTE, OBJPROP_TOOLTIP,
+      "Place the pending order with current Entry + SL lines");
+   ObjectSetString(0, OBJ_CANCEL, OBJPROP_TOOLTIP,
+      "Cancel and remove order lines from chart");
 
    ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, y - PY + 5);
    UpdatePanelVisibility();
@@ -998,7 +1012,7 @@ void UpdateActiveSLLabel()
    ObjectSetString(0, OBJ_SL_ACTIVE, OBJPROP_TOOLTIP,
       StringFormat("SL: %." + IntegerToString(_Digits) + "f | Lock: $%+.2f", slPx, lockedPnL));
 
-   string slTxt = StringFormat("SL Lock $%+.2f", lockedPnL);
+   string slTxt = StringFormat("SL $%+.2f", lockedPnL);
    color clr = lockedPnL >= 0 ? COL_LOCK_UP : COL_LOCK_DN;
    MakePriceTag(OBJ_SL_ACT_TAG, slPx, slTxt, clr, COL_SL);
 }
@@ -1028,7 +1042,7 @@ void UpdateInfo()
          pnl >= 0 ? COL_PROFIT : COL_LOSS);
 
       ObjectSetString(0, OBJ_INFO2, OBJPROP_TEXT,
-         StringFormat("SL Lock: $%+.2f  |  SL %." + IntegerToString(_Digits) + "f",
+         StringFormat("SL $%+.2f  |  %." + IntegerToString(_Digits) + "f",
                       lockedPnL, g_currentSL));
       ObjectSetInteger(0, OBJ_INFO2, OBJPROP_COLOR,
          lockedPnL >= 0 ? COL_LOCK_UP : COL_LOCK_DN);
@@ -1040,10 +1054,9 @@ void UpdateInfo()
       ObjectSetInteger(0, OBJ_INFO3, OBJPROP_COLOR, COL_DIM);
 
       // Update trail mode buttons: Blue=selected, Green=active, Gray=off
-      g_trailEnabled = (g_trailRef != TRAIL_NONE);
       {
          bool trailActive = false;
-         if(g_trailEnabled)
+         if(g_trailRef != TRAIL_NONE)
          {
             double refE = GetAvgEntry();
             if(refE <= 0) refE = g_entryPx;
@@ -1184,7 +1197,6 @@ void UpdateInfo()
 
       g_entryPx  = 0;   g_origSL    = 0;
       g_currentSL = 0;   g_trailRef = TRAIL_NONE;
-      g_trailEnabled = false;
       g_beEnabled = false; g_beReached = false;
       g_autoTPEnabled = false; g_tp1Hit = false;
       g_tpDist = 0;
@@ -1389,7 +1401,7 @@ void OnTick()
       Print("[ExO] Position closed");
       RemoveActiveSLLine();
       g_trailRef = TRAIL_NONE;
-      g_trailEnabled = false; g_beEnabled = false;
+      g_beEnabled = false;
       g_beReached = false; g_autoTPEnabled = false;
       g_tp1Hit = false;
    }
@@ -1455,15 +1467,13 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       else if(sparam == OBJ_TM_CLOSE && g_hasPos)
       {
          g_trailRef = (g_trailRef == TRAIL_CLOSE) ? TRAIL_NONE : TRAIL_CLOSE;
-         g_trailEnabled = (g_trailRef != TRAIL_NONE);
-         Print("[ExO] Trail → ", (g_trailRef == TRAIL_CLOSE) ? "Close" : "None");
+         Print("[ExO] Trail -> ", (g_trailRef == TRAIL_CLOSE) ? "Close" : "None");
          UpdateInfo(); ChartRedraw();
       }
       else if(sparam == OBJ_TM_SWING && g_hasPos)
       {
          g_trailRef = (g_trailRef == TRAIL_SWING) ? TRAIL_NONE : TRAIL_SWING;
-         g_trailEnabled = (g_trailRef != TRAIL_NONE);
-         Print("[ExO] Trail → ", (g_trailRef == TRAIL_SWING) ? "Swing" : "None");
+         Print("[ExO] Trail -> ", (g_trailRef == TRAIL_SWING) ? "Swing" : "None");
          UpdateInfo(); ChartRedraw();
       }
       else if(sparam == OBJ_BE_BTN && g_hasPos)
