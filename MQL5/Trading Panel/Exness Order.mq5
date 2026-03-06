@@ -1,18 +1,26 @@
 //+------------------------------------------------------------------+
 //|                                                 Exness Order.mq5 |
-//|         Exness-style order + management EA (v1.00)               |
+//|         Exness-style order + management EA (v1.03)               |
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
 #property copyright "Trading Tools"
-#property version   "1.02"
+#property version   "1.03"
 #property strict
 
 // ═══════════════════════════════════════════════════════════════════
 // INPUTS
 // ═══════════════════════════════════════════════════════════════════
+enum ENUM_TRAIL_MODE
+{
+   TRAIL_NONE      = 0,  // No trail
+   TRAIL_CLOSE     = 1,  // Close (bar[1] wick)
+   TRAIL_SWING     = 2,  // Swing (swing low/high)
+};
+
 input double InpRiskDollar   = 10;       // Risk $ per trade
 input int    InpATRPeriod    = 14;       // ATR period (for Trail/BE/TP)
 input ENUM_TIMEFRAMES InpATRTF = PERIOD_CURRENT; // ATR timeframe
+input int    InpTrailLookback = 5;       // Swing lookback bars (Swing mode)
 input ulong  InpMagic        = 202503;   // Magic number
 input int    InpDeviation    = 20;       // Max slippage (points)
 
@@ -43,7 +51,8 @@ input int    InpDeviation    = 20;       // Max slippage (points)
 #define OBJ_CANCEL      PREFIX "cancel"
 // Management buttons
 #define OBJ_SEP3        PREFIX "sep3"
-#define OBJ_TRAIL_BTN   PREFIX "trail_btn"
+#define OBJ_TM_CLOSE    PREFIX "tm_close"
+#define OBJ_TM_SWING    PREFIX "tm_swing"
 #define OBJ_BE_BTN      PREFIX "be_btn"
 #define OBJ_AUTOTP_BTN  PREFIX "autotp_btn"
 #define OBJ_CLOSE_BTN   PREFIX "close_btn"
@@ -109,7 +118,8 @@ double g_currentSL    = 0;
 double g_origSL       = 0;
 
 // Management toggles
-bool   g_trailEnabled = false;
+ENUM_TRAIL_MODE g_trailRef = TRAIL_NONE;
+bool   g_trailEnabled = false;  // derived: g_trailRef != TRAIL_NONE
 bool   g_beEnabled    = false;
 bool   g_beReached    = false;
 bool   g_autoTPEnabled = false;
@@ -427,7 +437,7 @@ bool PartialClose50()
 void ManageTrailBE()
 {
    if(!g_hasPos) return;
-   if(!g_trailEnabled && !g_beEnabled) return;
+   if(g_trailRef == TRAIL_NONE && !g_beEnabled) return;
    if(g_cachedATR <= 0) return;
 
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -465,8 +475,8 @@ void ManageTrailBE()
       return;
    }
 
-   // ── Trail Close: SL = previous bar Low/High ──
-   if(g_trailEnabled)
+   // ── Trail Close / Swing: per-bar trailing ──
+   if(g_trailRef == TRAIL_CLOSE || g_trailRef == TRAIL_SWING)
    {
       if(g_beEnabled && !g_beReached) return;
       if(!g_beEnabled && moveFromEntry < fullATR) return;
@@ -474,15 +484,69 @@ void ManageTrailBE()
       double minDist = fullATR * 0.5;
       double newSL = 0;
 
-      if(g_isBuy)
+      switch(g_trailRef)
       {
-         newSL = NormPrice(iLow(_Symbol, _Period, 1));
-         if((bid - newSL) < minDist) return;
-      }
-      else
-      {
-         newSL = NormPrice(iHigh(_Symbol, _Period, 1));
-         if((newSL - ask) < minDist) return;
+         case TRAIL_CLOSE:
+         {
+            if(g_isBuy)
+            {
+               newSL = NormPrice(iLow(_Symbol, _Period, 1));
+               if((bid - newSL) < minDist) return;
+            }
+            else
+            {
+               newSL = NormPrice(iHigh(_Symbol, _Period, 1));
+               if((newSL - ask) < minDist) return;
+            }
+            break;
+         }
+         case TRAIL_SWING:
+         {
+            int N = InpTrailLookback;
+            if(N < 3) N = 5;
+            double swingPrice = 0;
+
+            if(g_isBuy)
+            {
+               // Find true swing low (pivot)
+               for(int i = 2; i <= N; i++)
+               {
+                  double lo  = iLow(_Symbol, _Period, i);
+                  double loL = iLow(_Symbol, _Period, i - 1);
+                  double loR = iLow(_Symbol, _Period, i + 1);
+                  if(lo < loL && lo < loR) { swingPrice = lo; break; }
+               }
+               // Fallback: first bearish candle low
+               if(swingPrice <= 0)
+                  for(int i = 1; i <= N; i++)
+                     if(iClose(_Symbol, _Period, i) < iOpen(_Symbol, _Period, i))
+                     { swingPrice = iLow(_Symbol, _Period, i); break; }
+               if(swingPrice <= 0) return;
+               newSL = NormPrice(swingPrice);
+               if((bid - newSL) < minDist) return;
+            }
+            else
+            {
+               // Find true swing high (pivot)
+               for(int i = 2; i <= N; i++)
+               {
+                  double hi  = iHigh(_Symbol, _Period, i);
+                  double hiL = iHigh(_Symbol, _Period, i - 1);
+                  double hiR = iHigh(_Symbol, _Period, i + 1);
+                  if(hi > hiL && hi > hiR) { swingPrice = hi; break; }
+               }
+               // Fallback: first bullish candle high
+               if(swingPrice <= 0)
+                  for(int i = 1; i <= N; i++)
+                     if(iClose(_Symbol, _Period, i) > iOpen(_Symbol, _Period, i))
+                     { swingPrice = iHigh(_Symbol, _Period, i); break; }
+               if(swingPrice <= 0) return;
+               newSL = NormPrice(swingPrice);
+               if((newSL - ask) < minDist) return;
+            }
+            break;
+         }
+         default: return;
       }
 
       if(newSL <= 0) return;
@@ -491,7 +555,8 @@ void ManageTrailBE()
       if(g_isBuy && newSL >= bid) return;
       if(!g_isBuy && newSL <= ask) return;
 
-      Print("[ExO] Trail: SL -> ", DoubleToString(newSL, _Digits));
+      string mName = (g_trailRef == TRAIL_CLOSE) ? "Close" : "Swing";
+      Print("[ExO] Trail ", mName, ": SL -> ", DoubleToString(newSL, _Digits));
       ModifySL(newSL);
    }
 }
@@ -642,7 +707,7 @@ void CreatePanel()
    int y = PY;
    MakeRect(OBJ_BG, PX, PY, PW, 400, COL_BG, COL_BORDER);
 
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.02", COL_WHITE, 11, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.03", COL_WHITE, 11, FONT_BOLD);
    y += 28;
 
    // Risk row
@@ -687,13 +752,37 @@ void CreatePanel()
    // MANAGEMENT section
    MakeRect(OBJ_SEP3, IX, y, IW, 1, COL_BORDER, COL_BORDER);
    y += 6;
-   MakeButton(OBJ_TRAIL_BTN, PX + 5, y, bw, 28, "Trail: OFF", COL_DIM, COL_OFF, 8);
-   MakeButton(OBJ_BE_BTN, PX + 5 + bw + 6, y, bw, 28, "BE: OFF", COL_DIM, COL_OFF, 8);
+   int mw3 = (IW - 12) / 3;
+   MakeButton(OBJ_TM_CLOSE, PX + 5, y, mw3, 28, "Close", COL_DIM, COL_OFF, 8);
+   MakeButton(OBJ_TM_SWING, PX + 5 + mw3 + 6, y, mw3, 28, "Swing", COL_DIM, COL_OFF, 8);
+   MakeButton(OBJ_BE_BTN, PX + 5 + 2*(mw3 + 6), y, mw3, 28, "BE", COL_DIM, COL_OFF, 8);
    y += 32;
    MakeButton(OBJ_AUTOTP_BTN, PX + 5, y, IW, 28, "Auto TP: OFF", COL_DIM, COL_OFF, 8);
    y += 32;
    MakeButton(OBJ_CLOSE_BTN, PX + 5, y, IW, 32, "CLOSE POSITION", COL_WHITE, COL_SELL, 10, FONT_BOLD);
    y += 36;
+
+   // Tooltips
+   ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
+      "CLOSE \x2014 Theo r\xE2u n\x1EBFn bar[1]\n"
+      "BUY: SL = Low[1] | SELL: SL = High[1]\n"
+      "Click l\x1EA7n n\x1EEFa \x111\x1EC3 t\x1EAFt.\n"
+      "K\x1EBFt h\x1EE3p +BE: BE tr\x01B0\x1EDCc \x2192 r\x1ED3i Close.");
+   ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
+      "SWING \x2014 Theo ch\xE2n s\xF3ng g\x1EA7n nh\x1EA5t\n"
+      "BUY: SL = Swing Low | SELL: SL = Swing High\n"
+      "Lookback: " + IntegerToString(InpTrailLookback) + " bars\n"
+      "Click l\x1EA7n n\x1EEFa \x111\x1EC3 t\x1EAFt.\n"
+      "K\x1EBFt h\x1EE3p +BE: BE tr\x01B0\x1EDCc \x2192 r\x1ED3i Swing.");
+   ObjectSetString(0, OBJ_BE_BTN, OBJPROP_TOOLTIP,
+      "BE \x2014 D\x1EDDi SL v\x1EC1 entry khi l\x1EE3i >= 1 ATR\n"
+      "K\x1EBFt h\x1EE3p v\x1EDBi Close/Swing: BE tr\x01B0\x1EDCc, r\x1ED3i trail\n"
+      "Cam = b\x1EADt ch\x1EDD | Xanh = \x111\xE3 v\x1EC1 BE | X\xE1m = t\x1EAFt");
+   ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TOOLTIP,
+      "Auto TP \x2014 \x110\xF3ng 50% kh\x1ED1i l\x01B0\x1EE3ng khi l\x1EE3i \x111\x1EA1t m\x1EE5c ti\xEAu\n"
+      "N\x1EBFu lot = min \x2192 b\x1ECF qua (kh\xF4ng \x111\xF3ng \x111\x01B0\x1EE3c)");
+   ObjectSetString(0, OBJ_CLOSE_BTN, OBJPROP_TOOLTIP,
+      "\x110\xF3ng T\x1EA4T C\x1EA2 c\xE1c l\x1EC7nh \x111ang m\x1EDF. Kh\xF4ng th\x1EC3 ho\xE0n t\xE1c!");
 
    ObjectSetInteger(0, OBJ_BG, OBJPROP_YSIZE, y - PY + 5);
    UpdatePanelVisibility();
@@ -712,8 +801,9 @@ void UpdatePanelVisibility()
       HideObject(OBJ_EXECUTE);     HideObject(OBJ_CANCEL);
       HideObject(OBJ_SEP2);
 
-      ShowObject(OBJ_SEP3);        ShowObject(OBJ_TRAIL_BTN);
-      ShowObject(OBJ_BE_BTN);      ShowObject(OBJ_AUTOTP_BTN);
+      ShowObject(OBJ_SEP3);        ShowObject(OBJ_TM_CLOSE);
+      ShowObject(OBJ_TM_SWING);    ShowObject(OBJ_BE_BTN);
+      ShowObject(OBJ_AUTOTP_BTN);
       ShowObject(OBJ_CLOSE_BTN);
    }
    else
@@ -724,8 +814,9 @@ void UpdatePanelVisibility()
       ShowObject(OBJ_EXECUTE);     ShowObject(OBJ_CANCEL);
       ShowObject(OBJ_SEP2);
 
-      HideObject(OBJ_SEP3);        HideObject(OBJ_TRAIL_BTN);
-      HideObject(OBJ_BE_BTN);      HideObject(OBJ_AUTOTP_BTN);
+      HideObject(OBJ_SEP3);        HideObject(OBJ_TM_CLOSE);
+      HideObject(OBJ_TM_SWING);    HideObject(OBJ_BE_BTN);
+      HideObject(OBJ_AUTOTP_BTN);
       HideObject(OBJ_CLOSE_BTN);
    }
 }
@@ -948,13 +1039,51 @@ void UpdateInfo()
                       g_entryPx, spread));
       ObjectSetInteger(0, OBJ_INFO3, OBJPROP_COLOR, COL_DIM);
 
-      // Update management buttons
-      ObjectSetString(0, OBJ_TRAIL_BTN, OBJPROP_TEXT,
-         g_trailEnabled ? "Trail: ON" : "Trail: OFF");
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_BGCOLOR,
-         g_trailEnabled ? COL_ON : COL_OFF);
-      ObjectSetInteger(0, OBJ_TRAIL_BTN, OBJPROP_COLOR,
-         g_trailEnabled ? COL_WHITE : COL_DIM);
+      // Update trail mode buttons: Blue=selected, Green=active, Gray=off
+      g_trailEnabled = (g_trailRef != TRAIL_NONE);
+      {
+         bool trailActive = false;
+         if(g_trailEnabled)
+         {
+            double refE = GetAvgEntry();
+            if(refE <= 0) refE = g_entryPx;
+            double cur2 = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                                  : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            double mv = g_isBuy ? (cur2 - refE) : (refE - cur2);
+            if(g_beEnabled && g_beReached)
+               trailActive = true;
+            else
+               trailActive = (g_cachedATR > 0 && mv >= g_cachedATR);
+         }
+
+         // Close button
+         if(g_trailRef == TRAIL_CLOSE)
+         {
+            ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TEXT, "Close");
+            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, trailActive ? COL_ON : C'30,80,140');
+            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_WHITE);
+         }
+         else
+         {
+            ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TEXT, "Close");
+            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, COL_OFF);
+            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_DIM);
+         }
+
+         // Swing button
+         if(g_trailRef == TRAIL_SWING)
+         {
+            ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TEXT, "Swing");
+            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, trailActive ? COL_ON : C'30,80,140');
+            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_WHITE);
+         }
+         else
+         {
+            ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TEXT, "Swing");
+            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, COL_OFF);
+            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_DIM);
+         }
+      }
 
       ObjectSetString(0, OBJ_BE_BTN, OBJPROP_TEXT,
          g_beReached ? "BE: \x2713" : (g_beEnabled ? "BE: ON" : "BE: OFF"));
@@ -1054,7 +1183,8 @@ void UpdateInfo()
       ObjectSetString(0, OBJ_INFO3, OBJPROP_TEXT, " ");
 
       g_entryPx  = 0;   g_origSL    = 0;
-      g_currentSL = 0;   g_trailEnabled = false;
+      g_currentSL = 0;   g_trailRef = TRAIL_NONE;
+      g_trailEnabled = false;
       g_beEnabled = false; g_beReached = false;
       g_autoTPEnabled = false; g_tp1Hit = false;
       g_tpDist = 0;
@@ -1258,6 +1388,7 @@ void OnTick()
    {
       Print("[ExO] Position closed");
       RemoveActiveSLLine();
+      g_trailRef = TRAIL_NONE;
       g_trailEnabled = false; g_beEnabled = false;
       g_beReached = false; g_autoTPEnabled = false;
       g_tp1Hit = false;
@@ -1321,9 +1452,18 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          ExecutePendingOrder();
       else if(sparam == OBJ_CANCEL && !g_hasPos)
          RemoveOrderLines();
-      else if(sparam == OBJ_TRAIL_BTN && g_hasPos)
+      else if(sparam == OBJ_TM_CLOSE && g_hasPos)
       {
-         g_trailEnabled = !g_trailEnabled;
+         g_trailRef = (g_trailRef == TRAIL_CLOSE) ? TRAIL_NONE : TRAIL_CLOSE;
+         g_trailEnabled = (g_trailRef != TRAIL_NONE);
+         Print("[ExO] Trail → ", (g_trailRef == TRAIL_CLOSE) ? "Close" : "None");
+         UpdateInfo(); ChartRedraw();
+      }
+      else if(sparam == OBJ_TM_SWING && g_hasPos)
+      {
+         g_trailRef = (g_trailRef == TRAIL_SWING) ? TRAIL_NONE : TRAIL_SWING;
+         g_trailEnabled = (g_trailRef != TRAIL_NONE);
+         Print("[ExO] Trail → ", (g_trailRef == TRAIL_SWING) ? "Swing" : "None");
          UpdateInfo(); ChartRedraw();
       }
       else if(sparam == OBJ_BE_BTN && g_hasPos)
