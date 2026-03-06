@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                                 Exness Order.mq5 |
-//|         Exness-style order + management EA (v1.03)               |
+//|         Exness-style order + management EA (v1.04)               |
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
 #property copyright "Trading Tools"
-#property version   "1.03"
+#property version   "1.04"
 #property strict
 
 // ═══════════════════════════════════════════════════════════════════
@@ -43,10 +43,8 @@ input int    InpDeviation    = 20;       // Max slippage (points)
 #define OBJ_SEP2        PREFIX "sep2"
 #define OBJ_BUY_BTN     PREFIX "buy_btn"
 #define OBJ_SELL_BTN    PREFIX "sell_btn"
-#define OBJ_BUY_STOP    PREFIX "buy_stop"
-#define OBJ_SELL_STOP   PREFIX "sell_stop"
-#define OBJ_BUY_LMT     PREFIX "buy_lmt"
-#define OBJ_SELL_LMT    PREFIX "sell_lmt"
+#define OBJ_BUY_PND     PREFIX "buy_pnd"
+#define OBJ_SELL_PND    PREFIX "sell_pnd"
 #define OBJ_EXECUTE     PREFIX "execute"
 #define OBJ_CANCEL      PREFIX "cancel"
 // Management buttons
@@ -107,7 +105,7 @@ input int    InpDeviation    = 20;       // Max slippage (points)
 int    g_atrHandle    = INVALID_HANDLE;
 double g_cachedATR    = 0;
 double g_riskMoney    = 0;
-int    g_orderMode    = 0;  // 0=none, 1=buy stop, 2=sell stop, 3=buy limit, 4=sell limit
+int    g_orderMode    = 0;  // 0=none, 1=buy pending, 2=sell pending
 bool   g_linesActive  = false;
 
 // Position state
@@ -172,7 +170,7 @@ double CalcMoney(double lot, double dist)
    return lot * (dist / tickSz) * tickVal;
 }
 
-bool IsBuyMode() { return (g_orderMode == 1 || g_orderMode == 3); }
+bool IsBuyMode() { return (g_orderMode == 1); }
 
 // ═══════════════════════════════════════════════════════════════════
 // POSITION FUNCTIONS
@@ -737,11 +735,8 @@ void CreatePanel()
    MakeButton(OBJ_BUY_BTN,  PX + 5, y, bw, 36, "BUY", COL_WHITE, COL_BUY, 11);
    MakeButton(OBJ_SELL_BTN, PX + 5 + bw + 6, y, bw, 36, "SELL", COL_WHITE, COL_SELL, 11);
    y += 40;
-   MakeButton(OBJ_BUY_STOP,  PX + 5, y, bw, 28, "Buy Stop", COL_WHITE, C'0,90,55', 8);
-   MakeButton(OBJ_SELL_STOP, PX + 5 + bw + 6, y, bw, 28, "Sell Stop", COL_WHITE, C'150,40,40', 8);
-   y += 32;
-   MakeButton(OBJ_BUY_LMT,  PX + 5, y, bw, 28, "Buy Limit", COL_WHITE, C'0,70,100', 8);
-   MakeButton(OBJ_SELL_LMT, PX + 5 + bw + 6, y, bw, 28, "Sell Limit", COL_WHITE, C'120,50,80', 8);
+   MakeButton(OBJ_BUY_PND,  PX + 5, y, bw, 28, "Buy Pending", COL_WHITE, C'0,90,55', 8);
+   MakeButton(OBJ_SELL_PND, PX + 5 + bw + 6, y, bw, 28, "Sell Pending", COL_WHITE, C'150,40,40', 8);
    y += 32;
    MakeButton(OBJ_EXECUTE, PX + 5, y, IW, 32, "PLACE ORDER", COL_WHITE, COL_EXEC, 10, FONT_BOLD);
    y += 36;
@@ -785,14 +780,10 @@ void CreatePanel()
       "Market BUY at Ask. SL auto = 1 ATR below");
    ObjectSetString(0, OBJ_SELL_BTN, OBJPROP_TOOLTIP,
       "Market SELL at Bid. SL auto = 1 ATR above");
-   ObjectSetString(0, OBJ_BUY_STOP, OBJPROP_TOOLTIP,
-      "Buy Stop: Pending buy above market\nDrag Entry + SL lines on chart");
-   ObjectSetString(0, OBJ_SELL_STOP, OBJPROP_TOOLTIP,
-      "Sell Stop: Pending sell below market\nDrag Entry + SL lines on chart");
-   ObjectSetString(0, OBJ_BUY_LMT, OBJPROP_TOOLTIP,
-      "Buy Limit: Pending buy below market\nDrag Entry + SL lines on chart");
-   ObjectSetString(0, OBJ_SELL_LMT, OBJPROP_TOOLTIP,
-      "Sell Limit: Pending sell above market\nDrag Entry + SL lines on chart");
+   ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TOOLTIP,
+      "Buy Pending: auto Stop/Limit based on price\nDrag Entry + SL lines on chart");
+   ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TOOLTIP,
+      "Sell Pending: auto Stop/Limit based on price\nDrag Entry + SL lines on chart");
    ObjectSetString(0, OBJ_EXECUTE, OBJPROP_TOOLTIP,
       "Place the pending order with current Entry + SL lines");
    ObjectSetString(0, OBJ_CANCEL, OBJPROP_TOOLTIP,
@@ -810,8 +801,7 @@ void UpdatePanelVisibility()
    if(hasPos)
    {
       HideObject(OBJ_BUY_BTN);    HideObject(OBJ_SELL_BTN);
-      HideObject(OBJ_BUY_STOP);   HideObject(OBJ_SELL_STOP);
-      HideObject(OBJ_BUY_LMT);    HideObject(OBJ_SELL_LMT);
+      HideObject(OBJ_BUY_PND);    HideObject(OBJ_SELL_PND);
       HideObject(OBJ_EXECUTE);     HideObject(OBJ_CANCEL);
       HideObject(OBJ_SEP2);
 
@@ -823,8 +813,7 @@ void UpdatePanelVisibility()
    else
    {
       ShowObject(OBJ_BUY_BTN);    ShowObject(OBJ_SELL_BTN);
-      ShowObject(OBJ_BUY_STOP);   ShowObject(OBJ_SELL_STOP);
-      ShowObject(OBJ_BUY_LMT);    ShowObject(OBJ_SELL_LMT);
+      ShowObject(OBJ_BUY_PND);    ShowObject(OBJ_SELL_PND);
       ShowObject(OBJ_EXECUTE);     ShowObject(OBJ_CANCEL);
       ShowObject(OBJ_SEP2);
 
@@ -847,14 +836,11 @@ void CreateOrderLines(bool isBuy)
    if(g_cachedATR > 0) offset = g_cachedATR * 0.5;
    double entryPx;
 
-   switch(g_orderMode)
-   {
-      case 1: entryPx = ask + offset; break;
-      case 2: entryPx = bid - offset; break;
-      case 3: entryPx = bid - offset; break;
-      case 4: entryPx = ask + offset; break;
-      default: entryPx = bid; break;
-   }
+   // Default: place entry above (buy) or below (sell)
+   if(isBuy)
+      entryPx = ask + offset;
+   else
+      entryPx = bid - offset;
    entryPx = NormPrice(entryPx);
 
    double slDist = 100 * _Point;
@@ -1164,14 +1150,14 @@ void UpdateInfo()
          ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_WHITE);
       }
 
+      // Auto-detect order type name based on entry vs market
       string orderName = "";
-      switch(g_orderMode)
-      {
-         case 1: orderName = "BUY STOP";   break;
-         case 2: orderName = "SELL STOP";  break;
-         case 3: orderName = "BUY LIMIT";  break;
-         case 4: orderName = "SELL LIMIT"; break;
-      }
+      double ask2 = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bid2 = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      if(g_orderMode == 1)
+         orderName = (entryPx > ask2) ? "BUY STOP" : "BUY LIMIT";
+      else if(g_orderMode == 2)
+         orderName = (entryPx < bid2) ? "SELL STOP" : "SELL LIMIT";
       ObjectSetString(0, OBJ_INFO2, OBJPROP_TEXT,
          StringFormat("%s  |  %.0f pips SL", orderName, pips));
       ObjectSetInteger(0, OBJ_INFO2, OBJPROP_COLOR, COL_DIM);
@@ -1208,17 +1194,13 @@ void UpdateInfo()
 // ═══════════════════════════════════════════════════════════════════
 void HighlightActiveButton()
 {
-   ObjectSetInteger(0, OBJ_BUY_STOP,  OBJPROP_BGCOLOR, C'0,90,55');
-   ObjectSetInteger(0, OBJ_SELL_STOP, OBJPROP_BGCOLOR, C'150,40,40');
-   ObjectSetInteger(0, OBJ_BUY_LMT,   OBJPROP_BGCOLOR, C'0,70,100');
-   ObjectSetInteger(0, OBJ_SELL_LMT,   OBJPROP_BGCOLOR, C'120,50,80');
+   ObjectSetInteger(0, OBJ_BUY_PND,  OBJPROP_BGCOLOR, C'0,90,55');
+   ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'150,40,40');
 
    switch(g_orderMode)
    {
-      case 1: ObjectSetInteger(0, OBJ_BUY_STOP,  OBJPROP_BGCOLOR, C'0,180,100'); break;
-      case 2: ObjectSetInteger(0, OBJ_SELL_STOP, OBJPROP_BGCOLOR, C'230,60,60'); break;
-      case 3: ObjectSetInteger(0, OBJ_BUY_LMT,   OBJPROP_BGCOLOR, C'0,140,200'); break;
-      case 4: ObjectSetInteger(0, OBJ_SELL_LMT,   OBJPROP_BGCOLOR, C'180,60,120'); break;
+      case 1: ObjectSetInteger(0, OBJ_BUY_PND,  OBJPROP_BGCOLOR, C'0,180,100'); break;
+      case 2: ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'230,60,60'); break;
    }
 }
 
@@ -1293,24 +1275,16 @@ bool ExecutePendingOrder()
    double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    bool isBuy = IsBuyMode();
 
+   // Auto-detect Stop vs Limit based on entry price vs market
    ENUM_ORDER_TYPE orderType;
-   switch(g_orderMode)
-   {
-      case 1: orderType = ORDER_TYPE_BUY_STOP;   break;
-      case 2: orderType = ORDER_TYPE_SELL_STOP;  break;
-      case 3: orderType = ORDER_TYPE_BUY_LIMIT;  break;
-      case 4: orderType = ORDER_TYPE_SELL_LIMIT; break;
-      default: return false;
-   }
+   if(isBuy)
+      orderType = (entryPx > ask) ? ORDER_TYPE_BUY_STOP : ORDER_TYPE_BUY_LIMIT;
+   else
+      orderType = (entryPx < bid) ? ORDER_TYPE_SELL_STOP : ORDER_TYPE_SELL_LIMIT;
 
-   if(isBuy && g_orderMode == 1 && entryPx <= ask)
-   { Print("[ExO] Buy Stop must be above Ask"); return false; }
-   if(isBuy && g_orderMode == 3 && entryPx >= bid)
-   { Print("[ExO] Buy Limit must be below Bid"); return false; }
-   if(!isBuy && g_orderMode == 2 && entryPx >= bid)
-   { Print("[ExO] Sell Stop must be below Bid"); return false; }
-   if(!isBuy && g_orderMode == 4 && entryPx <= ask)
-   { Print("[ExO] Sell Limit must be above Ask"); return false; }
+   // Validate SL direction
+   if(isBuy  && slPx >= entryPx) { Print("[ExO] Buy SL must be below entry"); return false; }
+   if(!isBuy && slPx <= entryPx) { Print("[ExO] Sell SL must be above entry"); return false; }
 
    MqlTradeRequest req = {};
    MqlTradeResult  res = {};
@@ -1436,28 +1410,16 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          ExecuteMarketOrder(true);
       else if(sparam == OBJ_SELL_BTN && !g_hasPos)
          ExecuteMarketOrder(false);
-      else if(sparam == OBJ_BUY_STOP && !g_hasPos)
+      else if(sparam == OBJ_BUY_PND && !g_hasPos)
       {
          if(g_orderMode == 1) RemoveOrderLines();
          else { g_orderMode = 1; CreateOrderLines(true); }
          HighlightActiveButton();
       }
-      else if(sparam == OBJ_SELL_STOP && !g_hasPos)
+      else if(sparam == OBJ_SELL_PND && !g_hasPos)
       {
          if(g_orderMode == 2) RemoveOrderLines();
          else { g_orderMode = 2; CreateOrderLines(false); }
-         HighlightActiveButton();
-      }
-      else if(sparam == OBJ_BUY_LMT && !g_hasPos)
-      {
-         if(g_orderMode == 3) RemoveOrderLines();
-         else { g_orderMode = 3; CreateOrderLines(true); }
-         HighlightActiveButton();
-      }
-      else if(sparam == OBJ_SELL_LMT && !g_hasPos)
-      {
-         if(g_orderMode == 4) RemoveOrderLines();
-         else { g_orderMode = 4; CreateOrderLines(false); }
          HighlightActiveButton();
       }
       else if(sparam == OBJ_EXECUTE && !g_hasPos)
