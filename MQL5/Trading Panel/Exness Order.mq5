@@ -4,7 +4,7 @@
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
 #property copyright "Trading Tools"
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 
 // ═══════════════════════════════════════════════════════════════════
@@ -52,6 +52,12 @@ input int    InpDeviation    = 20;       // Max slippage (points)
 #define OBJ_ENTRY_LINE  PREFIX "entry"
 #define OBJ_SL_LINE     PREFIX "sl"
 #define OBJ_SL_ACTIVE   PREFIX "sl_active"
+
+// Price labels (OBJ_LABEL anchored to Y from price)
+#define OBJ_ENTRY_TAG   PREFIX "entry_tag"
+#define OBJ_SL_TAG      PREFIX "sl_tag"
+#define OBJ_SL_ACT_TAG  PREFIX "sl_act_tag"
+#define OBJ_WARN_LBL    PREFIX "warn_lbl"
 
 // Colors
 #define COL_BG        C'30,33,40'
@@ -599,6 +605,34 @@ void ShowObject(string name)
       ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
 }
 
+// Price tag label (positioned at price level, right side of chart)
+void MakePriceTag(string name, double price, string text, color clrTxt, color clrBg)
+{
+   int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   int x = 0, y = 0;
+   datetime t = 0;
+   double p = 0;
+   // Convert price to pixel Y
+   ChartTimePriceToXY(0, 0, TimeCurrent(), price, x, y);
+   // Position label at right side, offset from price line objects
+   int tagX = chartW - 280;
+   int tagY = y - 10;
+
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, tagX);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, tagY);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetString (0, name, OBJPROP_FONT, FONT_MONO);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrTxt);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // PANEL CREATION
 // ═══════════════════════════════════════════════════════════════════
@@ -607,7 +641,7 @@ void CreatePanel()
    int y = PY;
    MakeRect(OBJ_BG, PX, PY, PW, 400, COL_BG, COL_BORDER);
 
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.00", COL_WHITE, 11, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.01", COL_WHITE, 11, FONT_BOLD);
    y += 28;
 
    // Risk row
@@ -626,7 +660,10 @@ void CreatePanel()
    MakeLabel(OBJ_INFO2, IX, y, " ", COL_DIM, 8, FONT_MONO);
    y += 14;
    MakeLabel(OBJ_INFO3, IX, y, " ", COL_DIM, 8, FONT_MONO);
-   y += 20;
+   y += 16;
+   MakeLabel(OBJ_WARN_LBL, IX, y, " ", COL_SL, 8, FONT_MONO);
+   HideObject(OBJ_WARN_LBL);
+   y += 16;
 
    // TRADE section
    MakeRect(OBJ_SEP2, IX, y, IW, 1, COL_BORDER, COL_BORDER);
@@ -766,6 +803,9 @@ void RemoveOrderLines()
 {
    ObjectDelete(0, OBJ_ENTRY_LINE);
    ObjectDelete(0, OBJ_SL_LINE);
+   ObjectDelete(0, OBJ_ENTRY_TAG);
+   ObjectDelete(0, OBJ_SL_TAG);
+   HideObject(OBJ_WARN_LBL);
    g_linesActive = false;
    g_orderMode = 0;
    HighlightActiveButton();
@@ -776,6 +816,7 @@ void RemoveOrderLines()
 void RemoveActiveSLLine()
 {
    ObjectDelete(0, OBJ_SL_ACTIVE);
+   ObjectDelete(0, OBJ_SL_ACT_TAG);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -792,19 +833,40 @@ void UpdateLineLabels()
    double slMoney = CalcMoney(lot, slDist);
    double pips    = slDist / PipSize();
 
-   ObjectSetString(0, OBJ_ENTRY_LINE, OBJPROP_TEXT,
-      StringFormat("\x25B6 ENTRY %." + IntegerToString(_Digits) + "f  |  Lot %.2f",
-                   entryPx, lot));
+   // HLINE tooltip
    ObjectSetString(0, OBJ_ENTRY_LINE, OBJPROP_TOOLTIP,
-      StringFormat("Entry: %." + IntegerToString(_Digits) + "f\nLot: %.2f\nDrag to move entry",
-                   entryPx, lot));
-
-   ObjectSetString(0, OBJ_SL_LINE, OBJPROP_TEXT,
-      StringFormat("\x2716 SL %." + IntegerToString(_Digits) + "f  |  -$%.2f  |  %.0f pips",
-                   slPx, slMoney, pips));
+      StringFormat("Entry: %." + IntegerToString(_Digits) + "f | Lot: %.2f", entryPx, lot));
    ObjectSetString(0, OBJ_SL_LINE, OBJPROP_TOOLTIP,
-      StringFormat("Stop Loss: %." + IntegerToString(_Digits) + "f\nRisk: -$%.2f\nDistance: %.0f pips\nDrag to adjust",
-                   slPx, slMoney, pips));
+      StringFormat("SL: %." + IntegerToString(_Digits) + "f | -$%.2f | %.0f pips", slPx, slMoney, pips));
+
+   // Visible price tag labels
+   string entryTxt = StringFormat("ENTRY %.2f lot", lot);
+   MakePriceTag(OBJ_ENTRY_TAG, entryPx, entryTxt, COL_WHITE, COL_ENTRY);
+
+   string slTxt = StringFormat("SL -$%.2f  %.0f pips", slMoney, pips);
+   MakePriceTag(OBJ_SL_TAG, slPx, slTxt, COL_WHITE, COL_SL);
+
+   // Min lot validation warning
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double idealLot = 0;
+   if(slDist > 0 && g_riskMoney > 0)
+   {
+      double tickSz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      if(tickSz > 0 && tickVal > 0)
+         idealLot = g_riskMoney / ((slDist / tickSz) * tickVal);
+   }
+
+   if(idealLot > 0 && idealLot < minLot)
+   {
+      double actualRisk = CalcMoney(minLot, slDist);
+      ObjectSetString(0, OBJ_WARN_LBL, OBJPROP_TEXT,
+         StringFormat("\x26A0 Risk $%.0f < min lot %.2f ($%.1f)", g_riskMoney, minLot, actualRisk));
+      ObjectSetInteger(0, OBJ_WARN_LBL, OBJPROP_COLOR, COL_SL);
+      ShowObject(OBJ_WARN_LBL);
+   }
+   else
+      HideObject(OBJ_WARN_LBL);
 }
 
 void UpdateActiveSLLabel()
@@ -814,12 +876,12 @@ void UpdateActiveSLLabel()
    double slPx = ObjectGetDouble(0, OBJ_SL_ACTIVE, OBJPROP_PRICE);
    double lockedPnL = GetLockedPnL();
 
-   ObjectSetString(0, OBJ_SL_ACTIVE, OBJPROP_TEXT,
-      StringFormat("\x2716 SL %." + IntegerToString(_Digits) + "f  |  Lock $%+.2f",
-                   slPx, lockedPnL));
    ObjectSetString(0, OBJ_SL_ACTIVE, OBJPROP_TOOLTIP,
-      StringFormat("Stop Loss: %." + IntegerToString(_Digits) + "f\nLocked P&L: $%+.2f\nDrag to modify SL",
-                   slPx, lockedPnL));
+      StringFormat("SL: %." + IntegerToString(_Digits) + "f | Lock: $%+.2f", slPx, lockedPnL));
+
+   string slTxt = StringFormat("SL Lock $%+.2f", lockedPnL);
+   color clr = lockedPnL >= 0 ? COL_LOCK_UP : COL_LOCK_DN;
+   MakePriceTag(OBJ_SL_ACT_TAG, slPx, slTxt, clr, COL_SL);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1285,6 +1347,14 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       if(!g_isBuy && newSL <= ask) return;
       ModifySL(newSL);
       UpdateInfo(); ChartRedraw();
+   }
+
+   // Reposition price tags on chart scroll/zoom
+   if(id == CHARTEVENT_CHART_CHANGE)
+   {
+      if(g_linesActive) UpdateLineLabels();
+      if(g_hasPos) UpdateActiveSLLabel();
+      ChartRedraw();
    }
 }
 //+------------------------------------------------------------------+
