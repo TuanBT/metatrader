@@ -1,12 +1,11 @@
 //+------------------------------------------------------------------+
 //| Expert Trading Panel.mq5                                         |
-//| Tuan Quick Trade – One-Click Manual Trading Panel                 |
+//| Tuan Quick Trade – Bot Management + Quick Buy/Sell               |
 //|                                                                  |
 //| Features:                                                        |
 //|  • Risk $ input → auto-calculated lot size                       |
 //|  • Auto SL: ATR / Last-N-bars / Fixed pips                       |
 //|  • One-click BUY / SELL                                          |
-//|  • Auto trailing SL: Wick / Swing / Breakeven                    |
 //|  • Auto TP: 50% partial close at 0.5 or 1 ATR                    |
 //|  • Grid DCA: auto DCA with ATR × mult spacing                    |
 //|  • Dark/Light chart themes                                      |
@@ -17,11 +16,9 @@
 //|  2. Set Risk $ in panel (max loss per trade)                     |
 //|  3. Click BUY or SELL → order fires instantly                    |
 //|  4. Trailing SL manages the trade automatically                  |
-//|  5. Use "CLOSE ALL" to close all positions                      |
-//|  6. Click CC/NS Bot buttons on the right to enable bots                    |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.29"
-#property version   "2.29"
+#property copyright "Tuan v2.31"
+#property version   "2.31"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
 
@@ -136,8 +133,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BUY_BTN    PREFIX "buy_btn"
 #define OBJ_SELL_BTN   PREFIX "sell_btn"
 #define OBJ_CLOSE_BTN  PREFIX "close_btn"
-#define OBJ_BUY_PND    PREFIX "buy_pnd"
-#define OBJ_SELL_PND   PREFIX "sell_pnd"
+
 
 #define OBJ_SEP1       PREFIX "sep1"
 #define OBJ_SEP2       PREFIX "sep2"
@@ -166,7 +162,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_SL_SELL_LINE  PREFIX "sl_sell_line"
 #define OBJ_SL_ACTIVE     PREFIX "sl_active"
 #define OBJ_ENTRY_LINE    PREFIX "entry_line"
-#define OBJ_PENDING_LINE  PREFIX "pending_line"
+
 
 // Chart lines (Auto TP / Grid DCA / Trail Start)
 #define OBJ_TP1_LINE      PREFIX "tp1_line"
@@ -251,7 +247,6 @@ int      g_theme      = 0;       // 0=Dark, 1=Light
 // Live ATR multiplier (changeable from panel)
 double   g_atrMult    = 0;
 double   g_cachedATR  = 0;        // ATR cached per bar (refreshed on new bar)
-int      g_pendingMode = 0;    // 0=none, 1=buy ready, 2=sell ready
 bool     g_trailEnabled = false;
 ENUM_TRAIL_MODE g_trailRef = TRAIL_CLOSE;  // Runtime trail method (Close/Swing/None)
 bool     g_beEnabled      = false;   // BE modifier toggle (combinable with Close/Swing)
@@ -1441,7 +1436,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.29";
+   string titleTxt = "Trading Panel v2.31";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -1562,16 +1557,6 @@ void CreatePanel()
               "SELL", COL_WHITE, COL_SELL, 11);
    y += 44;
 
-   // ── Pending Order buttons (2 buttons, no Show Line) ──
-   {
-      int pw2 = (IW - 8) / 2;
-      MakeButton(OBJ_BUY_PND,  PX + 5,             y, pw2, 26,
-                 "BUY PENDING", COL_WHITE, C'0,100,65', 8);
-      MakeButton(OBJ_SELL_PND, PX + 5 + pw2 + 4,   y, pw2, 26,
-                 "SELL PENDING", COL_WHITE, C'170,40,40', 8);
-   }
-   y += 32;
-
    // ═══════════════════════════════════════
    // SECTION: ORDER MANAGEMENT
    // ═══════════════════════════════════════
@@ -1676,17 +1661,17 @@ void CreatePanel()
    ObjectSetString(0, OBJ_SEC_INFO, OBJPROP_TOOLTIP,
       "Thông tin: Risk, lot, hướng lệnh, lãi/lỗ hiện tại.");
    ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TOOLTIP,
-      "Lãi/Lỗ hiện tại (P&L) của tất cả lệnh đang mở.");
+      "Khi có lệnh: P&L hiện tại.\nKhi chưa có lệnh: Số tiền mất nếu SL hit (cập nhật khi kéo SL).");
    ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TOOLTIP,
-      "Lợi nhuận Lock (SL Lock): Lãi/Lỗ tính tại mức SL hiện tại.\nCho biết lợi nhuận tối thiểu (hoặc lỗ tối đa) nếu SL bị chạm.\nKhi kéo SL bằng tay, con số này tự cập nhật.");
+      "Khi có lệnh: SL Lock = Lãi/Lỗ tại mức SL.\nKhi chưa có lệnh: RR ratio hoặc SL x ATR.");
    ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TOOLTIP,
-      "Lợi nhuận Lock (SL Lock): Lãi/Lỗ tính tại mức SL hiện tại.\nCho biết lợi nhuận tối thiểu (hoặc lỗ tối đa) nếu SL bị chạm.\nKhi kéo SL bằng tay, con số này tự cập nhật.");
+      "Khi có lệnh: SL Lock value.\nKhi chưa có lệnh: TP $ dự kiến (chỉ hiện khi Auto TP ON).");
    ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TOOLTIP,
       "Lot size và hướng lệnh (LONG/SHORT).\nKhi chưa có lệnh: lot dự kiến theo Risk hiện tại.");
    ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TOOLTIP,
       "Risk: Tiền rủi ro mỗi lệnh ($).\nATR (Average True Range): Hệ số biên độ dao động.\nSpread: Chênh lệch giá mua-bán (point).");
    ObjectSetString(0, OBJ_SEC_TRADE, OBJPROP_TOOLTIP,
-      "Khu vực vào lệnh: BUY/SELL market hoặc lệnh chờ Pending.");
+      "Khu vực vào lệnh: BUY/SELL market nhanh.");
    ObjectSetString(0, OBJ_SEC_ORDER, OBJPROP_TOOLTIP,
       "Quản lý lệnh tự động: Trailing SL, Grid DCA, Auto Take Profit.");
    ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TOOLTIP,
@@ -1727,10 +1712,6 @@ void CreatePanel()
       "Mua ngay theo giá thị trường.\nSL tự động theo ATR. Lot tính theo Risk $.");
    ObjectSetString(0, OBJ_SELL_BTN, OBJPROP_TOOLTIP,
       "Bán ngay theo giá thị trường.\nSL tự động theo ATR. Lot tính theo Risk $.");
-   ObjectSetString(0, OBJ_BUY_PND,  OBJPROP_TOOLTIP,
-      "Lệnh chờ MUA: Click 1 lần tạo đường giá → kéo đến vị trí → click lần 2 xác nhận.");
-   ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TOOLTIP,
-      "Lệnh chờ BÁN: Click 1 lần tạo đường giá → kéo đến vị trí → click lần 2 xác nhận.");
 
    // Trail SL
    ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TOOLTIP,
@@ -2026,10 +2007,11 @@ void UpdatePanel()
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
    // ── SL prices for each direction ──
-   double slBuy   = CalcSLPrice(true);
-   double slSell  = CalcSLPrice(false);
-   double distBuy  = MathAbs(ask - slBuy);
-   double distSell = MathAbs(bid - slSell);
+   double slBuy, slSell, distBuy, distSell;
+   slBuy    = CalcSLPrice(true);
+   slSell   = CalcSLPrice(false);
+   distBuy  = MathAbs(ask - slBuy);
+   distSell = MathAbs(bid - slSell);
 
    // ── Lot sizes (preview based on ACTUAL SL distance) ──
    double avgDist = (distBuy + distSell) / 2.0;
@@ -2112,13 +2094,20 @@ void UpdatePanel()
    }
    else
    {
-      // No position: show expected lot (left), clear P&L (right)
+      // No position: show expected lot (left) + SL money (right, prominent)
+      double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double slMoney = 0;
+      if(tickSz > 0 && tickVal > 0 && avgDist > 0)
+         slMoney = avgLot * (avgDist / tickSz) * tickVal;
+
+      // Row 1 Left: Lot size (+ min risk warning)
       double minR = CalcMinRisk();
       if(g_riskMoney < minR && minR > 1)
       {
          ObjectSetString(0, OBJ_STATUS_LBL, OBJPROP_TEXT,
             StringFormat("Lot %.2f (min $%.0f)", avgLot, minR));
-         ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, C'220,160,0');  // Orange warning
+         ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, C'220,160,0');
       }
       else
       {
@@ -2126,35 +2115,59 @@ void UpdatePanel()
             StringFormat("Lot %.2f", avgLot));
          ObjectSetInteger(0, OBJ_STATUS_LBL, OBJPROP_COLOR, COL_DIM);
       }
-      ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TEXT, " ");
 
-      // ── Row 1b: Margin info (repurpose Lock row when no position) ──
+      // Row 1 Right: SL money — prominent red (Exness-style)
+      ObjectSetString(0, OBJ_RISK_LBL, OBJPROP_TEXT,
+         StringFormat("SL -$%.2f", slMoney));
+      ObjectSetInteger(0, OBJ_RISK_LBL, OBJPROP_COLOR, C'230,70,70');
+
+      // Row 1b: RR ratio (left) + TP money (right)
+      double tpMoney = 0;
+      double tpDist  = g_cachedATR * g_tpATRFactor * g_atrMult;
+      if(g_autoTPEnabled && tickSz > 0 && tickVal > 0 && tpDist > 0)
+         tpMoney = avgLot * (tpDist / tickSz) * tickVal;
+
+      if(g_autoTPEnabled && tpMoney > 0 && slMoney > 0)
       {
-         double reqMargin = 0;
-         double freeMgn   = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-         // Calculate required margin for BUY at current lot (representative)
-         if(!OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, avgLot, ask, reqMargin))
-            reqMargin = 0;
+         double rr = tpMoney / slMoney;
          ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT,
-            StringFormat("Margin $%.2f", reqMargin));
-         ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT,
-            StringFormat("Free $%.0f", freeMgn));
-         // Red warning if can't afford, otherwise dim
-         bool marginOK = (freeMgn >= reqMargin && reqMargin > 0) || reqMargin == 0;
+            StringFormat("RR 1:%.1f", rr));
          ObjectSetInteger(0, OBJ_LOCK_LBL, OBJPROP_COLOR,
-            marginOK ? COL_DIM : C'220,80,80');
-         ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR,
-            marginOK ? COL_DIM : C'220,80,80');
-      }
-      ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
+            rr >= 1.0 ? C'100,200,120' : C'220,160,0');
 
-      // Refresh Grid DCA projected risk (risk$ may have changed)
+         ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT,
+            StringFormat("TP +$%.2f", tpMoney));
+         ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR, C'100,200,120');
+      }
+      else if(g_autoTPEnabled)
+      {
+         ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT, "RR --");
+         ObjectSetInteger(0, OBJ_LOCK_LBL, OBJPROP_COLOR, COL_DIM);
+         ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT, "TP --");
+         ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR, COL_DIM);
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_LOCK_LBL, OBJPROP_TEXT,
+            StringFormat("SL %.1fx ATR", avgDist / MathMax(g_cachedATR, _Point)));
+         ObjectSetInteger(0, OBJ_LOCK_LBL, OBJPROP_COLOR, C'220,120,120');
+         ObjectSetString(0, OBJ_LOCK_VAL, OBJPROP_TEXT, " ");
+         ObjectSetInteger(0, OBJ_LOCK_VAL, OBJPROP_COLOR, COL_DIM);
+      }
+
+      // Row 2: Risk info + Grid max risk
+      ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
       if(g_gridEnabled)
       {
          double maxRisk = CalcProjectedMaxRisk();
          ObjectSetString(0, OBJ_GRID_BTN, OBJPROP_TEXT,
             StringFormat("Grid DCA: ON | DCA 0/%d | Max $%.0f",
                          g_gridMaxLevel, maxRisk));
+         // Show grid max risk in SPRD line for clarity
+         ObjectSetString(0, OBJ_SPRD_LBL, OBJPROP_TEXT,
+            StringFormat("Risk $%d (%.1f%%) | ATR %.1fx | Grid Max -$%.0f",
+                         (int)g_riskMoney, g_riskPct, g_atrMult, maxRisk));
+         ObjectSetInteger(0, OBJ_SPRD_LBL, OBJPROP_COLOR, C'200,140,80');
       }
 
       // Reset tracking
@@ -2175,7 +2188,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.29";
+   string panelTitle = "Trading Panel v2.31";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -2328,98 +2341,11 @@ void CloseAllPositions()
 }
 
 // ════════════════════════════════════════════════════════════════════
-// PENDING ORDERS
+// SL PRICE FROM ENTRY (used by Grid DCA, SyncPosition)
 // ════════════════════════════════════════════════════════════════════
-void CreatePendingLine()
-{
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double offset = 100 * _Point;
-   double linePrice = bid + offset;
-   if(ObjectFind(0, OBJ_PENDING_LINE) < 0)
-      ObjectCreate(0, OBJ_PENDING_LINE, OBJ_HLINE, 0, 0, linePrice);
-   ObjectSetDouble (0, OBJ_PENDING_LINE, OBJPROP_PRICE, linePrice);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_COLOR, clrOrange);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_STYLE, STYLE_SOLID);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_WIDTH, 3);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_SELECTABLE, true);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_SELECTED,   true);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_HIDDEN,     false);
-   ObjectSetInteger(0, OBJ_PENDING_LINE, OBJPROP_BACK,       false);
-   ObjectSetString (0, OBJ_PENDING_LINE, OBJPROP_TEXT, "Pending Entry");
-   ObjectSetString (0, OBJ_PENDING_LINE, OBJPROP_TOOLTIP, "Drag to desired entry price");
-   ChartRedraw();
-}
 
-bool ExecutePendingTrade(bool isBuy)
-{
-   double pendingPrice = ObjectGetDouble(0, OBJ_PENDING_LINE, OBJPROP_PRICE);
-   if(pendingPrice <= 0)
-   {
-      Print("[PENDING] No pending line price found");
-      return false;
-   }
-   pendingPrice = NormPrice(pendingPrice);
 
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   ENUM_ORDER_TYPE orderType;
-   if(isBuy)
-      orderType = (pendingPrice < ask) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_BUY_STOP;
-   else
-      orderType = (pendingPrice > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
-
-   double sl   = CalcSLPriceFrom(isBuy, pendingPrice);
-   // Lot based on ACTUAL SL distance (entry to SL)
-   double dist = MathAbs(pendingPrice - sl);
-   double lot  = CalcLot(dist);
-
-   if(dist <= 0)                     { Print("[PENDING] Invalid SL distance"); return false; }
-   if(isBuy  && sl >= pendingPrice)  { Print("[PENDING] Buy SL >= entry");     return false; }
-   if(!isBuy && sl <= pendingPrice)  { Print("[PENDING] Sell SL <= entry");    return false; }
-
-   MqlTradeRequest req;
-   MqlTradeResult  res;
-   ZeroMemory(req);
-   ZeroMemory(res);
-
-   req.action       = TRADE_ACTION_PENDING;
-   req.symbol       = _Symbol;
-   req.volume       = lot;
-   req.type         = orderType;
-   req.price        = pendingPrice;
-   req.sl           = sl;
-   req.tp           = 0;
-   req.magic        = InpMagic;
-   req.type_filling = ORDER_FILLING_IOC;
-   req.comment      = "Bot Pending";
-
-   string typeStr;
-   switch(orderType)
-   {
-      case ORDER_TYPE_BUY_LIMIT:  typeStr = "BUY LIMIT";  break;
-      case ORDER_TYPE_BUY_STOP:   typeStr = "BUY STOP";   break;
-      case ORDER_TYPE_SELL_LIMIT: typeStr = "SELL LIMIT";  break;
-      case ORDER_TYPE_SELL_STOP:  typeStr = "SELL STOP";   break;
-      default:                   typeStr = "UNKNOWN";      break;
-   }
-
-   if(OrderSend(req, res))
-   {
-      Print(StringFormat("[PENDING] %s %.2f lot @ %s  SL=%s  Risk=$%.2f",
-         typeStr, lot,
-         DoubleToString(pendingPrice, _Digits),
-         DoubleToString(sl, _Digits),
-         g_riskMoney));
-      return true;
-   }
-   else
-   {
-      Print(StringFormat("[PENDING] OrderSend FAILED  rc=%d  %s",
-         res.retcode, res.comment));
-      return false;
-   }
-}
 
 double CalcSLPriceFrom(bool isBuy, double entryPrice)
 {
@@ -3223,7 +3149,7 @@ int OnInit()
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.29 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.31 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3717,60 +3643,6 @@ void OnChartEvent(const int id,
          HideHLine(OBJ_DCA5_LINE);
          HideHLine(OBJ_AVG_ENTRY);
          ObjectSetString(0, OBJ_GRID_INFO, OBJPROP_TEXT, " ");
-      }
-      // ── BUY PENDING (2-click: create line → confirm) ──
-      else if(sparam == OBJ_BUY_PND)
-      {
-         ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_STATE, false);
-         if(g_pendingMode == 1)
-         {
-            // Click 2: confirm buy pending
-            ExecutePendingTrade(true);
-            ObjectDelete(0, OBJ_PENDING_LINE);
-            g_pendingMode = 0;
-            ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "BUY PENDING");
-            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
-            Print("[PENDING] Buy pending confirmed");
-         }
-         else
-         {
-            // Click 1: create line, enter buy-ready mode
-            g_pendingMode = 1;
-            CreatePendingLine();
-            ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "✓ CONFIRM BUY");
-            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'55,90,160');
-            // Reset sell button if it was in confirm mode
-            ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "SELL PENDING");
-            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'170,40,40');
-            Print("[PENDING] Line created – drag to price, click BUY PENDING again to confirm");
-         }
-      }
-      // ── SELL PENDING (2-click: create line → confirm) ──
-      else if(sparam == OBJ_SELL_PND)
-      {
-         ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_STATE, false);
-         if(g_pendingMode == 2)
-         {
-            // Click 2: confirm sell pending
-            ExecutePendingTrade(false);
-            ObjectDelete(0, OBJ_PENDING_LINE);
-            g_pendingMode = 0;
-            ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "SELL PENDING");
-            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'170,40,40');
-            Print("[PENDING] Sell pending confirmed");
-         }
-         else
-         {
-            // Click 1: create line, enter sell-ready mode
-            g_pendingMode = 2;
-            CreatePendingLine();
-            ObjectSetString(0, OBJ_SELL_PND, OBJPROP_TEXT, "✓ CONFIRM SELL");
-            ObjectSetInteger(0, OBJ_SELL_PND, OBJPROP_BGCOLOR, C'55,90,160');
-            // Reset buy button if it was in confirm mode
-            ObjectSetString(0, OBJ_BUY_PND, OBJPROP_TEXT, "BUY PENDING");
-            ObjectSetInteger(0, OBJ_BUY_PND, OBJPROP_BGCOLOR, C'0,100,65');
-            Print("[PENDING] Line created – drag to price, click SELL PENDING again to confirm");
-         }
       }
       // ── Trail method: Close (toggle — click again to deselect) ──
       else if(sparam == OBJ_TM_CLOSE)

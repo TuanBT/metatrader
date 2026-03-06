@@ -7,30 +7,38 @@ VPS_USER="administrator"
 VPS_PASS="PNS1G3e7oc3h6PWJD4dsA"
 SCRIPT_DIR="$(dirname "$0")/.."
 REMOTE_DIR="C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\53785E099C927DB68A545C249CDBCE06\\MQL5\\Experts\\Trading Panel"
+REMOTE_DIR2="C:\\MetaTrader 5 EXNESS Real\\MQL5\\Experts\\Trading Panel"
 SSH_OPTS="-o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no"
 
 FILES=(
     "Expert Trading Panel.mq5"
     "Candle Counter Strategy.mqh"
-    "Trend Signal Strategy.mqh"
     "News Straddle Strategy.mqh"
+    "Exness Order.mq5"
 )
 
 echo "═══════════════════════════════════════════"
 echo "  Deploy Trading Panel to VPS"
 echo "═══════════════════════════════════════════"
 
-# Step 1: Upload all files
+# Step 1: Upload all files to both instances
 echo ""
 FAIL=0
 for f in "${FILES[@]}"; do
     echo "► Uploading $f..."
     sshpass -p "$VPS_PASS" scp $SSH_OPTS "$SCRIPT_DIR/$f" "${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}\\$f"
     if [ $? -ne 0 ]; then
-        echo "✗ Upload FAILED: $f"
+        echo "✗ Upload FAILED (Instance 1): $f"
         FAIL=1
     else
-        echo "✓ $f"
+        echo "✓ Instance 1: $f"
+    fi
+    sshpass -p "$VPS_PASS" scp $SSH_OPTS "$SCRIPT_DIR/$f" "${VPS_USER}@${VPS_HOST}:${REMOTE_DIR2}\\$f"
+    if [ $? -ne 0 ]; then
+        echo "✗ Upload FAILED (Instance 2): $f"
+        FAIL=1
+    else
+        echo "✓ Instance 2: $f"
     fi
 done
 
