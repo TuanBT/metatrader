@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                                 Exness Order.mq5 |
-//|         Exness-style order + management EA (v1.04)               |
+//|         Exness-style order + management EA (v1.05)               |
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
 #property copyright "Trading Tools"
-#property version   "1.04"
+#property version   "1.05"
 #property strict
 
 // ═══════════════════════════════════════════════════════════════════
@@ -804,11 +804,6 @@ void UpdatePanelVisibility()
       HideObject(OBJ_BUY_PND);    HideObject(OBJ_SELL_PND);
       HideObject(OBJ_EXECUTE);     HideObject(OBJ_CANCEL);
       HideObject(OBJ_SEP2);
-
-      ShowObject(OBJ_SEP3);        ShowObject(OBJ_TM_CLOSE);
-      ShowObject(OBJ_TM_SWING);    ShowObject(OBJ_BE_BTN);
-      ShowObject(OBJ_AUTOTP_BTN);
-      ShowObject(OBJ_CLOSE_BTN);
    }
    else
    {
@@ -816,12 +811,13 @@ void UpdatePanelVisibility()
       ShowObject(OBJ_BUY_PND);    ShowObject(OBJ_SELL_PND);
       ShowObject(OBJ_EXECUTE);     ShowObject(OBJ_CANCEL);
       ShowObject(OBJ_SEP2);
-
-      HideObject(OBJ_SEP3);        HideObject(OBJ_TM_CLOSE);
-      HideObject(OBJ_TM_SWING);    HideObject(OBJ_BE_BTN);
-      HideObject(OBJ_AUTOTP_BTN);
-      HideObject(OBJ_CLOSE_BTN);
    }
+
+   // Management section always visible (for pending orders filling overnight)
+   ShowObject(OBJ_SEP3);        ShowObject(OBJ_TM_CLOSE);
+   ShowObject(OBJ_TM_SWING);    ShowObject(OBJ_BE_BTN);
+   ShowObject(OBJ_AUTOTP_BTN);
+   ShowObject(OBJ_CLOSE_BTN);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1039,65 +1035,6 @@ void UpdateInfo()
                       g_entryPx, spread));
       ObjectSetInteger(0, OBJ_INFO3, OBJPROP_COLOR, COL_DIM);
 
-      // Update trail mode buttons: Blue=selected, Green=active, Gray=off
-      {
-         bool trailActive = false;
-         if(g_trailRef != TRAIL_NONE)
-         {
-            double refE = GetAvgEntry();
-            if(refE <= 0) refE = g_entryPx;
-            double cur2 = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
-                                  : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-            double mv = g_isBuy ? (cur2 - refE) : (refE - cur2);
-            if(g_beEnabled && g_beReached)
-               trailActive = true;
-            else
-               trailActive = (g_cachedATR > 0 && mv >= g_cachedATR);
-         }
-
-         // Close button
-         if(g_trailRef == TRAIL_CLOSE)
-         {
-            ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TEXT, "Close");
-            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, trailActive ? COL_ON : C'30,80,140');
-            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_WHITE);
-         }
-         else
-         {
-            ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TEXT, "Close");
-            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, COL_OFF);
-            ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_DIM);
-         }
-
-         // Swing button
-         if(g_trailRef == TRAIL_SWING)
-         {
-            ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TEXT, "Swing");
-            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, trailActive ? COL_ON : C'30,80,140');
-            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_WHITE);
-         }
-         else
-         {
-            ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TEXT, "Swing");
-            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, COL_OFF);
-            ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_DIM);
-         }
-      }
-
-      ObjectSetString(0, OBJ_BE_BTN, OBJPROP_TEXT,
-         g_beReached ? "BE: \x2713" : (g_beEnabled ? "BE: ON" : "BE: OFF"));
-      ObjectSetInteger(0, OBJ_BE_BTN, OBJPROP_BGCOLOR,
-         g_beReached ? C'0,100,60' : (g_beEnabled ? COL_ON : COL_OFF));
-      ObjectSetInteger(0, OBJ_BE_BTN, OBJPROP_COLOR,
-         (g_beEnabled || g_beReached) ? COL_WHITE : COL_DIM);
-
-      ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
-         g_tp1Hit ? "Auto TP: \x2713 Done" : (g_autoTPEnabled ? "Auto TP: ON" : "Auto TP: OFF"));
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR,
-         g_tp1Hit ? C'0,100,60' : (g_autoTPEnabled ? COL_ON : COL_OFF));
-      ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR,
-         (g_autoTPEnabled || g_tp1Hit) ? COL_WHITE : COL_DIM);
-
       // SL line on chart
       if(ObjectFind(0, OBJ_SL_ACTIVE) >= 0)
       {
@@ -1106,87 +1043,142 @@ void UpdateInfo()
       }
       else
          CreateActiveSLLine();
-
-      UpdatePanelVisibility();
-      return;
-   }
-
-   // No position
-   UpdatePanelVisibility();
-   RemoveActiveSLLine();
-
-   if(g_linesActive && g_orderMode != 0)
-   {
-      double entryPx = ObjectGetDouble(0, OBJ_ENTRY_LINE, OBJPROP_PRICE);
-      double slPx    = ObjectGetDouble(0, OBJ_SL_LINE, OBJPROP_PRICE);
-      double slDist  = MathAbs(entryPx - slPx);
-      double lot     = CalcLot(slDist);
-      double slMoney = CalcMoney(lot, slDist);
-      double pips    = slDist / PipSize();
-      double spread  = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
-
-      // Detect min lot mode
-      double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-      bool isMinLotMode = false;
-      double tickSz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      if(slDist > 0 && g_riskMoney > 0 && tickSz > 0 && tickVal > 0)
-      {
-         double idealLot = g_riskMoney / ((slDist / tickSz) * tickVal);
-         if(idealLot < minLot) isMinLotMode = true;
-      }
-
-      if(isMinLotMode)
-      {
-         ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
-            StringFormat("%.2f lot(MIN) -$%.2f", lot, slMoney));
-         ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR,
-            slMoney > g_riskMoney ? COL_WARN : COL_WHITE);
-      }
-      else
-      {
-         ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
-            StringFormat("Lot %.2f    SL -$%.2f", lot, slMoney));
-         ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_WHITE);
-      }
-
-      // Auto-detect order type name based on entry vs market
-      string orderName = "";
-      double ask2 = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double bid2 = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      if(g_orderMode == 1)
-         orderName = (entryPx > ask2) ? "BUY STOP" : "BUY LIMIT";
-      else if(g_orderMode == 2)
-         orderName = (entryPx < bid2) ? "SELL STOP" : "SELL LIMIT";
-      ObjectSetString(0, OBJ_INFO2, OBJPROP_TEXT,
-         StringFormat("%s  |  %.0f pips SL", orderName, pips));
-      ObjectSetInteger(0, OBJ_INFO2, OBJPROP_COLOR, COL_DIM);
-
-      double pct = 0;
-      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-      if(bal > 0) pct = NormalizeDouble(slMoney / bal * 100.0, 1);
-      ObjectSetString(0, OBJ_INFO3, OBJPROP_TEXT,
-         StringFormat("Risk $%.1f (%.1f%%)  |  Spread %.0f", slMoney, pct, spread));
-      ObjectSetInteger(0, OBJ_INFO3, OBJPROP_COLOR, COL_DIM);
-
-      UpdateLineLabels();
    }
    else
    {
-      double spread = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
-      ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT, "Select order type");
-      ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_DIM);
-      ObjectSetString(0, OBJ_INFO2, OBJPROP_TEXT,
-         StringFormat("Risk $%d  |  Spread %.0f pts", (int)g_riskMoney, spread));
-      ObjectSetInteger(0, OBJ_INFO2, OBJPROP_COLOR, COL_DIM);
-      ObjectSetString(0, OBJ_INFO3, OBJPROP_TEXT, " ");
+      // No position
+      RemoveActiveSLLine();
 
-      g_entryPx  = 0;   g_origSL    = 0;
-      g_currentSL = 0;   g_trailRef = TRAIL_NONE;
-      g_beEnabled = false; g_beReached = false;
-      g_autoTPEnabled = false; g_tp1Hit = false;
-      g_tpDist = 0;
+      if(g_linesActive && g_orderMode != 0)
+      {
+         double entryPx = ObjectGetDouble(0, OBJ_ENTRY_LINE, OBJPROP_PRICE);
+         double slPx    = ObjectGetDouble(0, OBJ_SL_LINE, OBJPROP_PRICE);
+         double slDist  = MathAbs(entryPx - slPx);
+         double lot     = CalcLot(slDist);
+         double slMoney = CalcMoney(lot, slDist);
+         double pips    = slDist / PipSize();
+         double spread  = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
+
+         // Detect min lot mode
+         double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+         bool isMinLotMode = false;
+         double tickSz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+         double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+         if(slDist > 0 && g_riskMoney > 0 && tickSz > 0 && tickVal > 0)
+         {
+            double idealLot = g_riskMoney / ((slDist / tickSz) * tickVal);
+            if(idealLot < minLot) isMinLotMode = true;
+         }
+
+         if(isMinLotMode)
+         {
+            ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
+               StringFormat("%.2f lot(MIN) -$%.2f", lot, slMoney));
+            ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR,
+               slMoney > g_riskMoney ? COL_WARN : COL_WHITE);
+         }
+         else
+         {
+            ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
+               StringFormat("Lot %.2f    SL -$%.2f", lot, slMoney));
+            ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_WHITE);
+         }
+
+         // Auto-detect order type name based on entry vs market
+         string orderName = "";
+         double ask2 = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         double bid2 = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         if(g_orderMode == 1)
+            orderName = (entryPx > ask2) ? "BUY STOP" : "BUY LIMIT";
+         else if(g_orderMode == 2)
+            orderName = (entryPx < bid2) ? "SELL STOP" : "SELL LIMIT";
+         ObjectSetString(0, OBJ_INFO2, OBJPROP_TEXT,
+            StringFormat("%s  |  %.0f pips SL", orderName, pips));
+         ObjectSetInteger(0, OBJ_INFO2, OBJPROP_COLOR, COL_DIM);
+
+         double pct = 0;
+         double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+         if(bal > 0) pct = NormalizeDouble(slMoney / bal * 100.0, 1);
+         ObjectSetString(0, OBJ_INFO3, OBJPROP_TEXT,
+            StringFormat("Risk $%.1f (%.1f%%)  |  Spread %.0f", slMoney, pct, spread));
+         ObjectSetInteger(0, OBJ_INFO3, OBJPROP_COLOR, COL_DIM);
+
+         UpdateLineLabels();
+      }
+      else
+      {
+         double spread = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
+         ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT, "Select order type");
+         ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_DIM);
+         ObjectSetString(0, OBJ_INFO2, OBJPROP_TEXT,
+            StringFormat("Risk $%d  |  Spread %.0f pts", (int)g_riskMoney, spread));
+         ObjectSetInteger(0, OBJ_INFO2, OBJPROP_COLOR, COL_DIM);
+         ObjectSetString(0, OBJ_INFO3, OBJPROP_TEXT, " ");
+
+         g_entryPx  = 0;   g_origSL    = 0;
+         g_currentSL = 0;
+         g_tpDist = 0;
+      }
    }
+
+   // Management button rendering (always, regardless of position)
+   {
+      bool trailActive = false;
+      if(g_trailRef != TRAIL_NONE && g_hasPos)
+      {
+         double refE = GetAvgEntry();
+         if(refE <= 0) refE = g_entryPx;
+         double cur2 = g_isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                               : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         double mv = g_isBuy ? (cur2 - refE) : (refE - cur2);
+         if(g_beEnabled && g_beReached)
+            trailActive = true;
+         else
+            trailActive = (g_cachedATR > 0 && mv >= g_cachedATR);
+      }
+
+      if(g_trailRef == TRAIL_CLOSE)
+      {
+         ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TEXT, "Close");
+         ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, trailActive ? COL_ON : C'30,80,140');
+         ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_WHITE);
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_TM_CLOSE, OBJPROP_TEXT, "Close");
+         ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_BGCOLOR, COL_OFF);
+         ObjectSetInteger(0, OBJ_TM_CLOSE, OBJPROP_COLOR, COL_DIM);
+      }
+
+      if(g_trailRef == TRAIL_SWING)
+      {
+         ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TEXT, "Swing");
+         ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, trailActive ? COL_ON : C'30,80,140');
+         ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_WHITE);
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TEXT, "Swing");
+         ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_BGCOLOR, COL_OFF);
+         ObjectSetInteger(0, OBJ_TM_SWING, OBJPROP_COLOR, COL_DIM);
+      }
+   }
+
+   ObjectSetString(0, OBJ_BE_BTN, OBJPROP_TEXT,
+      g_beReached ? "BE: \x2713" : (g_beEnabled ? "BE: ON" : "BE: OFF"));
+   ObjectSetInteger(0, OBJ_BE_BTN, OBJPROP_BGCOLOR,
+      g_beReached ? C'0,100,60' : (g_beEnabled ? COL_ON : COL_OFF));
+   ObjectSetInteger(0, OBJ_BE_BTN, OBJPROP_COLOR,
+      (g_beEnabled || g_beReached) ? COL_WHITE : COL_DIM);
+
+   ObjectSetString(0, OBJ_AUTOTP_BTN, OBJPROP_TEXT,
+      g_tp1Hit ? "Auto TP: \x2713 Done" : (g_autoTPEnabled ? "Auto TP: ON" : "Auto TP: OFF"));
+   ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_BGCOLOR,
+      g_tp1Hit ? C'0,100,60' : (g_autoTPEnabled ? COL_ON : COL_OFF));
+   ObjectSetInteger(0, OBJ_AUTOTP_BTN, OBJPROP_COLOR,
+      (g_autoTPEnabled || g_tp1Hit) ? COL_WHITE : COL_DIM);
+
+   UpdatePanelVisibility();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1426,24 +1418,24 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          ExecutePendingOrder();
       else if(sparam == OBJ_CANCEL && !g_hasPos)
          RemoveOrderLines();
-      else if(sparam == OBJ_TM_CLOSE && g_hasPos)
+      else if(sparam == OBJ_TM_CLOSE)
       {
          g_trailRef = (g_trailRef == TRAIL_CLOSE) ? TRAIL_NONE : TRAIL_CLOSE;
          Print("[ExO] Trail -> ", (g_trailRef == TRAIL_CLOSE) ? "Close" : "None");
          UpdateInfo(); ChartRedraw();
       }
-      else if(sparam == OBJ_TM_SWING && g_hasPos)
+      else if(sparam == OBJ_TM_SWING)
       {
          g_trailRef = (g_trailRef == TRAIL_SWING) ? TRAIL_NONE : TRAIL_SWING;
          Print("[ExO] Trail -> ", (g_trailRef == TRAIL_SWING) ? "Swing" : "None");
          UpdateInfo(); ChartRedraw();
       }
-      else if(sparam == OBJ_BE_BTN && g_hasPos)
+      else if(sparam == OBJ_BE_BTN)
       {
          if(!g_beReached) g_beEnabled = !g_beEnabled;
          UpdateInfo(); ChartRedraw();
       }
-      else if(sparam == OBJ_AUTOTP_BTN && g_hasPos)
+      else if(sparam == OBJ_AUTOTP_BTN)
       {
          if(!g_tp1Hit)
          {
