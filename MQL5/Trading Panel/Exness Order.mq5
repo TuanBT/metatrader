@@ -4,7 +4,7 @@
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
 #property copyright "Trading Tools"
-#property version   "1.01"
+#property version   "1.02"
 #property strict
 
 // ═══════════════════════════════════════════════════════════════════
@@ -79,6 +79,7 @@ input int    InpDeviation    = 20;       // Max slippage (points)
 #define COL_EDIT_BD   C'65,70,90'
 #define COL_ON        C'0,120,70'
 #define COL_OFF       C'60,60,85'
+#define COL_WARN      C'220,180,40'
 
 // Layout
 #define PX 20
@@ -641,7 +642,7 @@ void CreatePanel()
    int y = PY;
    MakeRect(OBJ_BG, PX, PY, PW, 400, COL_BG, COL_BORDER);
 
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.01", COL_WHITE, 11, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.02", COL_WHITE, 11, FONT_BOLD);
    y += 28;
 
    // Risk row
@@ -832,37 +833,64 @@ void UpdateLineLabels()
    double lot     = CalcLot(slDist);
    double slMoney = CalcMoney(lot, slDist);
    double pips    = slDist / PipSize();
+   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double spread  = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-   // HLINE tooltip
+   // Detect if lot is clamped at min
+   bool isMinLotMode = false;
+   double idealLot = 0;
+   double tickSz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   if(slDist > 0 && g_riskMoney > 0 && tickSz > 0 && tickVal > 0)
+      idealLot = g_riskMoney / ((slDist / tickSz) * tickVal);
+   if(idealLot > 0 && idealLot < minLot)
+      isMinLotMode = true;
+
+   // HLINE tooltips
    ObjectSetString(0, OBJ_ENTRY_LINE, OBJPROP_TOOLTIP,
       StringFormat("Entry: %." + IntegerToString(_Digits) + "f | Lot: %.2f", entryPx, lot));
    ObjectSetString(0, OBJ_SL_LINE, OBJPROP_TOOLTIP,
       StringFormat("SL: %." + IntegerToString(_Digits) + "f | -$%.2f | %.0f pips", slPx, slMoney, pips));
 
-   // Visible price tag labels
-   string entryTxt = StringFormat("ENTRY %.2f lot", lot);
-   MakePriceTag(OBJ_ENTRY_TAG, entryPx, entryTxt, COL_WHITE, COL_ENTRY);
-
-   string slTxt = StringFormat("SL -$%.2f  %.0f pips", slMoney, pips);
-   MakePriceTag(OBJ_SL_TAG, slPx, slTxt, COL_WHITE, COL_SL);
-
-   // Min lot validation warning
-   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double idealLot = 0;
-   if(slDist > 0 && g_riskMoney > 0)
+   // Entry tag
+   string entryTxt;
+   color  entryClr = COL_WHITE;
+   if(isMinLotMode)
    {
-      double tickSz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      if(tickSz > 0 && tickVal > 0)
-         idealLot = g_riskMoney / ((slDist / tickSz) * tickVal);
+      entryTxt = StringFormat("ENTRY %.2f lot (MIN)", lot);
+      entryClr = COL_WARN;
    }
+   else
+      entryTxt = StringFormat("ENTRY %.2f lot", lot);
+   MakePriceTag(OBJ_ENTRY_TAG, entryPx, entryTxt, entryClr, COL_ENTRY);
 
-   if(idealLot > 0 && idealLot < minLot)
+   // SL tag
+   string slTxt;
+   color  slClr = COL_WHITE;
+   if(isMinLotMode && slMoney > g_riskMoney)
    {
-      double actualRisk = CalcMoney(minLot, slDist);
+      slTxt = StringFormat("SL -$%.2f (>$%.0f)  %.0f pips", slMoney, g_riskMoney, pips);
+      slClr = COL_WARN;
+   }
+   else
+      slTxt = StringFormat("SL -$%.2f  %.0f pips", slMoney, pips);
+   MakePriceTag(OBJ_SL_TAG, slPx, slTxt, slClr, COL_SL);
+
+   // Warning label: 3 levels
+   if(slDist > 0 && slDist <= spread)
+   {
       ObjectSetString(0, OBJ_WARN_LBL, OBJPROP_TEXT,
-         StringFormat("\x26A0 Risk $%.0f < min lot %.2f ($%.1f)", g_riskMoney, minLot, actualRisk));
+         StringFormat("\x26A0 SL < Spread! (%.1f < %.1f pts)",
+                      slDist / _Point, spread / _Point));
       ObjectSetInteger(0, OBJ_WARN_LBL, OBJPROP_COLOR, COL_SL);
+      ShowObject(OBJ_WARN_LBL);
+   }
+   else if(isMinLotMode)
+   {
+      ObjectSetString(0, OBJ_WARN_LBL, OBJPROP_TEXT,
+         StringFormat("\x26A0 Min lot %.2f | Real risk $%.2f/$%.0f",
+                      minLot, slMoney, g_riskMoney));
+      ObjectSetInteger(0, OBJ_WARN_LBL, OBJPROP_COLOR, COL_WARN);
       ShowObject(OBJ_WARN_LBL);
    }
    else
@@ -969,9 +997,30 @@ void UpdateInfo()
       double pips    = slDist / PipSize();
       double spread  = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
 
-      ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
-         StringFormat("Lot %.2f    SL -$%.2f", lot, slMoney));
-      ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_WHITE);
+      // Detect min lot mode
+      double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      bool isMinLotMode = false;
+      double tickSz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      if(slDist > 0 && g_riskMoney > 0 && tickSz > 0 && tickVal > 0)
+      {
+         double idealLot = g_riskMoney / ((slDist / tickSz) * tickVal);
+         if(idealLot < minLot) isMinLotMode = true;
+      }
+
+      if(isMinLotMode)
+      {
+         ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
+            StringFormat("%.2f lot(MIN) -$%.2f", lot, slMoney));
+         ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR,
+            slMoney > g_riskMoney ? COL_WARN : COL_WHITE);
+      }
+      else
+      {
+         ObjectSetString(0, OBJ_INFO1, OBJPROP_TEXT,
+            StringFormat("Lot %.2f    SL -$%.2f", lot, slMoney));
+         ObjectSetInteger(0, OBJ_INFO1, OBJPROP_COLOR, COL_WHITE);
+      }
 
       string orderName = "";
       switch(g_orderMode)
@@ -987,9 +1036,9 @@ void UpdateInfo()
 
       double pct = 0;
       double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-      if(bal > 0) pct = NormalizeDouble(g_riskMoney / bal * 100.0, 1);
+      if(bal > 0) pct = NormalizeDouble(slMoney / bal * 100.0, 1);
       ObjectSetString(0, OBJ_INFO3, OBJPROP_TEXT,
-         StringFormat("Risk $%d (%.1f%%)  |  Spread %.0f", (int)g_riskMoney, pct, spread));
+         StringFormat("Risk $%.1f (%.1f%%)  |  Spread %.0f", slMoney, pct, spread));
       ObjectSetInteger(0, OBJ_INFO3, OBJPROP_COLOR, COL_DIM);
 
       UpdateLineLabels();
