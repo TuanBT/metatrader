@@ -3,7 +3,7 @@
 //|         Exness-style order + management EA (v1.05)               |
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
-#property copyright "Trading Tools"
+#property copyright "Exness Order 1.05"
 #property version   "1.05"
 #property strict
 
@@ -704,7 +704,7 @@ void CreatePanel()
    int y = PY;
    MakeRect(OBJ_BG, PX, PY, PW, 400, COL_BG, COL_BORDER);
 
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.03", COL_WHITE, 11, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.05", COL_WHITE, 11, FONT_BOLD);
    y += 28;
 
    // Risk row

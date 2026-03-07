@@ -14,6 +14,7 @@ FILES=(
     "Expert Trading Panel.mq5"
     "Candle Counter Strategy.mqh"
     "News Straddle Strategy.mqh"
+    "SR Retest Strategy.mqh"
     "Exness Order.mq5"
 )
 

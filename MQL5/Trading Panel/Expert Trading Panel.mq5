@@ -17,7 +17,7 @@
 //|  3. Click BUY or SELL → order fires instantly                    |
 //|  4. Trailing SL manages the trade automatically                  |
 //+------------------------------------------------------------------+
-#property copyright "Tuan v2.31"
+#property copyright "Tuan v2.32"
 #property version   "2.31"
 #property strict
 #property description "One-click trading panel with auto risk & trail"
@@ -194,6 +194,7 @@ input int             InpDeviation      = 20;        // Max slippage (points)
 #define OBJ_BOT_BG        PREFIX "bot_bg"
 #define OBJ_BOT_CC_BTN    PREFIX "bot_cc"
 #define OBJ_BOT_NS_BTN    PREFIX "bot_ns"
+#define OBJ_BOT_SR_BTN    PREFIX "bot_sr"
 #define OBJ_BOT_START_BTN PREFIX "bot_start"  // Start/Stop inside bot panel
 #define OBJ_BOT_AUTO_BTN  PREFIX "bot_auto"   // Auto‐Regime toggle
 
@@ -277,7 +278,7 @@ datetime g_lastDCATime    = 0;       // Timestamp of last DCA fill
 
 // Bot integration state
 double   g_panelLot       = 0;       // Calculated lot — shared with bots
-int      g_activeBot      = 0;       // 0=none, 1=Candle Count Bot, 2=News Straddle
+int      g_activeBot      = 0;       // 0=none, 1=Candle Count Bot, 2=News Straddle, 3=SR Retest
 
 // Regime Analyzer (Python → INI → MQL5)
 bool     g_autoRegime     = false;   // Auto‐regime mode ON/OFF
@@ -1041,12 +1042,14 @@ void TogglePanelCollapse()
    bool showBot = !g_panelCollapsed;
    ObjectSetInteger(0, OBJ_BOT_CC_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+   ObjectSetInteger(0, OBJ_BOT_SR_BTN, OBJPROP_TIMEFRAMES, showBot ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_BG, OBJPROP_TIMEFRAMES,
       (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    ObjectSetInteger(0, OBJ_BOT_START_BTN, OBJPROP_TIMEFRAMES,
       (showBot && g_activeBot > 0) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
    if(g_activeBot == 1) CC_SetVisible(showBot);
    if(g_activeBot == 2) NS_SetVisible(showBot);
+   if(g_activeBot == 3) SR_SetVisible(showBot);
    
    ChartRedraw();
 }
@@ -1242,6 +1245,7 @@ void ReadConfigINI()
 // ════════════════════════════════════════════════════════════════════
 #include "Candle Counter Strategy.mqh"
 #include "News Straddle Strategy.mqh"
+#include "SR Retest Strategy.mqh"
 
 // ════════════════════════════════════════════════════════════════════
 // BOT PANEL MANAGEMENT
@@ -1251,11 +1255,12 @@ void CreateBotButtons()
    int x = BOT_PANEL_X;
    int y = BOT_PANEL_Y;
 
-   // [Candle Count] [News Straddle] buttons
+   // [Candle Count] [News Straddle] [SR Retest] buttons
    // Color: green=running, blue=viewing (not running), dark=inactive
-   color ccBg, nsBg, ccTxt, nsTxt;
+   color ccBg, nsBg, srBg, ccTxt, nsTxt, srTxt;
    GetBotButtonColors(1, ccBg, ccTxt);
    GetBotButtonColors(2, nsBg, nsTxt);
+   GetBotButtonColors(3, srBg, srTxt);
 
    MakeButton(OBJ_BOT_CC_BTN, x, y, BOT_BTN_W, BOT_BTN_H,
               "Candle Count", ccTxt, ccBg, 8);
@@ -1265,6 +1270,10 @@ void CreateBotButtons()
               "News Straddle", nsTxt, nsBg, 8);
    ObjectSetString(0, OBJ_BOT_NS_BTN, OBJPROP_TOOLTIP,
       "News Straddle — pending order trước tin.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
+   MakeButton(OBJ_BOT_SR_BTN, x + 2*(BOT_BTN_W + 2), y, BOT_BTN_W, BOT_BTN_H,
+              "SR Retest", srTxt, srBg, 8);
+   ObjectSetString(0, OBJ_BOT_SR_BTN, OBJPROP_TOOLTIP,
+      "SR Retest — limit tại swing S/R, SL nhỏ.\nXanh=đang chạy, Xanh dương=đang xem, Xám=tắt.");
 }
 
 // Get button colors: green=running, blue=viewing, dark=inactive
@@ -1273,6 +1282,7 @@ void GetBotButtonColors(int botId, color &bg, color &txt)
    bool running = false;
    if(botId == 1) running = cc_enabled;
    if(botId == 2) running = ns_enabled;
+   if(botId == 3) running = sr_enabled;
 
    if(running)
    {
@@ -1302,6 +1312,7 @@ void CreateBotPanel()
    bool running = false;
    if(g_activeBot == 1) running = cc_enabled;
    if(g_activeBot == 2) running = ns_enabled;
+   if(g_activeBot == 3) running = sr_enabled;
 
    color startBg  = running ? C'180,40,40' : C'0,100,60';  // Red=stop, Green=start
    color startTxt = C'255,255,255';
@@ -1329,12 +1340,15 @@ void CreateBotPanel()
       CC_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
    else if(g_activeBot == 2)
       NS_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
+   else if(g_activeBot == 3)
+      SR_CreatePanel(BOT_PANEL_X, contentStartY, BOT_CONTENT_W);
 }
 
 void DestroyBotPanel()
 {
    CC_DestroyPanel();
    NS_DestroyPanel();
+   SR_DestroyPanel();
    ObjectDelete(0, OBJ_BOT_START_BTN);
    ObjectDelete(0, OBJ_BOT_AUTO_BTN);
    ObjectDelete(0, OBJ_BOT_BG);
@@ -1391,6 +1405,11 @@ void ToggleBotStart()
       }
       Print(StringFormat("[PANEL] NS Bot %s", ns_enabled ? "STARTED" : "STOPPED"));
    }
+   else if(g_activeBot == 3)
+   {
+      sr_enabled = !sr_enabled;
+      Print(StringFormat("[PANEL] SR Retest Bot %s", sr_enabled ? "STARTED" : "STOPPED"));
+   }
 
    // Update Start/Stop button appearance immediately (heavy init deferred to next Timer)
    UpdateBotStartButton();
@@ -1405,6 +1424,7 @@ void UpdateBotStartButton()
    bool running = false;
    if(g_activeBot == 1) running = cc_enabled;
    if(g_activeBot == 2) running = ns_enabled;
+   if(g_activeBot == 3) running = sr_enabled;
 
    color bg  = running ? C'180,40,40' : C'0,100,60';
    string label = running ? "\x25A0 Stop" : "\x25B6 Start";
@@ -1424,6 +1444,10 @@ void UpdateBotButtonColors()
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BGCOLOR, bg);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_BORDER_COLOR, bg);
    ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_COLOR, txt);
+   GetBotButtonColors(3, bg, txt);
+   ObjectSetInteger(0, OBJ_BOT_SR_BTN, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_SR_BTN, OBJPROP_BORDER_COLOR, bg);
+   ObjectSetInteger(0, OBJ_BOT_SR_BTN, OBJPROP_COLOR, txt);
 }
 
 void CreatePanel()
@@ -1436,7 +1460,7 @@ void CreatePanel()
 
    // ── Title bar ──
    MakeRect(OBJ_TITLE_BG, PX + 1, y + 1, PW - 2, 26, COL_TITLE_BG, COL_TITLE_BG);
-   string titleTxt = "Trading Panel v2.31";
+   string titleTxt = "Trading Panel v2.32";
    MakeLabel(OBJ_TITLE, IX, y + 6, titleTxt, C'170,180,215', 10, FONT_BOLD);
 
    // ── Collapsed info row (below title bar, visible only when collapsed) ──
@@ -2188,7 +2212,7 @@ void UpdatePanel()
    SyncButtonAppearance();
 
    // ── Title bar: show position info when collapsed ──
-   string panelTitle = "Trading Panel v2.31";
+   string panelTitle = "Trading Panel v2.32";
    if(g_panelCollapsed)
    {
       if(g_hasPos)
@@ -3145,11 +3169,12 @@ int OnInit()
    // ── Initialize integrated bots ──
    CC_Init();
    NS_Init();
+   SR_Init();
 
    // Timer for updates when market is slow
    EventSetMillisecondTimer(1000);
 
-   Print(StringFormat("[PANEL] Tuan Quick Trade v2.31 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
+   Print(StringFormat("[PANEL] Tuan Quick Trade v2.32 | %s | Risk=$%.2f | SL=ATR | Trail=%s%s",
       _Symbol,
       InpDefaultRisk,
       EnumToString(g_trailRef),
@@ -3162,6 +3187,7 @@ void OnDeinit(const int reason)
 {
    CC_Deinit();
    NS_Deinit();
+   SR_Deinit();
    DestroyPanel();
    EventKillTimer();
 
@@ -3312,6 +3338,7 @@ void OnTick()
    // ── Dispatch to ALL running bots (independent of view) ──
    if(cc_enabled) CC_Tick();
    if(ns_enabled) NS_Tick();
+   if(sr_enabled) SR_Tick();
 }
 
 void OnTimer()
@@ -3326,9 +3353,11 @@ void OnTimer()
    // ── Dispatch to ALL running bots + update viewed bot panel ──
    if(cc_enabled) CC_Timer();
    if(ns_enabled) NS_Timer();
+   if(sr_enabled) SR_Timer();
    // If viewing a non-running bot, still update its panel display
    if(g_activeBot == 1 && !cc_enabled) CC_UpdatePanel();
    if(g_activeBot == 2 && !ns_enabled) NS_UpdatePanel();
+   if(g_activeBot == 3 && !sr_enabled) SR_UpdatePanel();
 
    // ── Auto‐Regime: check config file every 60s ──
    if(g_autoRegime)
@@ -3376,6 +3405,12 @@ void OnChartEvent(const int id,
       {
          ObjectSetInteger(0, OBJ_BOT_NS_BTN, OBJPROP_STATE, false);
          ToggleBot(2);
+         return;
+      }
+      if(sparam == OBJ_BOT_SR_BTN)
+      {
+         ObjectSetInteger(0, OBJ_BOT_SR_BTN, OBJPROP_STATE, false);
+         ToggleBot(3);
          return;
       }
       // ── Bot Start/Stop button ──
