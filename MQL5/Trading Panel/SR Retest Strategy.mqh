@@ -1,6 +1,7 @@
 //+------------------------------------------------------------------+
-//| SR Retest Strategy.mqh — SR Retest Bot v1.00                     |
+//| SR Retest Strategy.mqh — SR Retest Bot v1.01                     |
 //| Limit order at nearest swing S/R, SL = 0.1×ATR (wick scalp)     |
+//| v1.01: Stronger pivot detection + prominence filter              |
 //+------------------------------------------------------------------+
 #ifndef SR_RETEST_STRATEGY_MQH
 #define SR_RETEST_STRATEGY_MQH
@@ -9,8 +10,9 @@
 // INPUTS
 // ════════════════════════════════════════════════════════════════════
 input group           "══ SR Retest Bot ══"
-input int             InpSR_PivotBars   = 5;     // SR: Pivot strength (bars left + right)
-input int             InpSR_Lookback    = 50;    // SR: Lookback bars for swing scan
+input int             InpSR_PivotBars   = 15;    // SR: Pivot strength (bars left + right)
+input int             InpSR_Lookback    = 100;   // SR: Lookback bars for swing scan
+input double          InpSR_Prominence  = 0.5;   // SR: Min prominence (× ATR, swing must stand out)
 input double          InpSR_SLMult      = 0.1;   // SR: SL = x × ATR (tiny, wick scalp)
 input int             InpSR_CancelBars  = 20;    // SR: Cancel pending after N bars
 
@@ -66,8 +68,8 @@ int      sr_panelW = 220;
 // ════════════════════════════════════════════════════════════════════
 bool SR_Init()
 {
-   Print(StringFormat("[SR RETEST] Initialized | %s | Pivot=%d | Lookback=%d | SL=%.1f×ATR | Cancel=%d bars",
-         _Symbol, InpSR_PivotBars, InpSR_Lookback, InpSR_SLMult, InpSR_CancelBars));
+   Print(StringFormat("[SR RETEST] Initialized | %s | Pivot=%d | Lookback=%d | Prominence=%.1f×ATR | SL=%.1f×ATR | Cancel=%d bars",
+         _Symbol, InpSR_PivotBars, InpSR_Lookback, InpSR_Prominence, InpSR_SLMult, InpSR_CancelBars));
    return true;
 }
 
@@ -90,6 +92,21 @@ bool SR_IsPivotHigh(int barIdx, int strength)
       if(iHigh(_Symbol, _Period, barIdx - i) >= hi) return false;
       if(iHigh(_Symbol, _Period, barIdx + i) >= hi) return false;
    }
+   // Prominence check: swing high must protrude above avg of surrounding highs by min ATR×mult
+   double atr = g_cachedATR;
+   if(atr > 0 && InpSR_Prominence > 0)
+   {
+      double sumH = 0;
+      int cnt = 0;
+      for(int i = 1; i <= strength; i++)
+      {
+         sumH += iHigh(_Symbol, _Period, barIdx - i);
+         sumH += iHigh(_Symbol, _Period, barIdx + i);
+         cnt += 2;
+      }
+      double avgH = sumH / cnt;
+      if(hi - avgH < atr * InpSR_Prominence) return false;
+   }
    return true;
 }
 
@@ -100,6 +117,21 @@ bool SR_IsPivotLow(int barIdx, int strength)
    {
       if(iLow(_Symbol, _Period, barIdx - i) <= lo) return false;
       if(iLow(_Symbol, _Period, barIdx + i) <= lo) return false;
+   }
+   // Prominence check: swing low must dip below avg of surrounding lows by min ATR×mult
+   double atr = g_cachedATR;
+   if(atr > 0 && InpSR_Prominence > 0)
+   {
+      double sumL = 0;
+      int cnt = 0;
+      for(int i = 1; i <= strength; i++)
+      {
+         sumL += iLow(_Symbol, _Period, barIdx - i);
+         sumL += iLow(_Symbol, _Period, barIdx + i);
+         cnt += 2;
+      }
+      double avgL = sumL / cnt;
+      if(avgL - lo < atr * InpSR_Prominence) return false;
    }
    return true;
 }
