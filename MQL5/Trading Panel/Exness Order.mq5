@@ -3,8 +3,8 @@
 //|         Exness-style order + management EA (v1.06)               |
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
-#property copyright "Exness Order 1.05"
-#property version   "1.05"
+#property copyright "Exness Order 1.06"
+#property version   "1.06"
 #property strict
 
 // ═══════════════════════════════════════════════════════════════════
