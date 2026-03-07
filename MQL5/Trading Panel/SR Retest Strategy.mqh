@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
-//| SR Retest Strategy.mqh — SR Retest Bot v1.02                     |
+//| SR Retest Strategy.mqh — SR Retest Bot v1.03                     |
 //| Limit order at nearest swing S/R, SL = 0.1×ATR (wick scalp)     |
-//| v1.02: Zig-Zag wave detection — real structural swings only      |
+//| v1.03: Trade WITH trend (pullback entries), not counter-trend    |
 //+------------------------------------------------------------------+
 #ifndef SR_RETEST_STRATEGY_MQH
 #define SR_RETEST_STRATEGY_MQH
@@ -477,28 +477,28 @@ void SR_Tick()
    double slDist = InpSR_SLMult * g_cachedATR;
    if(slDist <= 0) return;  // ATR not ready
 
-   // Uptrend → price going UP → SELL LIMIT at nearest resistance
-   if(sr_trend == 1 && sr_nearestRes > 0)
+   // Uptrend → price pulls back to support → BUY LIMIT at support (ride trend up)
+   if(sr_trend == 1 && sr_nearestSup > 0)
    {
       // Don't re-entry same level
-      if(MathAbs(sr_nearestRes - sr_lastFilledLvl) < slDist) return;
-
-      double entryPx = sr_nearestRes;
-      double slPx    = NormalizeDouble(entryPx + slDist, _Digits);
-
-      if(SR_PlacePending(false, entryPx, slPx))
-         Print(StringFormat("[SR RETEST] SELL LIMIT @ Resistance %.5f", entryPx));
-   }
-   // Downtrend → price going DOWN → BUY LIMIT at nearest support
-   else if(sr_trend == -1 && sr_nearestSup > 0)
-   {
       if(MathAbs(sr_nearestSup - sr_lastFilledLvl) < slDist) return;
 
       double entryPx = sr_nearestSup;
       double slPx    = NormalizeDouble(entryPx - slDist, _Digits);
 
       if(SR_PlacePending(true, entryPx, slPx))
-         Print(StringFormat("[SR RETEST] BUY LIMIT @ Support %.5f", entryPx));
+         Print(StringFormat("[SR RETEST] BUY LIMIT @ Support %.5f (Uptrend pullback)", entryPx));
+   }
+   // Downtrend → price rallies to resistance → SELL LIMIT at resistance (ride trend down)
+   else if(sr_trend == -1 && sr_nearestRes > 0)
+   {
+      if(MathAbs(sr_nearestRes - sr_lastFilledLvl) < slDist) return;
+
+      double entryPx = sr_nearestRes;
+      double slPx    = NormalizeDouble(entryPx + slDist, _Digits);
+
+      if(SR_PlacePending(false, entryPx, slPx))
+         Print(StringFormat("[SR RETEST] SELL LIMIT @ Resistance %.5f (Downtrend rally)", entryPx));
    }
 }
 
