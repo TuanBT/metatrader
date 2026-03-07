@@ -58,6 +58,26 @@ p{
     font-size:13px;
     cursor:pointer;
 }
+.scratchpad-row{
+    display:flex;
+    gap:10px;
+    align-items:stretch;
+    margin-top:8px;
+}
+.scratchpad-row textarea{
+    flex:1;
+    height:60px;
+    padding:8px;
+    font-family:monospace;
+    font-size:14px;
+    resize:vertical;
+}
+.scratchpad-row button{
+    padding:8px 20px;
+    font-size:14px;
+    cursor:pointer;
+    white-space:nowrap;
+}
 </style>
 </head>
 <body>
@@ -71,8 +91,14 @@ p{
 </div>
 
 <div id="output" class="output"></div>
+
+<div class="scratchpad-row">
+<textarea id="scratchpad" placeholder="Gõ gì đó vào đây để copy nhanh..."></textarea>
+<button onclick="copyScratchpad()">Copy</button>
+</div>
+
 <div class="toolbar">
-<button onclick="copyOutput()">Copy</button>
+<button onclick="copyOutput()">Copy Output</button>
 </div>
 
 <script>
@@ -118,6 +144,12 @@ function processText(){
 
 function copyOutput(){
     let text = document.getElementById("output").textContent;
+    navigator.clipboard.writeText(text);
+    alert("Copied!");
+}
+
+function copyScratchpad(){
+    let text = document.getElementById("scratchpad").value;
     navigator.clipboard.writeText(text);
     alert("Copied!");
 }
