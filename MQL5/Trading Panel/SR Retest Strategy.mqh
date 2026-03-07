@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
-//| SR Retest Strategy.mqh — SR Retest Bot v1.01                     |
+//| SR Retest Strategy.mqh — SR Retest Bot v1.02                     |
 //| Limit order at nearest swing S/R, SL = 0.1×ATR (wick scalp)     |
-//| v1.01: Stronger pivot detection + prominence filter              |
+//| v1.02: Zig-Zag wave detection — real structural swings only      |
 //+------------------------------------------------------------------+
 #ifndef SR_RETEST_STRATEGY_MQH
 #define SR_RETEST_STRATEGY_MQH
@@ -10,9 +10,8 @@
 // INPUTS
 // ════════════════════════════════════════════════════════════════════
 input group           "══ SR Retest Bot ══"
-input int             InpSR_PivotBars   = 15;    // SR: Pivot strength (bars left + right)
-input int             InpSR_Lookback    = 100;   // SR: Lookback bars for swing scan
-input double          InpSR_Prominence  = 0.5;   // SR: Min prominence (× ATR, swing must stand out)
+input int             InpSR_Lookback    = 200;   // SR: Lookback bars for swing scan
+input double          InpSR_MinWave     = 1.5;   // SR: Min wave size (× ATR) to qualify as swing
 input double          InpSR_SLMult      = 0.1;   // SR: SL = x × ATR (tiny, wick scalp)
 input int             InpSR_CancelBars  = 20;    // SR: Cancel pending after N bars
 
@@ -68,8 +67,8 @@ int      sr_panelW = 220;
 // ════════════════════════════════════════════════════════════════════
 bool SR_Init()
 {
-   Print(StringFormat("[SR RETEST] Initialized | %s | Pivot=%d | Lookback=%d | Prominence=%.1f×ATR | SL=%.1f×ATR | Cancel=%d bars",
-         _Symbol, InpSR_PivotBars, InpSR_Lookback, InpSR_Prominence, InpSR_SLMult, InpSR_CancelBars));
+   Print(StringFormat("[SR RETEST] Initialized | %s | Lookback=%d | MinWave=%.1f×ATR | SL=%.1f×ATR | Cancel=%d bars",
+         _Symbol, InpSR_Lookback, InpSR_MinWave, InpSR_SLMult, InpSR_CancelBars));
    return true;
 }
 
@@ -82,100 +81,159 @@ void SR_Deinit()
 }
 
 // ════════════════════════════════════════════════════════════════════
-// SWING DETECTION — Pure candle pivot
+// SWING DETECTION — Zig-Zag wave approach
+// Finds significant swing points where the move from the previous
+// opposite swing is at least MinWave × ATR. This ensures only real
+// structural waves qualify, regardless of bar count.
 // ════════════════════════════════════════════════════════════════════
-bool SR_IsPivotHigh(int barIdx, int strength)
-{
-   double hi = iHigh(_Symbol, _Period, barIdx);
-   for(int i = 1; i <= strength; i++)
-   {
-      if(iHigh(_Symbol, _Period, barIdx - i) >= hi) return false;
-      if(iHigh(_Symbol, _Period, barIdx + i) >= hi) return false;
-   }
-   // Prominence check: swing high must protrude above avg of surrounding highs by min ATR×mult
-   double atr = g_cachedATR;
-   if(atr > 0 && InpSR_Prominence > 0)
-   {
-      double sumH = 0;
-      int cnt = 0;
-      for(int i = 1; i <= strength; i++)
-      {
-         sumH += iHigh(_Symbol, _Period, barIdx - i);
-         sumH += iHigh(_Symbol, _Period, barIdx + i);
-         cnt += 2;
-      }
-      double avgH = sumH / cnt;
-      if(hi - avgH < atr * InpSR_Prominence) return false;
-   }
-   return true;
-}
-
-bool SR_IsPivotLow(int barIdx, int strength)
-{
-   double lo = iLow(_Symbol, _Period, barIdx);
-   for(int i = 1; i <= strength; i++)
-   {
-      if(iLow(_Symbol, _Period, barIdx - i) <= lo) return false;
-      if(iLow(_Symbol, _Period, barIdx + i) <= lo) return false;
-   }
-   // Prominence check: swing low must dip below avg of surrounding lows by min ATR×mult
-   double atr = g_cachedATR;
-   if(atr > 0 && InpSR_Prominence > 0)
-   {
-      double sumL = 0;
-      int cnt = 0;
-      for(int i = 1; i <= strength; i++)
-      {
-         sumL += iLow(_Symbol, _Period, barIdx - i);
-         sumL += iLow(_Symbol, _Period, barIdx + i);
-         cnt += 2;
-      }
-      double avgL = sumL / cnt;
-      if(avgL - lo < atr * InpSR_Prominence) return false;
-   }
-   return true;
-}
 
 void SR_ScanSwings()
 {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   int strength = InpSR_PivotBars;
-   int lookback = InpSR_Lookback;
+   double atr = g_cachedATR;
+   int    lookback = InpSR_Lookback;
+   double minMove  = atr * InpSR_MinWave;
 
    // Reset
    sr_nearestRes = 0;
    sr_nearestSup = 0;
    sr_resBarIdx  = -1;
    sr_supBarIdx  = -1;
+   sr_trend      = 0;
 
-   // Collect swing highs and lows
-   // Start from bar [strength] because we need bars to the right
+   if(atr <= 0 || lookback < 5) return;
+
+   // ── Step 1: Build Zig-Zag swings ──
+   // Walk from recent bars to past, tracking alternating HH/LL
+   // direction: 1 = last confirmed swing was a LOW (looking for next HIGH)
+   //           -1 = last confirmed swing was a HIGH (looking for next LOW)
+   //            0 = initial state
+
+   double swingPrices[];   // swing prices (alternating H/L)
+   int    swingBars[];     // bar indices
+   int    swingTypes[];    // +1 = swing high, -1 = swing low
+   ArrayResize(swingPrices, 0);
+   ArrayResize(swingBars, 0);
+   ArrayResize(swingTypes, 0);
+
+   // Find initial extreme: highest high and lowest low in first few bars
+   // to determine starting direction
+   double runHi = iHigh(_Symbol, _Period, 1);
+   int    runHiBar = 1;
+   double runLo = iLow(_Symbol, _Period, 1);
+   int    runLoBar = 1;
+   int    dir = 0;   // 0=undecided, 1=rising (tracking high), -1=falling (tracking low)
+
+   for(int i = 1; i <= lookback; i++)
+   {
+      double hi = iHigh(_Symbol, _Period, i);
+      double lo = iLow(_Symbol, _Period, i);
+
+      if(dir == 0)
+      {
+         // Undecided: track running high and low, decide when gap >= minMove
+         if(hi > runHi) { runHi = hi; runHiBar = i; }
+         if(lo < runLo) { runLo = lo; runLoBar = i; }
+
+         if(runHi - runLo >= minMove)
+         {
+            if(runHiBar < runLoBar)
+            {
+               // High is more recent → we were rising → confirm the HIGH first
+               int sz = ArraySize(swingPrices);
+               ArrayResize(swingPrices, sz + 1);
+               ArrayResize(swingBars, sz + 1);
+               ArrayResize(swingTypes, sz + 1);
+               swingPrices[sz] = runHi;
+               swingBars[sz]   = runHiBar;
+               swingTypes[sz]  = 1;  // swing high
+               dir = -1;  // now looking for low
+               runLo = lo; runLoBar = i;
+            }
+            else
+            {
+               // Low is more recent → we were falling → confirm the LOW first
+               int sz = ArraySize(swingPrices);
+               ArrayResize(swingPrices, sz + 1);
+               ArrayResize(swingBars, sz + 1);
+               ArrayResize(swingTypes, sz + 1);
+               swingPrices[sz] = runLo;
+               swingBars[sz]   = runLoBar;
+               swingTypes[sz]  = -1; // swing low
+               dir = 1;  // now looking for high
+               runHi = hi; runHiBar = i;
+            }
+         }
+         continue;
+      }
+
+      if(dir == 1)
+      {
+         // Rising: tracking high
+         if(hi > runHi) { runHi = hi; runHiBar = i; }
+         // Check reversal: drop from runHi >= minMove
+         if(runHi - lo >= minMove)
+         {
+            // Confirm swing HIGH
+            int sz = ArraySize(swingPrices);
+            ArrayResize(swingPrices, sz + 1);
+            ArrayResize(swingBars, sz + 1);
+            ArrayResize(swingTypes, sz + 1);
+            swingPrices[sz] = runHi;
+            swingBars[sz]   = runHiBar;
+            swingTypes[sz]  = 1;
+            dir = -1;  // now tracking low
+            runLo = lo; runLoBar = i;
+         }
+      }
+      else // dir == -1
+      {
+         // Falling: tracking low
+         if(lo < runLo) { runLo = lo; runLoBar = i; }
+         // Check reversal: rise from runLo >= minMove
+         if(hi - runLo >= minMove)
+         {
+            // Confirm swing LOW
+            int sz = ArraySize(swingPrices);
+            ArrayResize(swingPrices, sz + 1);
+            ArrayResize(swingBars, sz + 1);
+            ArrayResize(swingTypes, sz + 1);
+            swingPrices[sz] = runLo;
+            swingBars[sz]   = runLoBar;
+            swingTypes[sz]  = -1;
+            dir = 1;  // now tracking high
+            runHi = hi; runHiBar = i;
+         }
+      }
+   }
+
+   // ── Step 2: Separate swing highs and lows ──
    double swingHighs[];  int shBars[];
    double swingLows[];   int slBars[];
    ArrayResize(swingHighs, 0);  ArrayResize(shBars, 0);
    ArrayResize(swingLows, 0);   ArrayResize(slBars, 0);
 
-   for(int i = strength; i <= lookback; i++)
+   for(int i = 0; i < ArraySize(swingPrices); i++)
    {
-      if(SR_IsPivotHigh(i, strength))
+      if(swingTypes[i] == 1)
       {
          int sz = ArraySize(swingHighs);
          ArrayResize(swingHighs, sz + 1);
          ArrayResize(shBars, sz + 1);
-         swingHighs[sz] = iHigh(_Symbol, _Period, i);
-         shBars[sz] = i;
+         swingHighs[sz] = swingPrices[i];
+         shBars[sz]     = swingBars[i];
       }
-      if(SR_IsPivotLow(i, strength))
+      else
       {
          int sz = ArraySize(swingLows);
          ArrayResize(swingLows, sz + 1);
          ArrayResize(slBars, sz + 1);
-         swingLows[sz] = iLow(_Symbol, _Period, i);
-         slBars[sz] = i;
+         swingLows[sz] = swingPrices[i];
+         slBars[sz]    = swingBars[i];
       }
    }
 
-   // Nearest resistance = closest swing high ABOVE current price
+   // ── Step 3: Nearest resistance (closest swing high ABOVE price) ──
    double minDist = DBL_MAX;
    for(int i = 0; i < ArraySize(swingHighs); i++)
    {
@@ -191,7 +249,7 @@ void SR_ScanSwings()
       }
    }
 
-   // Nearest support = closest swing low BELOW current price
+   // ── Step 4: Nearest support (closest swing low BELOW price) ──
    minDist = DBL_MAX;
    for(int i = 0; i < ArraySize(swingLows); i++)
    {
@@ -207,13 +265,11 @@ void SR_ScanSwings()
       }
    }
 
-   // ── Trend: compare 2 most recent swing highs + 2 most recent swing lows ──
-   sr_trend = 0;
+   // ── Step 5: Trend from 2 most recent swing highs + lows ──
    bool hh = false, hl = false, lh = false, ll = false;
 
    if(ArraySize(swingHighs) >= 2)
    {
-      // [0] = most recent, [1] = previous
       hh = (swingHighs[0] > swingHighs[1]);
       lh = (swingHighs[0] < swingHighs[1]);
    }
@@ -601,7 +657,7 @@ void SR_UpdatePanel()
 
    // Config summary
    ObjectSetString(0, SR_OBJ_IL8, OBJPROP_TEXT,
-      StringFormat("Pivot=%d Look=%d Cancel=%d", InpSR_PivotBars, InpSR_Lookback, InpSR_CancelBars));
+      StringFormat("Wave=%.1fATR Look=%d Cancel=%d", InpSR_MinWave, InpSR_Lookback, InpSR_CancelBars));
    ObjectSetInteger(0, SR_OBJ_IL8, OBJPROP_COLOR, C'80,80,100');
 }
 
