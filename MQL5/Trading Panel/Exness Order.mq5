@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //|                                                 Exness Order.mq5 |
-//|         Exness-style order + management EA (v1.05)               |
+//|         Exness-style order + management EA (v1.06)               |
 //|         Trade tay + Trail/BE/Auto TP management                 |
 //+------------------------------------------------------------------+
 #property copyright "Exness Order 1.05"
@@ -20,7 +20,7 @@ enum ENUM_TRAIL_MODE
 input double InpRiskDollar   = 10;       // Risk $ per trade
 input int    InpATRPeriod    = 14;       // ATR period (for Trail/BE/TP)
 input ENUM_TIMEFRAMES InpATRTF = PERIOD_CURRENT; // ATR timeframe
-input int    InpTrailLookback = 5;       // Swing lookback bars (Swing mode)
+input int    InpTrailLookback = 20;      // Swing lookback bars (Swing mode)
 input ulong  InpMagic        = 202503;   // Magic number
 input int    InpDeviation    = 20;       // Max slippage (points)
 
@@ -500,43 +500,64 @@ void ManageTrailBE()
          case TRAIL_SWING:
          {
             int N = InpTrailLookback;
-            if(N < 3) N = 5;
+            if(N < 5) N = 20;
             double swingPrice = 0;
+            int pivotWidth = 3;  // check 3 bars each side minimum
+            double promMin = fullATR * 0.3;  // swing must protrude 0.3×ATR from neighbors avg
 
             if(g_isBuy)
             {
-               // Find true swing low (pivot)
-               for(int i = 2; i <= N; i++)
+               // Find real swing low: must be lower than 'pivotWidth' bars on each side
+               // AND protrude significantly (prominence check)
+               for(int i = pivotWidth; i <= N; i++)
                {
-                  double lo  = iLow(_Symbol, _Period, i);
-                  double loL = iLow(_Symbol, _Period, i - 1);
-                  double loR = iLow(_Symbol, _Period, i + 1);
-                  if(lo < loL && lo < loR) { swingPrice = lo; break; }
+                  double lo = iLow(_Symbol, _Period, i);
+                  bool isSwing = true;
+                  double sumNeighbors = 0;
+                  int cnt = 0;
+                  for(int j = 1; j <= pivotWidth; j++)
+                  {
+                     if(iLow(_Symbol, _Period, i - j) <= lo) { isSwing = false; break; }
+                     if(iLow(_Symbol, _Period, i + j) <= lo) { isSwing = false; break; }
+                     sumNeighbors += iLow(_Symbol, _Period, i - j);
+                     sumNeighbors += iLow(_Symbol, _Period, i + j);
+                     cnt += 2;
+                  }
+                  if(!isSwing) continue;
+                  // Prominence: avg neighbor lows must be above this low by promMin
+                  double avgL = sumNeighbors / cnt;
+                  if(avgL - lo < promMin) continue;
+                  swingPrice = lo;
+                  break;
                }
-               // Fallback: first bearish candle low
-               if(swingPrice <= 0)
-                  for(int i = 1; i <= N; i++)
-                     if(iClose(_Symbol, _Period, i) < iOpen(_Symbol, _Period, i))
-                     { swingPrice = iLow(_Symbol, _Period, i); break; }
                if(swingPrice <= 0) return;
                newSL = NormPrice(swingPrice);
                if((bid - newSL) < minDist) return;
             }
             else
             {
-               // Find true swing high (pivot)
-               for(int i = 2; i <= N; i++)
+               // Find real swing high: must be higher than 'pivotWidth' bars on each side
+               // AND protrude significantly (prominence check)
+               for(int i = pivotWidth; i <= N; i++)
                {
-                  double hi  = iHigh(_Symbol, _Period, i);
-                  double hiL = iHigh(_Symbol, _Period, i - 1);
-                  double hiR = iHigh(_Symbol, _Period, i + 1);
-                  if(hi > hiL && hi > hiR) { swingPrice = hi; break; }
+                  double hi = iHigh(_Symbol, _Period, i);
+                  bool isSwing = true;
+                  double sumNeighbors = 0;
+                  int cnt = 0;
+                  for(int j = 1; j <= pivotWidth; j++)
+                  {
+                     if(iHigh(_Symbol, _Period, i - j) >= hi) { isSwing = false; break; }
+                     if(iHigh(_Symbol, _Period, i + j) >= hi) { isSwing = false; break; }
+                     sumNeighbors += iHigh(_Symbol, _Period, i - j);
+                     sumNeighbors += iHigh(_Symbol, _Period, i + j);
+                     cnt += 2;
+                  }
+                  if(!isSwing) continue;
+                  double avgH = sumNeighbors / cnt;
+                  if(hi - avgH < promMin) continue;
+                  swingPrice = hi;
+                  break;
                }
-               // Fallback: first bullish candle high
-               if(swingPrice <= 0)
-                  for(int i = 1; i <= N; i++)
-                     if(iClose(_Symbol, _Period, i) > iOpen(_Symbol, _Period, i))
-                     { swingPrice = iHigh(_Symbol, _Period, i); break; }
                if(swingPrice <= 0) return;
                newSL = NormPrice(swingPrice);
                if((newSL - ask) < minDist) return;
@@ -704,7 +725,7 @@ void CreatePanel()
    int y = PY;
    MakeRect(OBJ_BG, PX, PY, PW, 400, COL_BG, COL_BORDER);
 
-   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.05", COL_WHITE, 11, FONT_BOLD);
+   MakeLabel(OBJ_TITLE, IX, y + 6, "Exness Order v1.06", COL_WHITE, 11, FONT_BOLD);
    y += 28;
 
    // Risk row
@@ -763,7 +784,8 @@ void CreatePanel()
       "Min distance: 0.5 x ATR\n"
       "Click again to turn OFF");
    ObjectSetString(0, OBJ_TM_SWING, OBJPROP_TOOLTIP,
-      "Trail SWING: SL = swing low/high\n"
+      "Trail SWING: SL = real swing low/high\n"
+      "Must stand out 0.3×ATR from neighbors\n"
       "BUY: SL = Swing Low | SELL: SL = Swing High\n"
       "Lookback: " + IntegerToString(InpTrailLookback) + " bars\n"
       "Click again to turn OFF");
